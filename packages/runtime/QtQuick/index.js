@@ -15,6 +15,14 @@ export { Item } from "./Item.js";
 export { ListView } from "./ListView.js";
 export { Loader } from "./Loader.js";
 export { ListElement, ListModel, ObjectModel } from "./model.js";
+export {
+  FunctionFilter,
+  FunctionSorter,
+  RoleSorter,
+  SortFilterProxyModel,
+  StringSorter,
+  ValueFilter,
+} from "./proxy.js";
 export { Column, Flow, Grid, Positioner, Row } from "./positioners.js";
 export { ColorGroup, Palette, SystemPalette } from "./Palette.js";
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
