@@ -48,12 +48,15 @@ Everything else is a [mise](https://mise.jdx.dev) task, a script in
 whatever it needs:
 
 ```sh
-mise run install        # packages, Playwright's browser, the qtdoc submodule
+mise run install        # the tooling in mise.toml: Rust (with the wasm target), Node, pnpm
 mise run build          # build:compiler (qmlc) and build:web (the example's bundle)
 mise run run            # the example, with Vite; QML recompiles as it is edited
 mise run test           # test:compiler (cargo test) and test:web (Playwright)
 mise run corpus         # how much of Qt's examples compiles, and what stops the rest
 ```
+
+`packages` (pnpm install) and `browser` (Playwright's Chromium) are tasks the
+others depend on.
 
 `qml-solid/vite` is a Vite plugin that runs `qmlc` on `.qml` imports.
 

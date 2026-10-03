@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Playwright, against the built web example"
-#MISE depends=["build:compiler", "install"]
+#MISE depends=["build:compiler", "browser"]
 set -euo pipefail
 pnpm --filter qml-solid-example-web test "$@"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Build qmlc, the compiler"
+#MISE depends=["install"]
 set -euo pipefail
 cargo build --bin qmlc

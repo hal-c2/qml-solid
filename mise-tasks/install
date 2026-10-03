@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-#MISE description="Install what building and testing need: packages, the browser, Qt's examples"
-#MISE sources=["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/*/package.json", "examples/*/package.json", ".gitmodules"]
-#MISE outputs=["node_modules/.modules.yaml", "corpus/qtdoc/examples/CMakeLists.txt"]
+#MISE description="Install the tooling: Rust, Node and pnpm, at the versions in mise.toml"
 set -euo pipefail
-pnpm install
-pnpm --filter qml-solid-example-web exec playwright install chromium
-git submodule update --init --depth 1 corpus/qtdoc
+mise install
