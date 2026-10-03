@@ -92,9 +92,8 @@ test("an asynchronous Loader makes its item once whoever asked has gone on", asy
   expect(read).toEqual({ later: [1, 60, 60, 1], during: [2, null, 0], after: [1, 70, 70, 1, 1] });
 });
 
-test("a source the compiler saw is a module the Loader imports", async ({ page }) => {
+test("a source the compiler saw is a component, loaded there and then", async ({ page }) => {
   await open(page, "loader");
-  await ready(page, "file");
   const loaded = await page.evaluate(() => {
     const { file, log } = window.objects;
     window.first = file.item;
@@ -102,24 +101,39 @@ test("a source the compiler saw is a module the Loader imports", async ({ page }
   });
   expect(loaded).toEqual([1, 1, 80, 45, "none", true, ["file none"]]);
   expect(await rect(page, "file")).toEqual({ x: 100, y: 200, width: 80, height: 45 });
-  // The same source again, and what its item's properties begin as.
+  // The same source again, and what its item's properties begin as: the
+  // item is there, and `loaded` has been heard, when `setSource` returns.
+  const again = await page.evaluate(() => {
+    const { file, bare, parts, log } = window.objects;
+    file.setSource(parts.card, { label: "set", height: 20 });
+    const out = [file.status, file.item === window.first, file.item.label, file.height, file.source === parts.card];
+    out.push(log.filter((line) => line.startsWith("file")));
+    // Assigned, it is the same.
+    bare.source = parts.card;
+    return [...out, bare.status, bare.item.label, bare.width];
+  });
+  expect(again).toEqual([1, false, "set", 20, true, ["file none", "file set"], 1, "none", 80]);
+});
+
+test("a source that is a function imports the component's module", async ({ page }) => {
+  await open(page, "loader");
   const during = await page.evaluate(() => {
     const { file, parts } = window.objects;
-    file.setSource(parts.card, { label: "set", height: 20 });
-    return [file.status, file.item, file.progress, file.source === parts.card];
+    file.setSource(parts.module, { label: "set", height: 20 });
+    return [file.status, file.item, file.progress, file.source === parts.module];
   });
   expect(during).toEqual([2, null, 0, true]);
   await ready(page, "file");
-  const again = await page.evaluate(() => {
+  const after = await page.evaluate(() => {
     const { file, bare, parts, log } = window.objects;
-    const out = [file.item === window.first, file.item.label, file.height, log.filter((line) => line.startsWith("file"))];
-    bare.source = parts.card;
+    const out = [file.item.label, file.width, file.height, log.filter((line) => line.startsWith("file"))];
+    bare.source = parts.module;
     bare.source = "";
     return [...out, bare.status, bare.item];
   });
-  expect(again).toEqual([false, "set", 20, ["file none", "file set"], 0, null]);
+  expect(after).toEqual(["set", 80, 20, ["file none", "file set"], 0, null]);
   // What was let go of while it was on its way never comes.
-  await page.evaluate(() => window.objects.parts.card().then(() => true));
+  await page.evaluate(() => window.objects.parts.module().then(() => true));
   expect(await page.evaluate(() => [window.objects.bare.status, window.objects.bare.item])).toEqual([0, null]);
 });
 

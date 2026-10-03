@@ -1,9 +1,11 @@
 // Loader: an item made from a component when it is asked for, and unmade
 // when it is not.
 //
-// What the compiler makes of `source` is either a function that imports the
-// component's module (a QML file it compiled) or the URL it was given, for
-// which there is nothing to load: QML is not interpreted here.
+// What the compiler makes of `source` is a component, when it names a QML
+// file it compiled: that is loaded there and then, as Qt loads a local
+// file. A function that is not one imports the component's module, which
+// comes later. Anything else is the URL it was given, for which there is
+// nothing to load: QML is not interpreted here.
 import { createEffect, createSignal, runWithOwner, untrack } from "solid-js";
 import { defineType, derived, effect, instantiate, slot, whenComplete } from "../object.js";
 import { Item } from "./Item.js";
@@ -73,7 +75,9 @@ function fail(self, why) {
 }
 
 function load(self, state) {
-  const { active, component, source } = state;
+  const { active, source } = state;
+  // A source that is a component is one like `sourceComponent`.
+  const component = state.component ?? (source?.$component === true ? source : undefined);
   const turn = ++state.turn;
   const properties = state.properties;
   state.properties = undefined;

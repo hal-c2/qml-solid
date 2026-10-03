@@ -21,6 +21,8 @@ import { $component, $define, $object } from "qml-solid/object";
 import { Item, Loader, QtObject, Rectangle } from "qml-solid/QtQuick";
 import { make } from "../scene.js";
 
+import Card from "./parts/card.js";
+
 // `made` counts the objects the components made; `parts` are the components
 // and the module a test gives a Loader.
 export const objects = { log: [], made: { rect: 0, implicit: 0 }, parts: {} };
@@ -40,8 +42,11 @@ export default function Loaders() {
     return make(Rectangle, { implicitWidth: 70, implicitHeight: 35 });
   }));
   const plain = (parts.plain = $component(() => $define(make(QtObject, {}), { value: 3 })));
-  // What the compiler makes of a file it can see.
-  parts.card = () => import("./parts/card.js");
+  // What the compiler makes of a file it can see: a component, marked as
+  // the kernel marks one.
+  parts.card = Object.assign($component(($data) => Card($data)), { $component: true });
+  // A module that is imported when it is asked for.
+  parts.module = () => import("./parts/card.js");
   return make(Item, { $self: root, width: 400, height: 300 }, () => [
     make(Loader, { $self: bare }),
     make(Loader, {

@@ -1,4 +1,4 @@
-// Card.qml, as a module of its own: what a Loader's `source` imports.
+// Card.qml, as a module of its own: what a Loader's `source` names.
 //
 // Rectangle { property string label: "none"; width: 80; height: 45 }
 import { $define, $signal } from "qml-solid/object";
