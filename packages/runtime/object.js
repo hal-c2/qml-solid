@@ -457,12 +457,15 @@ export function instantiate(component, data, item, owner = item?.$owner ?? getOw
   );
 }
 
-// Puts a component's object in the page.
-export function mount(Component, element, props = {}) {
+// Puts a component's object in the page. A Window is told what it was put
+// in and with what `options`: it fills the element, or with
+// `{ fill: false }` gives it the size its QML says.
+export function mount(Component, element, props = {}, options = {}) {
   return createRoot((dispose) => {
     const object = untrack(() => complete(() => Component(props)));
     element.classList.add("q-scene");
     if (object.$node) element.append(object.$node);
+    object.$mounted?.(element, options);
     return { object, dispose };
   });
 }
