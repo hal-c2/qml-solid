@@ -115,11 +115,25 @@ function forget(item) {
   );
 }
 
-// A Window says which of its items the keys go to: `activeFocusItem`.
+const PROPERTIES = ["focus", "activeFocus"];
+
+// What changed is told as Qt tells it: item by item in the order they were
+// touched, an item's focus before its active focus.
 function tell(window, changed) {
-  for (let index = 0; index < changed.length; index += 2) slot(changed[index], changed[index + 1]).changed();
+  for (let index = 0; index < changed.length; index += 2) {
+    const item = changed[index];
+    if (changed.indexOf(item) < index) continue;
+    for (const property of PROPERTIES) {
+      for (let at = index; at < changed.length; at += 2) {
+        if (changed[at] !== item || changed[at + 1] !== property) continue;
+        slot(item, property).changed();
+        break;
+      }
+    }
+  }
+  // A Window says which of its items the keys go to: `activeFocusItem`.
   const shown = window.top.$window;
-  if (shown?.$slots) slot(shown, "activeFocusItem").provide(window.active);
+  if (shown?.$slots) slot(shown, "activeFocusItem")?.provide(window.active);
 }
 
 // `item.focus = value`, without settling what depends on it.
