@@ -84,9 +84,28 @@ export function settle() {
   if (!settling) flush();
 }
 
+// A binding that cannot be evaluated, as `game.over` before there is a
+// game, is told of and leaves the property what it was: QML's rule, which
+// programs written for it lean on. Only what asking too much of a value
+// throws is taken so: any other error is the runtime's, or of a type it does
+// not have.
+function guarded(key, compute) {
+  let last;
+  return () => {
+    try {
+      return (last = compute());
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      console.warn(`${key.replaceAll("$", ".")}: ${error}`);
+      return last;
+    }
+  };
+}
+
 class Slot {
   constructor(self, key, initial, resolve, whole, member) {
     this.self = self;
+    this.key = key;
     this.initial = initial;
     this.resolve = resolve;
     // For a property of a group, the group and its name in it: `font` and
@@ -120,7 +139,7 @@ class Slot {
     this.bound = descriptor?.get
       ? runWithOwner(self.$owner, () =>
           createMemo(
-            () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key])),
+            guarded(key, () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key]))),
             SYNC,
           ),
         )
@@ -141,6 +160,13 @@ class Slot {
     if (this.version) this.version();
     else this.self.$track();
     return this.shown ? this.shown() : this.target();
+  }
+
+  // What the property was given, before its type has its say.
+  asked() {
+    if (this.version) this.version();
+    else this.self.$track();
+    return this.own();
   }
 
   // The value the property has, whatever is animating towards it.
@@ -195,7 +221,7 @@ class Slot {
   // the object.
   rebind(compute) {
     const self = this.self;
-    this.bound = runWithOwner(self.$owner, () => createMemo(() => compute.call(self), SYNC));
+    this.bound = runWithOwner(self.$owner, () => createMemo(guarded(this.key, () => compute.call(self)), SYNC));
     this.assigned = false;
     this.value = undefined;
     this.changed();

@@ -1,4 +1,5 @@
 // What the compiler makes of a QML file, on the runtime it is made for.
+import { test as plain } from "@playwright/test";
 import { expect, open, rect, test } from "./open.js";
 
 test("an instance sets what its component declares", async ({ page }) => {
@@ -96,4 +97,32 @@ test("a name a component does not have is found in whatever made it", async ({ p
   });
   expect(await rect(page, "dot")).toEqual({ x: 0, y: 0, width: 100, height: 12 });
   expect(await rect(page, "chip")).toEqual({ x: 0, y: 100, width: 50, height: 10 });
+});
+
+// What Qt 6.11 says of `scenes/faults.qml`.
+plain("a binding that cannot be evaluated leaves the property what it was, and says so", async ({ page }) => {
+  const warnings = [];
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "warning") warnings.push(message.text());
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await open(page, "faults");
+  // A state is entered once what changed has settled, so each step is read
+  // after it.
+  const found = [];
+  for (let step = 0; step < 4; step++) {
+    await page.evaluate((step) => window.scene.step(step), step);
+    found.push(await page.evaluate(() => window.scene.read()));
+  }
+  expect(found).toEqual([
+    [false, 0, "", 0, true, ""],
+    [true, 3, "xn", 7, false, "on"],
+    [true, 3, "xn", 7, false, "on"],
+    [false, 4, "xm", 8, true, ""],
+  ]);
+  expect(errors).toEqual([]);
+  expect(warnings.length).toBeGreaterThan(0);
+  for (const warning of warnings) expect(warning).toMatch(/^(on|n|label|width|visible|when): TypeError: /);
 });
