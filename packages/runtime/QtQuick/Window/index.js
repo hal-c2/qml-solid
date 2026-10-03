@@ -1,2 +1,2 @@
-// `import QtQuick.Window`.
-export { Screen, Window } from "../Window.js";
+// `import QtQuick.Window`, which brings QtQuick with it.
+export * from "../index.js";
