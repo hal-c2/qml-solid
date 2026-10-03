@@ -676,13 +676,15 @@ export const Transition = defineType("Transition", QtObject, {
     },
     // The job that animates what of `actions` its animations are for: side
     // by side, and when the transition is taken backwards, back to front.
-    $prepare(actions, modified, reverse) {
+    // `defaultTarget` is what an animation that names no target is of: the
+    // item a view's transition moves.
+    $prepare(actions, modified, reverse, defaultTarget = null) {
       const given = list(untrack(() => this.animations));
       if (given.length) {
         for (const animation of given) animation.$group = this;
         this.$animations = given;
       }
-      return untrack(() => parallel(this, actions, modified, reverse, null));
+      return untrack(() => parallel(this, actions, modified, reverse, defaultTarget));
     },
   },
   setup(self) {
