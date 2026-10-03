@@ -61,5 +61,7 @@ export default defineConfig({
   // Known before the first example is loaded, so the server does not reload
   // the page to bundle them when it meets them.
   optimizeDeps: { include: ["solid-js", "@solidjs/web"] },
-  server: { fs: { allow: [path("../..")] } },
+  // The server tells every page of an error in any: its overlay would cover an
+  // example that renders with what another one lacks.
+  server: { fs: { allow: [path("../..")] }, hmr: { overlay: false } },
 });
