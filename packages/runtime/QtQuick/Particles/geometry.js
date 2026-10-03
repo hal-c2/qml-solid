@@ -3,7 +3,7 @@
 // A matrix is [a, b, c, d, e, f]: x' = a x + c y + e, y' = b x + d y + f.
 
 // The point `rotation` and `scale` are about, as Item has it.
-const ORIGINS = [
+export const ORIGINS = [
   [0, 0],
   [0.5, 0],
   [1, 0],
@@ -36,7 +36,8 @@ function then(m, a, b, c, d, e, f) {
 // its first to its last, the position.
 function lift(item, m) {
   const scale = item.scale;
-  const rotation = item.rotation;
+  // An ImageParticle's `rotation` is its particles', not its own.
+  const rotation = item.$upright ? 0 : item.rotation;
   if (scale !== 1 || rotation !== 0) {
     const [fx, fy] = ORIGINS[item.transformOrigin] ?? ORIGINS[4];
     const x = fx * item.width;
@@ -69,6 +70,12 @@ function toRoot(item, m) {
     if (!parent?.$node) return item;
     item = parent;
   }
+}
+
+// The outermost item around one: the scene's.
+export function outermost(item) {
+  while (item.parent?.$node) item = item.parent;
+  return item;
 }
 
 const FROM = new Float64Array(6);
