@@ -285,94 +285,7 @@ fn compile_inner(source: &str, options: &CompileOptions) -> Result<CompileOutput
 
     crate::shared::component_children::anchor_coverage_pragmas(&mut program, source);
 
-    match options.generate {
-        Generate::Dom => {
-            let mut transform = AstDomTransform::new(
-                &allocator,
-                source,
-                &options.module_name,
-                dom_transform_config(options, options.built_ins.clone()),
-            );
-            transform.visit_program(&mut program);
-            if let Some(error) = transform.error.take() {
-                return Err(CompileError::transform(error));
-            }
-            transform
-                .prepend_helpers(&mut program)
-                .map_err(|error| CompileError::transform(error.to_string()))?;
-        }
-        Generate::Dynamic => {
-            if let Some(renderer) = dom_renderer(&options.renderers) {
-                let mut transform = AstUniversalTransform::new_dynamic(
-                    &allocator,
-                    source,
-                    &options.module_name,
-                    options.built_ins.clone(),
-                    dynamic_dom_config(options, renderer, &options.module_name),
-                );
-                transform.visit_program(&mut program);
-                if let Some(error) = transform.error.take() {
-                    return Err(CompileError::transform(error));
-                }
-                transform.prepend_helpers(&mut program);
-                if let Some(error) = transform.error.take() {
-                    return Err(CompileError::transform(error));
-                }
-            } else {
-                let mut transform = AstUniversalTransform::new(
-                    &allocator,
-                    source,
-                    &options.module_name,
-                    options.built_ins.clone(),
-                    options.static_marker.clone(),
-                    universal_wrapper_config(options),
-                );
-                transform.visit_program(&mut program);
-                if let Some(error) = transform.error.take() {
-                    return Err(CompileError::transform(error));
-                }
-                transform.prepend_helpers(&mut program);
-            }
-        }
-        Generate::Ssr => {
-            let mut transform = AstSsrTransform::new(
-                &allocator,
-                source,
-                &options.module_name,
-                options.hydratable,
-                options.server_components,
-                options.wrap_conditionals,
-                options.source_names.components,
-                wrapper_name(&options.memo_wrapper, "memo"),
-                options.static_marker.clone(),
-                options.built_ins.clone(),
-            );
-            if options.hoist_props {
-                transform.enable_hoist_props();
-            }
-            transform.visit_program(&mut program);
-            if let Some(error) = transform.error.take() {
-                return Err(CompileError::transform(error));
-            }
-            transform.hoist_props(&mut program, options.dev);
-            transform.prepend_helpers(&mut program);
-        }
-        Generate::Universal => {
-            let mut transform = AstUniversalTransform::new(
-                &allocator,
-                source,
-                &options.module_name,
-                options.built_ins.clone(),
-                options.static_marker.clone(),
-                universal_wrapper_config(options),
-            );
-            transform.visit_program(&mut program);
-            if let Some(error) = transform.error.take() {
-                return Err(CompileError::transform(error));
-            }
-            transform.prepend_helpers(&mut program);
-        }
-    }
+    run_transform(&allocator, &mut program, source, options)?;
 
     let build = Codegen::new()
         .with_options(CodegenOptions {
@@ -407,6 +320,140 @@ fn compile_inner(source: &str, options: &CompileOptions) -> Result<CompileOutput
         css,
         css_hash,
     })
+}
+
+/// Compile a program that a non-JSX front end has already lowered to Solid
+/// JSX in `allocator`.
+///
+/// `source` is the text the program's spans point into; synthesized nodes
+/// carry empty spans. This is the seam the QML front end uses: it shares the
+/// arena and the Oxc AST with the transforms instead of round-tripping
+/// through JSX text.
+pub fn compile_program<'a>(
+    allocator: &'a Allocator,
+    mut program: oxc_ast::ast::Program<'a>,
+    source: &'a str,
+    options: &CompileOptions,
+) -> Result<CompileOutput, CompileError> {
+    if options.module_name.is_empty() {
+        return Err(CompileError::configuration(
+            "JSX compilation requires a non-empty module name",
+        ));
+    }
+    crate::shared::component_children::anchor_coverage_pragmas(&mut program, source);
+    run_transform(allocator, &mut program, source, options)?;
+
+    let build = Codegen::new()
+        .with_options(CodegenOptions {
+            source_map_path: options.source_map.then(|| {
+                std::path::PathBuf::from(options.filename.as_deref().unwrap_or("input.qml"))
+            }),
+            ..CodegenOptions::default()
+        })
+        .build(&program);
+    Ok(CompileOutput {
+        code: build.code,
+        source_map: build.map.as_ref().map(|map| map.to_json_string()),
+        css: None,
+        css_hash: None,
+    })
+}
+
+fn run_transform<'a>(
+    allocator: &'a Allocator,
+    program: &mut oxc_ast::ast::Program<'a>,
+    source: &'a str,
+    options: &CompileOptions,
+) -> Result<(), CompileError> {
+    match options.generate {
+        Generate::Dom => {
+            let mut transform = AstDomTransform::new(
+                allocator,
+                source,
+                &options.module_name,
+                dom_transform_config(options, options.built_ins.clone()),
+            );
+            transform.visit_program(program);
+            if let Some(error) = transform.error.take() {
+                return Err(CompileError::transform(error));
+            }
+            transform
+                .prepend_helpers(program)
+                .map_err(|error| CompileError::transform(error.to_string()))?;
+        }
+        Generate::Dynamic => {
+            if let Some(renderer) = dom_renderer(&options.renderers) {
+                let mut transform = AstUniversalTransform::new_dynamic(
+                    allocator,
+                    source,
+                    &options.module_name,
+                    options.built_ins.clone(),
+                    dynamic_dom_config(options, renderer, &options.module_name),
+                );
+                transform.visit_program(program);
+                if let Some(error) = transform.error.take() {
+                    return Err(CompileError::transform(error));
+                }
+                transform.prepend_helpers(program);
+                if let Some(error) = transform.error.take() {
+                    return Err(CompileError::transform(error));
+                }
+            } else {
+                let mut transform = AstUniversalTransform::new(
+                    allocator,
+                    source,
+                    &options.module_name,
+                    options.built_ins.clone(),
+                    options.static_marker.clone(),
+                    universal_wrapper_config(options),
+                );
+                transform.visit_program(program);
+                if let Some(error) = transform.error.take() {
+                    return Err(CompileError::transform(error));
+                }
+                transform.prepend_helpers(program);
+            }
+        }
+        Generate::Ssr => {
+            let mut transform = AstSsrTransform::new(
+                allocator,
+                source,
+                &options.module_name,
+                options.hydratable,
+                options.server_components,
+                options.wrap_conditionals,
+                options.source_names.components,
+                wrapper_name(&options.memo_wrapper, "memo"),
+                options.static_marker.clone(),
+                options.built_ins.clone(),
+            );
+            if options.hoist_props {
+                transform.enable_hoist_props();
+            }
+            transform.visit_program(program);
+            if let Some(error) = transform.error.take() {
+                return Err(CompileError::transform(error));
+            }
+            transform.hoist_props(program, options.dev);
+            transform.prepend_helpers(program);
+        }
+        Generate::Universal => {
+            let mut transform = AstUniversalTransform::new(
+                allocator,
+                source,
+                &options.module_name,
+                options.built_ins.clone(),
+                options.static_marker.clone(),
+                universal_wrapper_config(options),
+            );
+            transform.visit_program(program);
+            if let Some(error) = transform.error.take() {
+                return Err(CompileError::transform(error));
+            }
+            transform.prepend_helpers(program);
+        }
+    }
+    Ok(())
 }
 
 fn parse_program<'a>(

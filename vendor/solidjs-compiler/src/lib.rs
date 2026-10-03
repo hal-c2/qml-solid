@@ -37,6 +37,7 @@ mod universal;
 
 pub use compiler::{
     CompileOptions, CompileOutput, Generate, Renderer, SourceNames, Syntax, Wrapper, compile,
+    compile_program,
 };
 pub use error::{CompileError, CompileErrorKind};
 #[cfg(feature = "tsrx")]
