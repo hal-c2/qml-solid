@@ -154,6 +154,9 @@ fn binding_values() {
     states: [ State { name: "a" }, State { name: "b" } ]
     model: [1, 2, 3]
     range: ({ from: 0, to: 9 })
+    limits: { "from": 0, to: 9 }
+    onMoved: { count = 0 }
+    height: { width }
 }"#;
     let document = parse(&allocator, source);
     let value = |index: usize| {
@@ -180,6 +183,10 @@ fn binding_values() {
     assert_eq!(states.len(), 2);
     assert!(matches!(value(9), QmlBindingValue::Expression(Expression::ArrayExpression(_))));
     assert!(matches!(value(10), QmlBindingValue::Expression(Expression::ParenthesizedExpression(_))));
+    // Braces are an object when what is in them could be nothing else.
+    assert!(matches!(value(11), QmlBindingValue::Expression(Expression::ObjectExpression(_))));
+    assert!(matches!(value(12), QmlBindingValue::Statement(Statement::BlockStatement(_))));
+    assert!(matches!(value(13), QmlBindingValue::Statement(Statement::BlockStatement(_))));
 }
 
 #[test]

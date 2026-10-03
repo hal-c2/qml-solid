@@ -9,7 +9,7 @@
 pub mod ast;
 
 use oxc_allocator::ArenaVec;
-use oxc_ast::ast::{Comment, IdentifierName};
+use oxc_ast::ast::{Comment, Expression, IdentifierName, ObjectPropertyKind};
 use oxc_diagnostics::Diagnostics;
 
 use crate::{
@@ -347,13 +347,28 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
 
     /// `name: { ... }` is an object literal when it parses as one and a script
     /// block otherwise, which is how Qt's own parser resolves the ambiguity.
+    /// `{ a }` and `{ a = b }` are both to JavaScript's grammar, the second
+    /// until it turns out not to be a pattern; in QML they are blocks.
     fn parse_qml_braced_value(&mut self) -> QmlBindingValue<'a> {
         let checkpoint = self.checkpoint_with_error_recovery();
         let errors_before = self.errors_count();
+        let start = self.cur_token().span().start;
         let value = self.parse_qml_expression_value();
-        if self.fatal_error.is_none() && self.errors_count() == errors_before {
+        let initialized = self.state.cover_initialized_name.keys().any(|at| *at >= start);
+        let is_literal = match &value {
+            QmlBindingValue::Expression(Expression::ObjectExpression(object)) => {
+                object.properties.is_empty()
+                    || object.properties.iter().any(|property| match property {
+                        ObjectPropertyKind::ObjectProperty(property) => !property.shorthand,
+                        ObjectPropertyKind::SpreadProperty(_) => true,
+                    })
+            }
+            _ => true,
+        };
+        if self.fatal_error.is_none() && self.errors_count() == errors_before && !initialized && is_literal {
             return value;
         }
+        self.state.cover_initialized_name.retain(|at, _| *at < start);
         self.rewind(checkpoint);
         QmlBindingValue::Statement(
             self.context_add(Context::Return, |p| p.parse_block_statement()),
