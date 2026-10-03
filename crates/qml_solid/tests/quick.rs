@@ -152,6 +152,26 @@ Item {
 }
 
 #[test]
+fn what_a_type_attaches_is_read_of_another_object_too() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Window as W
+Item {
+    id: cell
+    Text {
+        visible: cell.ListView.isCurrentItem && W.Window.active
+        flags: Qt.Window
+        Keys.onPressed: cell.parent.ListView.delayRemove = true
+    }
+}"#,
+    );
+    assert_contains(&code, "visible={ListView.attached(cell).isCurrentItem && W.Window.attached($1).active}");
+    assert_contains(&code, "flags={Qt.Window}");
+    assert_contains(&code, "ListView.attached(cell.parent).delayRemove = true");
+    assert_contains(&code, r#"import { Item, Keys, ListView, Text } from "qml-solid/QtQuick";"#);
+}
+
+#[test]
 fn a_delegate_is_a_function_of_what_it_is_given() {
     let code = lowered(
         r#"import QtQuick
