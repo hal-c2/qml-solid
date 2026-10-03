@@ -8,6 +8,7 @@
     "./runtime.css": "./style.css",
     "./object": "./object.js",
     "./QtQuick": "./QtQuick/index.js",
+    "./QtQuick/Effects": "./QtQuick/Effects/index.js",
     "./QtQuick/Layouts": "./QtQuick/Layouts/index.js",
     "./QtQuick/Shapes": "./QtQuick/Shapes/index.js",
     "./QtQuick/Window": "./QtQuick/Window/index.js",
