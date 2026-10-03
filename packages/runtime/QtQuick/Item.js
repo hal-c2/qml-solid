@@ -5,7 +5,10 @@
 // so they are computed here, anchors included, and the element is only told
 // the result.
 import { runWithOwner } from "solid-js";
-import { contents, defineType, derived, effect, group, QtObject } from "../object.js";
+import { contents, defineType, derived, effect, group, QtObject, settle } from "../object.js";
+import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus } from "./focus.js";
+import { methods as geometry } from "./geometry.js";
+import { navigable } from "./Keys.js";
 import { stateful } from "./states.js";
 import "./style.js";
 
@@ -101,6 +104,9 @@ const resolve = {
   // An item inside one that is not shown is not shown, whatever it says.
   visible: (self, own) => Boolean(own()) && (self.parent?.visible ?? true),
   enabled: (self, own) => Boolean(own()) && (self.parent?.enabled ?? true),
+  // Who has focus is decided among the items of a scope: see focus.js.
+  focus: (self) => self.$focus === true,
+  activeFocus: (self) => self.$active === true,
 };
 
 const margin = derived((self) => self.anchors.margins);
@@ -203,6 +209,9 @@ export const Item = defineType("Item", QtObject, {
     baselineOffset: 0,
     smooth: true,
     antialiasing: false,
+    focus: false,
+    activeFocus: false,
+    activeFocusOnTab: false,
     parent: derived((self) => self.$parent),
     ...stateful.properties,
     anchors: group({
@@ -255,6 +264,15 @@ export const Item = defineType("Item", QtObject, {
       this.$extra.splice(index, 1);
       this.$touch((version) => version + 1);
     },
+    // `mapToItem`, `mapFromItem`, `mapToGlobal`, `mapFromGlobal`, `contains`
+    // and `childAt`.
+    ...geometry,
+    forceActiveFocus() {
+      forceActiveFocus(this);
+    },
+    nextItemInFocusChain(forward = true) {
+      return nextItemInFocusChain(this, forward);
+    },
   },
   setup(self, props) {
     const node = document.createElement("div");
@@ -279,10 +297,22 @@ export const Item = defineType("Item", QtObject, {
         node.style.overflow = clip ? "hidden" : "";
       },
     );
+    if ("focus" in props) declared(self, props);
+    if ("activeFocusOnTab" in props) reachable(self);
+    navigable(self, props);
   },
   adopt(self, props) {
     self.$static = contents(props, self);
     if (self.$static.length) arranged(self);
+  },
+});
+
+// Assigning `focus` takes it from whichever item of the scope had it.
+Object.defineProperty(Item.proto, "focus", {
+  ...Object.getOwnPropertyDescriptor(Item.proto, "focus"),
+  set(value) {
+    setFocus(this, value);
+    settle();
   },
 });
 
