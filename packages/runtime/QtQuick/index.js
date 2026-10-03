@@ -7,12 +7,15 @@ export { Application } from "../QtQml/application.js";
 export { AnimatedImage } from "./AnimatedImage.js";
 export { Canvas } from "./Canvas.js";
 export { Flickable } from "./Flickable.js";
+export { FocusScope } from "./FocusScope.js";
 export { Font } from "./font.js";
 export { FontLoader } from "./FontLoader.js";
 export { GridView } from "./GridView.js";
 export { BorderImage, Image } from "./Image.js";
 export { Instantiator } from "./Instantiator.js";
 export { Item } from "./Item.js";
+export { KeyNavigation, Keys, Shortcut } from "./Keys.js";
+export { StandardKey } from "./keycodes.js";
 export { ListView } from "./ListView.js";
 export { Loader } from "./Loader.js";
 export { ListElement, ListModel, ObjectModel } from "./model.js";
@@ -25,6 +28,7 @@ export {
   ValueFilter,
 } from "./proxy.js";
 export { ItemSelectionModel } from "./selection.js";
+export { MouseArea } from "./MouseArea.js";
 export { Column, Flow, Grid, Positioner, Row } from "./positioners.js";
 export { ColorGroup, Palette, SystemPalette } from "./Palette.js";
 import "./palettes.js";

@@ -3,11 +3,13 @@
 // undo and the input methods. What QML reads of them (the text, where the
 // cursor is, how large the text is) is kept as properties.
 import { flush, untrack } from "solid-js";
-import { defineType, derived, effect, onChange, slot } from "../object.js";
+import { defineType, derived, effect, onChange, settle as settleAll, slot } from "../object.js";
 import { css } from "./color.js";
 import { lazy, rules, sized } from "./compute.js";
+import { forceActiveFocus, setFocus } from "./focus.js";
 import { advance, capitalized, describe, dress, font, fonts, metrics, overhang } from "./font.js";
 import { Item } from "./Item.js";
+import { AltModifier, ControlModifier, Key, MetaModifier } from "./keycodes.js";
 import { arrange } from "./Text.js";
 
 rules(`
@@ -32,11 +34,6 @@ const KEYBOARDS = [
 ];
 
 const string = (self) => String(self.text ?? "");
-
-// The browser tells of a focus or a blur the program asked for while it is
-// being asked, inside the effect that asked: what the listener writes is
-// settled with the rest of that effect's flush, not by a flush of its own.
-let asking = 0;
 
 // The properties and the listeners the two share. `changed` is called when
 // the user has changed the text; `home` says where the cursor goes when the
@@ -102,17 +99,20 @@ function editor(self, field, { changed, home, finished }) {
     settle();
   });
 
-  // The focus is the browser's here: whatever decides which item has it
-  // focuses the field, and the properties follow.
-  const focused = (value) => {
-    slot(self, "activeFocus").write(value);
-    slot(self, "focus").write(value);
+  // Which item has focus is decided as for any item (focus.js). The field
+  // has the browser's while its item has active focus, and when the user
+  // puts the browser's in the field, the item is given it.
+  field.addEventListener("focus", () => {
+    if (!self.$active) forceActiveFocus(self);
     sync();
-    if (!asking) flush();
-  };
-  field.addEventListener("focus", () => focused(true));
+    settleAll();
+  });
   field.addEventListener("blur", () => {
-    focused(false);
+    // A page that is left altogether gives the field its focus back when it
+    // is returned to: the item keeps its own meanwhile.
+    if (self.$active && document.hasFocus()) setFocus(self, false);
+    sync();
+    settleAll();
     finished();
   });
   // A press beside the text, inside the item, is a press on the item.
@@ -122,15 +122,13 @@ function editor(self, field, { changed, home, finished }) {
     field.focus();
   });
   effect(
-    () => Boolean(self.focus),
+    () => Boolean(self.activeFocus),
     (wanted) => {
       if (wanted === (document.activeElement === field)) return;
       // `focus: true` on a field that is not in the page yet.
-      if (!field.isConnected) return void queueMicrotask(() => field.focus());
-      asking++;
+      if (!field.isConnected) return void (wanted && queueMicrotask(() => self.$active && field.focus()));
       // The listeners read what they like: they are run, not kept up to date.
       untrack(() => (wanted ? field.focus() : field.blur()));
-      asking--;
     },
   );
 
@@ -237,15 +235,35 @@ const methods = {
   getText(start, end) {
     return string(this).slice(Math.min(start, end), Math.max(start, end));
   },
-  forceActiveFocus() {
-    this.$edit.field.focus();
-  },
 };
+
+const MOVES = [Key.Key_Left, Key.Key_Right, Key.Key_Home, Key.Key_End];
+const LINES = [Key.Key_Up, Key.Key_Down, Key.Key_PageUp, Key.Key_PageDown];
+const ERASES = [Key.Key_Backspace, Key.Key_Delete];
+// Select all, copy, paste, cut, undo, redo.
+const COMMANDS = [..."ACVXZY"].map((letter) => letter.charCodeAt(0));
+
+// Whether a key is one the field itself does something with, as Qt's does:
+// it is accepted, and what the browser does with it is what was done. Any
+// other is offered to the items the field is in. `Keys` handlers of the
+// field come before this, and one that accepts the key keeps it from the
+// field.
+function edits(self, event, lines) {
+  const { key, modifiers } = event;
+  if (modifiers & (ControlModifier | MetaModifier)) {
+    if (MOVES.includes(key) || ERASES.includes(key)) return true;
+    return !(modifiers & AltModifier) && COMMANDS.includes(key);
+  }
+  if (MOVES.includes(key) || (lines && LINES.includes(key))) return true;
+  if (self.readOnly) return false;
+  if (ERASES.includes(key)) return true;
+  // What types a character.
+  return event.text !== "" && event.text >= " " && event.text !== "\x7f";
+}
 
 const padding = derived((self) => self.padding);
 
-// What the two have in common. `focus` and `activeFocus` are the field's
-// own: there is no focus scope here.
+// What the two have in common.
 const shared = {
   text: "",
   font,
@@ -263,8 +281,6 @@ const shared = {
   selectionEnd: 0,
   selectedText: derived((self) => string(self).slice(self.selectionStart, self.selectionEnd)),
   length: derived((self) => string(self).length),
-  focus: false,
-  activeFocus: false,
   padding: 0,
   leftPadding: padding,
   topPadding: padding,
@@ -330,18 +346,32 @@ export const TextInput = defineType("TextInput", Item, {
   },
   signals: ["accepted", "editingFinished", "textEdited"],
   enums: { ...ALIGNMENTS, Normal: 0, NoEcho: 1, Password: 2, PasswordEchoOnEdit: 3 },
-  methods,
+  methods: {
+    ...methods,
+    $keyPressed(event) {
+      const key = event.key;
+      if (key === Key.Key_Return || key === Key.Key_Enter) {
+        // Said, and left for whatever is around the field, as in Qt.
+        if (!this.acceptableInput) return;
+        this.accepted();
+        this.editingFinished();
+        return;
+      }
+      // An arrow that would leave the text moves nothing: it is for whoever
+      // navigates with the arrows, unless it takes a selection away.
+      if (key === Key.Key_Left || key === Key.Key_Right) {
+        const { selectionStart, selectionEnd, value } = this.$edit.field;
+        if (selectionStart === selectionEnd && selectionEnd === (key === Key.Key_Left ? 0 : value.length)) return;
+      }
+      event.accepted = edits(this, event, false);
+    },
+  },
   setup(self) {
     const field = document.createElement("input");
     const finished = () => {
       if (self.acceptableInput) self.editingFinished();
     };
     editor(self, field, { changed: () => self.textEdited(), home: (text) => text.length, finished });
-    field.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" || event.isComposing || !self.acceptableInput) return;
-      self.accepted();
-      self.editingFinished();
-    });
     effect(
       () => {
         const face = line(self);
@@ -425,6 +455,10 @@ export const TextEdit = defineType("TextEdit", Item, {
   },
   methods: {
     ...methods,
+    $keyPressed(event) {
+      const enter = event.key === Key.Key_Return || event.key === Key.Key_Enter;
+      event.accepted = enter ? !this.readOnly : edits(this, event, true);
+    },
     // A new paragraph at the end.
     append(text) {
       const { field, put } = this.$edit;
