@@ -24,6 +24,7 @@ import {
   resized,
 } from "./font.js";
 import { Item } from "./Item.js";
+import { alignment } from "./LayoutMirroring.js";
 import { clothe, elements, mightBeRichText, survey } from "./richtext.js";
 
 const MANY = 2147483647;
@@ -312,7 +313,7 @@ export const Text = defineType("Text", Item, {
     // an alignment was asked for, and Qt says so in this property too.
     horizontalAlignment: derived((self) => (RIGHT_TO_LEFT.test(self.$text.source().text) ? 2 : 1)),
     verticalAlignment: 32,
-    effectiveHorizontalAlignment: derived((self) => self.horizontalAlignment),
+    effectiveHorizontalAlignment: derived(alignment),
     wrapMode: 0,
     elide: ELIDE_NONE,
     maximumLineCount: MANY,

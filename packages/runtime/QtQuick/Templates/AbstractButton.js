@@ -8,7 +8,7 @@ import { styleHints } from "../../QtQml/application.js";
 import { PauseJob } from "../animation/jobs.js";
 import { colorValue } from "../color.js";
 import { forceActiveFocus, MouseFocusReason } from "../focus.js";
-import { Key, LeftButton } from "../keys.js";
+import { Key, LeftButton } from "../keycodes.js";
 import { after, cancel } from "../pointer.js";
 import { check, ICON, trigger, uses } from "./Action.js";
 import { Control, keeps, loose, put, within } from "./Control.js";

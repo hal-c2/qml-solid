@@ -4,7 +4,7 @@
 import { untrack } from "solid-js";
 import { defineType, derived, effect, QtObject, settle, slot } from "../../object.js";
 import { forceActiveFocus, MouseFocusReason, windowOf } from "../focus.js";
-import { Key, LeftButton } from "../keys.js";
+import { Key, LeftButton } from "../keycodes.js";
 import { Control, keeps, loose, put } from "./Control.js";
 import { along, clamp, close, dragged, Horizontal, keep, nothing, now, round, scaled, SnapMode, snapPosition, step, Vertical } from "./Slider.js";
 

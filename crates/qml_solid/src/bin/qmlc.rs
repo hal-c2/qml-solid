@@ -1,4 +1,4 @@
-//! `qmlc [--emit js|lowered] [--out-dir DIR] [--root DIR] [--host MODULE] [--runtime MODULE] [--alone] FILE.qml...`
+//! `qmlc [--emit js|lowered] [--out-dir DIR] [--root DIR] [--with DIR]... [--host MODULE] [--runtime MODULE] [--alone] FILE.qml...`
 //! `qmlc --types URI...`
 //!
 //! Compiles each QML file to a JavaScript module, and each `.js` file as the
@@ -7,7 +7,10 @@
 //! names are and where it is used, and with the modules of the project it
 //! is in: what the `qmldir` and `CMakeLists.txt` files under `--root` say
 //! they are. Without `--root` that is the nearest directory above the file
-//! whose `CMakeLists.txt` starts a project. With
+//! whose `CMakeLists.txt` starts a project. `--with` names a directory with
+//! more of the project's modules, described by `qmldir` files likewise: the
+//! QML that stands in for the types a program has in C++, where there is no
+//! C++. With
 //! `--alone` it is compiled by itself: it takes only what it declares, and a
 //! type it does not know is taken to be a component.
 //!
@@ -121,7 +124,7 @@ fn modules(project: &mut Project, root: &Path, base: &Path) {
 /// where the components it names are and where it is used, and the ones in
 /// the directories any of them imports. One that does not parse is left out
 /// here and reported when it is compiled itself.
-fn project(path: &Path, project_root: Option<&Path>) -> Project {
+fn project(path: &Path, project_root: Option<&Path>, with: &[PathBuf]) -> Project {
     let mut project = Project::new();
     let root = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
@@ -131,6 +134,9 @@ fn project(path: &Path, project_root: Option<&Path>) -> Project {
         let project_root = project_root.map_or_else(|| self::project_root(&path), Path::to_path_buf);
         if let Ok(project_root) = project_root.canonicalize() {
             modules(&mut project, &project_root, &base);
+        }
+        for more in with.iter().filter_map(|more| more.canonicalize().ok()) {
+            modules(&mut project, &more, &base);
         }
     }
     // A file's key is its path from the compiled file's directory, without
@@ -169,6 +175,7 @@ fn main() -> ExitCode {
     let mut types = false;
     let mut out_dir = None;
     let mut root = None;
+    let mut with = Vec::new();
     let mut files = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -177,6 +184,7 @@ fn main() -> ExitCode {
             "--emit" => lowered = value("--emit") == "lowered",
             "--out-dir" => out_dir = Some(value("--out-dir")),
             "--root" => root = Some(PathBuf::from(value("--root"))),
+            "--with" => with.push(PathBuf::from(value("--with"))),
             "--host" => options.host_module = value("--host"),
             "--runtime" => options.runtime_module = value("--runtime"),
             "--alone" => alone = true,
@@ -210,7 +218,7 @@ fn main() -> ExitCode {
         let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("Component");
         let is_script = path.extension().is_some_and(|extension| extension == "js");
         options.name = stem.to_string();
-        options.project = (!alone && !is_script).then(|| project(path, root.as_deref()));
+        options.project = (!alone && !is_script).then(|| project(path, root.as_deref(), &with));
         options.files = (!alone).then(|| {
             let directory = match path.parent() {
                 Some(parent) if !parent.as_os_str().is_empty() => parent,

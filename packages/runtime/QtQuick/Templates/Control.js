@@ -12,6 +12,7 @@ import { styleHints } from "../../QtQml/application.js";
 import { sized } from "../compute.js";
 import { forceActiveFocus, MouseFocusReason, OtherFocusReason, windowOf } from "../focus.js";
 import { Item } from "../Item.js";
+import { mirrored } from "../LayoutMirroring.js";
 import { CancelGrabExclusive, drop, gone, hoverable, receive, UngrabExclusive, wheels } from "../pointer.js";
 import { font } from "./font.js";
 import { palette } from "./theme.js";
@@ -218,7 +219,7 @@ export const Control = defineType("Control", Item, {
     availableWidth: derived((self) => Math.max(0, self.width - self.leftPadding - self.rightPadding)),
     availableHeight: derived((self) => Math.max(0, self.height - self.topPadding - self.bottomPadding)),
     locale: derived(() => locale()),
-    mirrored: false,
+    mirrored: derived(mirrored),
     focusPolicy: 0,
     focusReason: OtherFocusReason,
     visualFocus: derived((self) => self.activeFocus && VISUAL.includes(self.focusReason)),

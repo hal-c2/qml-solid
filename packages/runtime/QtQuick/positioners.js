@@ -8,8 +8,10 @@
 import { flush, untrack } from "solid-js";
 import { defineType, derived, effect, QtObject, slot } from "../object.js";
 import { Item } from "./Item.js";
+import { mirrored } from "./LayoutMirroring.js";
 import { alike, cull, given, Settling, shown, sized } from "./placing.js";
 
+const LeftToRight = 0;
 const RightToLeft = 1;
 const TopToBottom = 1;
 const AlignLeft = 1;
@@ -114,8 +116,11 @@ export const Positioner = defineType("Positioner", Item, {
 
 const direction = {
   properties: { layoutDirection: 0, effectiveLayoutDirection: 0 },
-  // LayoutMirroring would turn it round; nothing here does.
-  resolve: { effectiveLayoutDirection: (self) => self.layoutDirection },
+  // A mirrored positioner runs the other way from the one it was asked for.
+  resolve: {
+    effectiveLayoutDirection: (self) =>
+      mirrored(self) === (self.layoutDirection === RightToLeft) ? LeftToRight : RightToLeft,
+  },
 };
 
 export const Row = defineType("Row", Positioner, {

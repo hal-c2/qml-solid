@@ -3,7 +3,7 @@
 // content item. When `interactive`, a press of a dot makes its page current.
 import { untrack } from "solid-js";
 import { $component, defineType, settle } from "../../object.js";
-import { LeftButton } from "../keys.js";
+import { LeftButton } from "../keycodes.js";
 import { touch, track } from "../model.js";
 import { Control, put, within } from "./Control.js";
 

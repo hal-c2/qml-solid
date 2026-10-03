@@ -9,6 +9,7 @@
 // yet is there all the same, to say so when it is used: a style names every
 // control, and a program that uses three of them needs those three.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { searchForWorkspaceRoot } from "vite";
@@ -96,6 +97,40 @@ function extract(tool, uri, folder, directory) {
   return null;
 }
 
+// `wave.frag.qsb`: a shader as Qt draws with it, baked by Qt's `qsb` tool
+// from its source, `wave.frag`, when a program is built. It is baked here
+// likewise when it is not there. In what is baked is the same shader for
+// each way of drawing Qt knows: a browser's is OpenGL ES, and that text is
+// what the runtime is given.
+const BAKED = ".qsb";
+
+function baked(context, tool, file, directory) {
+  let read = file;
+  const run = (args) => {
+    const ran = spawnSync(tool, args, { encoding: "utf8", maxBuffer: 1 << 26 });
+    if (ran.error) context.error(`could not run ${tool}: ${ran.error.message}`);
+    if (ran.status !== 0) context.error(ran.stderr.trim() || `${tool} could not read ${file}`);
+    return ran.stdout;
+  };
+  if (existsSync(file)) context.addWatchFile(file);
+  else {
+    const source = file.slice(0, -BAKED.length);
+    if (!existsSync(source)) context.error(`${file} is not there, nor is ${source} to bake it from`);
+    context.addWatchFile(source);
+    mkdirSync(directory, { recursive: true });
+    read = join(directory, `${createHash("sha1").update(file).digest("hex")}${BAKED}`);
+    run(["--glsl", "300 es", "-o", read, source]);
+  }
+  const shaders = new Map();
+  for (const part of run(["-d", read]).split(/^\*{8,}$/m)) {
+    const [, level, text] = part.match(/^Shader \d+: GLSL (\d+ es) \[Standard\]\nEntry point: \w+\nContents:\n([^]*)$/m) ?? [];
+    if (level) shaders.set(level, text.trim() + "\n");
+  }
+  const text = shaders.get("300 es") ?? shaders.get("100 es");
+  if (!text) context.error(`${file} has no shader for OpenGL ES in it`);
+  return `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`;
+}
+
 // What a `qmldir` says its module is made of: the QML files that are its
 // types, and the modules that come with it. Of `optional import`s one comes,
 // the `default import` when the program chooses no other: a style.
@@ -142,11 +177,15 @@ function exported(context, file, names = new Set(), seen = new Set()) {
 // - `style`: what `import QtQuick.Controls` is, "Material" or "Fusion": a
 //   name, or a function of the file that imports it when the files of one
 //   build are not all of one style. Qt's default when there is none.
-export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
+// - `standins`: directories of QML modules, each with its `qmldir`, that
+//   stand in for the types a program has in C++, where there is no C++: or
+//   a function of the file compiled that gives them.
+export default function qml({ qmlc = "qmlc", args = [], qt, style, standins = [] } = {}) {
   let asked;
   const found = () => (asked ??= installed());
   qt ??= process.env.QT_INSTALL_QML ?? found().qml ?? null;
   const styled = (importer) => (typeof style === "function" ? style(importer) : style);
+  const stood = (file) => (typeof standins === "function" ? standins(file) : standins) ?? [];
   let cache = join(runtime, "node_modules/.vite/qml-solid");
   // The pictures of a module, by what its QML names them: next to the QML
   // when the installation has them there, otherwise read out of the plugin
@@ -240,6 +279,8 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
         return `${VIRTUAL}${module}${chosen ? `?style=${styled(importer) ?? chosen.split(".").at(-1)}` : ""}`;
       }
       if (!importer || (!importer.split("?")[0].endsWith(".qml") && !isScript(importer))) return null;
+      // A baked shader is made here, whether or not the file is there.
+      if (source.endsWith(BAKED) && /^\.\.?\//.test(source)) return join(dirname(importer.split("?")[0]), source);
       // What compiled QML imports is the runtime's to find, wherever the QML
       // is: Qt's own is in no project.
       if (/^[\w@]/.test(source)) {
@@ -292,6 +333,10 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
         return { code: lines.join("\n") + "\n", map: null };
       }
       const [file] = id.split("?");
+      if (file.endsWith(BAKED)) {
+        const text = baked(this, join(found().bins || "", "qsb"), file, join(cache, "shaders"));
+        return { code: `export default ${JSON.stringify(text)};\n`, map: null };
+      }
       if (!file.endsWith(".qml") && !isScript(id)) return null;
       // A component is compiled with the files next to it: what they set on
       // its instances decides what it takes. A build that watches rebuilds
@@ -300,7 +345,15 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
       for (const sibling of readdirSync(directory)) {
         if (sibling.endsWith(".qml")) this.addWatchFile(join(directory, sibling));
       }
-      const result = spawnSync(qmlc, [...args, file], { encoding: "utf8" });
+      // What stands in for a type decides what it takes likewise.
+      const more = stood(file);
+      for (const directory of more) {
+        if (!existsSync(directory)) continue;
+        for (const name of readdirSync(directory, { recursive: true })) {
+          if (name.endsWith(".qml") || name.endsWith("qmldir")) this.addWatchFile(join(directory, name));
+        }
+      }
+      const result = spawnSync(qmlc, [...args, ...more.flatMap((directory) => ["--with", directory]), file], { encoding: "utf8" });
       if (result.error) this.error(`could not run ${qmlc}: ${result.error.message}`);
       if (result.status !== 0) this.error(result.stderr.trim());
       return { code: result.stdout, map: null };

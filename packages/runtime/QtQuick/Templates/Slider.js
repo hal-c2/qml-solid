@@ -4,7 +4,7 @@
 import { untrack } from "solid-js";
 import { defineType, derived, effect, settle, slot } from "../../object.js";
 import { styleHints } from "../../QtQml/application.js";
-import { Key, LeftButton } from "../keys.js";
+import { Key, LeftButton } from "../keycodes.js";
 import { Control, keeps, loose, put } from "./Control.js";
 
 export const Horizontal = 1;

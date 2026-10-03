@@ -16,7 +16,7 @@ const expected = readExpected().examples ?? {};
 const runtime = new Set(Object.keys(JSON.parse(readFileSync(runtimePackage, "utf8")).exports).map((path) => path.slice(2)));
 
 // Each file as the Vite plugin compiles it: `qmlc FILE`, with the files next
-// to it. The documentation's snippets are not part of the example.
+// to it and what stands in for the example's C++. The documentation's snippets are not part of the example.
 function compileAll(example) {
   const files = readdirSync(example.directory, { recursive: true })
     .filter((file) => file.endsWith(".qml") && !file.split("/").includes("doc"))
@@ -26,7 +26,7 @@ function compileAll(example) {
   // The page stops at the first of them; the work to do is all of them.
   const lacks = new Set();
   for (const file of files) {
-    const run = spawnSync(qmlc, [join(example.directory, file)], { encoding: "utf8" });
+    const run = spawnSync(qmlc, [...(example.standins ? ["--with", example.standins] : []), join(example.directory, file)], { encoding: "utf8" });
     if (run.error) throw new Error(`could not run ${qmlc}: ${run.error.message}`);
     if (run.status !== 0) errors[file] = run.stderr.trim().replaceAll(example.directory + "/", "");
     for (const [, module] of run.stdout.matchAll(/ from "qml-solid\/([^"]+)";/g)) {
@@ -72,12 +72,21 @@ for (const example of readManifest()) {
     await page
       .waitForFunction(() => window.gallery && window.gallery.status !== "loading", null, { timeout: 20000 })
       .catch(() => pageErrors.push("the page did not finish loading the example"));
+    // Its pictures and fonts are asked for when it is made: a busy server
+    // may take longer over them than the wait that follows.
+    await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
     await page.waitForTimeout(example.qt?.settle ?? 1500);
-    const state = await page.evaluate(() => ({ ...window.gallery, children: document.getElementById("stage").childElementCount }));
+    // A window nothing shows is there and not to be seen: its QML does not
+    // say `visible`, and main.cpp is what shows it.
+    const state = await page.evaluate(() => {
+      const stage = document.getElementById("stage");
+      const style = stage.firstElementChild && getComputedStyle(stage.firstElementChild);
+      return { ...window.gallery, children: stage.childElementCount, hidden: style?.visibility === "hidden" || style?.display === "none" };
+    });
     await Promise.all(answers);
     const found =
       (compiled.lacks.length > 0 && refused.length > 0 ? `the runtime has no ${compiled.lacks.join(", ")}` : null) ??
-      refused[0] ?? state.error ?? pageErrors[0] ?? (state.children === 0 && state.status === "rendered" ? "the example rendered nothing" : null);
+      refused[0] ?? state.error ?? pageErrors[0] ?? (state.status !== "rendered" ? null : state.children === 0 ? "the example rendered nothing" : state.hidden ? "the example's window is not shown" : null);
     const error =
       found
         ?.replaceAll(example.directory + "/", "")

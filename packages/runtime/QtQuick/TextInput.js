@@ -9,7 +9,8 @@ import { lazy, rules, sized } from "./compute.js";
 import { forceActiveFocus, setFocus } from "./focus.js";
 import { advance, capitalized, describe, dress, font, fonts, metrics, overhang } from "./font.js";
 import { Item } from "./Item.js";
-import { AltModifier, ControlModifier, Key, MetaModifier } from "./keys.js";
+import { alignment } from "./LayoutMirroring.js";
+import { AltModifier, ControlModifier, Key, MetaModifier } from "./keycodes.js";
 import { arrange } from "./Text.js";
 
 rules(`
@@ -158,7 +159,7 @@ function editor(self, field, { changed, home, finished }) {
       color: css(self.color),
       selection: css(self.selectionColor),
       selected: css(self.selectedTextColor),
-      align: ALIGNS[self.horizontalAlignment] ?? "left",
+      align: ALIGNS[self.effectiveHorizontalAlignment] ?? "left",
       capitals: CAPITALS[self.font.capitalization] ?? "",
       readOnly: Boolean(self.readOnly),
       hints: self.inputMethodHints,
@@ -271,6 +272,7 @@ const shared = {
   selectionColor: "#000080",
   selectedTextColor: "white",
   horizontalAlignment: 1,
+  effectiveHorizontalAlignment: derived(alignment),
   verticalAlignment: 32,
   readOnly: false,
   selectByMouse: true,
@@ -410,7 +412,7 @@ function laid(self) {
   const wide = sized(self, "width");
   const limit = wide ? Math.max(self.width - self.leftPadding - self.rightPadding, 0) : Infinity;
   const text = capitalized(string(self), self.font.capitalization);
-  const made = arrange(text, spec, limit, wide ? self.wrapMode : 0, 3, MANY, Infinity, face.height, self.horizontalAlignment);
+  const made = arrange(text, spec, limit, wide ? self.wrapMode : 0, 3, MANY, Infinity, face.height, self.effectiveHorizontalAlignment);
   made.height = made.count * face.height;
   return made;
 }

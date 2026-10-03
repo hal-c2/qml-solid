@@ -7,7 +7,7 @@ import { onCleanup, untrack } from "solid-js";
 import { defineType, derived, effect, group, onChange, settle, signal, slot } from "../object.js";
 import { itemToScene, sceneToItem } from "./geometry.js";
 import { Item } from "./Item.js";
-import { LeftButton, NoButton } from "./keys.js";
+import { LeftButton, NoButton } from "./keycodes.js";
 import {
   after,
   cancel,

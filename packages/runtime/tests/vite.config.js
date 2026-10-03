@@ -11,6 +11,7 @@ export default defineConfig({
       // runtime, whatever Qt the machine has.
       qt: join(import.meta.dirname, "qt"),
       style: (importer) => (importer?.includes("-oak") ? "Oak" : undefined),
+      standins: [join(import.meta.dirname, "standins")],
     }),
   ],
   resolve: { dedupe: ["solid-js", "@solidjs/web", "@solidjs/signals"] },

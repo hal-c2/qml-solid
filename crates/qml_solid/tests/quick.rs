@@ -152,6 +152,26 @@ Item {
 }
 
 #[test]
+fn what_a_type_attaches_is_read_of_another_object_too() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Window as W
+Item {
+    id: cell
+    Text {
+        visible: cell.ListView.isCurrentItem && W.Window.active
+        flags: Qt.Window
+        Keys.onPressed: cell.parent.ListView.delayRemove = true
+    }
+}"#,
+    );
+    assert_contains(&code, "visible={ListView.attached(cell).isCurrentItem && W.Window.attached($1).active}");
+    assert_contains(&code, "flags={Qt.Window}");
+    assert_contains(&code, "ListView.attached(cell.parent).delayRemove = true");
+    assert_contains(&code, r#"import { Item, Keys, ListView, Text } from "qml-solid/QtQuick";"#);
+}
+
+#[test]
 fn a_delegate_is_a_function_of_what_it_is_given() {
     let code = lowered(
         r#"import QtQuick
@@ -253,6 +273,23 @@ Item {
     assert_contains(&code, r#"<NumberAnimation $target={item} $property="anchors$margins" to={4}>"#);
     assert_contains(&code, "<Connections target={item} onXChanged={function onXChanged() {");
     assert_contains(&code, r#"<ListModel><ListElement name={"a"} cost={2}></ListElement></ListModel>"#);
+}
+
+#[test]
+fn a_baked_shader_is_the_builds_to_make() {
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    ShaderEffect { fragmentShader: "shaders/wave.frag.qsb"; vertexShader: "../wave.vert.qsb" }
+    ShaderEffect { fragmentShader: "shaders/wave.frag.qsb" }
+    ShaderEffect { fragmentShader: "qrc:/shaders/wave.frag.qsb" }
+}"#,
+    );
+    assert_contains(&code, r#"import $url1 from "./shaders/wave.frag.qsb";"#);
+    assert_contains(&code, r#"import $url2 from "../wave.vert.qsb";"#);
+    assert_contains(&code, "<ShaderEffect fragmentShader={$url1} vertexShader={$url2}>");
+    assert_contains(&code, "<ShaderEffect fragmentShader={$url1}>");
+    assert_contains(&code, r#"<ShaderEffect fragmentShader={"qrc:/shaders/wave.frag.qsb"}>"#);
 }
 
 #[test]
