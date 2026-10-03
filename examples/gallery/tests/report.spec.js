@@ -43,6 +43,19 @@ for (const example of readManifest()) {
     await page.setViewportSize({ width: Math.max(width, 800), height: height + 200 });
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    // The page only learns that a module did not load. Why is what the dev
+    // server answered: most often a module of Qt the runtime does not have.
+    const refused = [];
+    page.on("response", async (response) => {
+      if (response.status() < 500) return;
+      // The browser keeps nothing of a script it could not load: ask again.
+      const again = await page.request.get(response.url()).catch(() => null);
+      const body = (await again?.text().catch(() => "")) ?? "";
+      const said = body.match(/const error = (\{.*\})\s*$/m)?.[1];
+      const message = said ? JSON.parse(said).message : `${response.status()} for ${response.url()}`;
+      const missing = message.match(/^"\.\/(\S+)" is not exported .* from package \S+qml-solid /)?.[1];
+      refused.push(missing ? `the runtime has no ${missing.replaceAll("/", ".")}` : message);
+    });
 
     await page.goto(`?example=${encodeURIComponent(example.id)}`);
     await page
@@ -51,8 +64,13 @@ for (const example of readManifest()) {
     await page.waitForTimeout(example.qt?.settle ?? 1500);
     const state = await page.evaluate(() => ({ ...window.gallery, children: document.getElementById("stage").childElementCount }));
     const found =
-      state.error ?? pageErrors[0] ?? (state.children === 0 && state.status === "rendered" ? "the example rendered nothing" : null);
-    const error = found?.replaceAll(example.directory + "/", "") ?? null;
+      refused[0] ?? state.error ?? pageErrors[0] ?? (state.children === 0 && state.status === "rendered" ? "the example rendered nothing" : null);
+    const error =
+      found
+        ?.replaceAll(example.directory + "/", "")
+        .replace(/^The requested module '\S*\/packages\/runtime\/(\S+?)(?:\/index)?\.js\S*' does not provide an export named '(\w+)'/, (_, module, name) =>
+          `the runtime's ${module.replaceAll("/", ".")} has no ${name}`,
+        ) ?? null;
     const renders = state.status === "rendered" && error === null;
 
     const picture = await page.locator("#stage").screenshot({ caret: "hide" });
