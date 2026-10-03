@@ -14,4 +14,7 @@ export default defineConfig({
     }),
   ],
   resolve: { dedupe: ["solid-js", "@solidjs/web", "@solidjs/signals"] },
+  // SQLite for the browser is not written as a module: Vite makes it one
+  // before the first page asks, not when one does.
+  optimizeDeps: { include: ["sql.js"] },
 });

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Feed</title>
+    <item id="a1">
+      <title>First</title>
+      <link>http://example.org/1</link>
+      <media:content url="one.png" type="image/png"/>
+      <nested><deep>d1</deep></nested>
+    </item>
+    <item id="a2">
+      <title>Second <b>bold</b></title>
+      <title>Second again</title>
+      <media:content url="old.png"/>
+      <media:content url="two.png"/>
+      <nested><deep>d2</deep></nested>
+      <nested><deep>d3</deep></nested>
+    </item>
+    <item>
+      <title>Third <b>bold</b> one</title>
+    </item>
+  </channel>
+  <item id="a4"><title>Stray</title></item>
+</rss>

@@ -16,10 +16,14 @@
     "./QtQuick/Controls/Fusion": "./QtQuick/Controls/Fusion/index.js",
     "./QtQuick/Controls/Material": "./QtQuick/Controls/Material/index.js",
     "./QtQuick/Controls/Universal": "./QtQuick/Controls/Universal/index.js",
+    "./QtQuick/LocalStorage": "./QtQuick/LocalStorage/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtQml/Models": "./QtQml/Models/index.js",
+    "./QtQml/XmlListModel": "./QtQml/XmlListModel/index.js",
     "./QtCore": "./QtCore/index.js",
     "./Qt/labs/settings": "./Qt/labs/settings/index.js",
+    "./Qt/labs/folderlistmodel": "./Qt/labs/folderlistmodel/index.js",
+    "./Qt/labs/synchronizer": "./Qt/labs/synchronizer/index.js",
     "./vite": "./vite.js"
   },
   "scripts": {
@@ -32,5 +36,8 @@
     "@playwright/test": "^1.63.0",
     "solid-js": "2.0.0-rc.13",
     "vite": "^8.0.0"
+  },
+  "dependencies": {
+    "sql.js": "^1.14.2"
   }
 }

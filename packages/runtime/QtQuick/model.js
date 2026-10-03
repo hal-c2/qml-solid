@@ -28,6 +28,69 @@ export function touch(holder, name) {
   holder[SIGNALS]?.[name]?.[1](next);
 }
 
+// ------------------------------------------------------- AbstractListModel
+
+// A cell of a model: Qt's QModelIndex, which is a value. Two of one cell are
+// the same object, so that `===` says so.
+const NOWHERE = { row: -1, column: -1, valid: false, model: null, internalId: 0 };
+NOWHERE.parent = NOWHERE;
+Object.freeze(NOWHERE);
+const indexes = new WeakMap();
+
+export function modelIndex(model, row, column = 0) {
+  if (!(row >= 0 && column >= 0 && row < model?.rowCount?.() && column < model.columnCount())) return NOWHERE;
+  let made = indexes.get(model);
+  if (!made) indexes.set(model, (made = new Map()));
+  const key = column * 0x100000000 + row;
+  let index = made.get(key);
+  if (!index) made.set(key, (index = Object.freeze({ row, column, valid: true, model, internalId: 0, parent: NOWHERE })));
+  return index;
+}
+
+// What a view asks of a model it follows row by row: `$elements`, the value
+// of each row, an object with a property per role (one that can change tells
+// its readers, with `track` and `touch`); `$roles`, the names of the roles;
+// and `$observe(listener)`, which tells of rows `inserted(index, count)`,
+// `removed(index, count)` and `moved(from, to, count)`, after `$elements`
+// was changed, and of a new `role(name)`. A ListModel is one, and so is
+// whatever else is made from this: a model read from a file, a proxy.
+export const AbstractListModel = defineType("AbstractListModel", QtObject, {
+  methods: {
+    rowCount() {
+      return this.$elements.length;
+    },
+    columnCount() {
+      return 1;
+    },
+    index(row, column = 0) {
+      return modelIndex(this, row, column);
+    },
+    $observe(listener) {
+      this.$listeners.add(listener);
+      return () => this.$listeners.delete(listener);
+    },
+  },
+  setup(self) {
+    self.$elements = [];
+    self.$roles = [];
+    self.$listeners = new Set();
+  },
+});
+
+// Every row of such a model replaced: `elements` are the new ones and
+// `roles` the names they have.
+export function reset(model, elements, roles = model.$roles) {
+  const length = model.$elements.length;
+  model.$elements = elements;
+  if (length) for (const listener of model.$listeners) listener.removed(0, length);
+  const known = model.$roles;
+  model.$roles = roles;
+  for (const name of roles) {
+    if (!known.includes(name)) for (const listener of model.$listeners) listener.role(name);
+  }
+  if (elements.length) for (const listener of model.$listeners) listener.inserted(0, elements.length);
+}
+
 // ---------------------------------------------------------------- ListModel
 
 const RECORD = Symbol("record");
@@ -100,7 +163,7 @@ function splice(model, index, given) {
   for (const listener of model.$listeners) listener.inserted(index, made.length);
 }
 
-export const ListModel = defineType("ListModel", QtObject, {
+export const ListModel = defineType("ListModel", AbstractListModel, {
   properties: { count: 0, dynamicRoles: false },
   methods: {
     get(index) {
@@ -171,18 +234,9 @@ export const ListModel = defineType("ListModel", QtObject, {
     },
     // For a model changed from a WorkerScript: there is nothing to wait for.
     sync() {},
-    // How a view follows the model: `listener` is told of `inserted`,
-    // `removed` and `moved` rows and of a new `role`.
-    $observe(listener) {
-      this.$listeners.add(listener);
-      return () => this.$listeners.delete(listener);
-    },
   },
   setup(self) {
-    self.$elements = [];
-    self.$roles = [];
     self.$blank = Object.create(null);
-    self.$listeners = new Set();
     // What its elements inherit: an accessor per role.
     self.$element = {};
   },
@@ -293,8 +347,10 @@ function kindOf(source) {
   if (typeof source === "number") return NUMBER;
   if (Array.isArray(source)) return ARRAY;
   if (source == null || typeof source !== "object") return NONE;
-  if (source.$type === ListModel) return LIST;
-  if (source.$type === ObjectModel) return OBJECTS;
+  // By what it has, not by its type: a model that declares properties of its
+  // own is of a type derived from the one it was written as.
+  if (source.$elements && source.$observe) return LIST;
+  if (source.$objects && source.$observe) return OBJECTS;
   return typeof source.get === "function" && "count" in source ? COUNTED : NONE;
 }
 
@@ -336,7 +392,8 @@ const NumberRow = Object.create(Row, {
   },
 });
 
-// A ListModel's row has `modelData` only when there is one role to be it.
+// A row of a model with roles has `modelData` only when there is one role
+// to be it.
 const ListRow = Object.create(Row, {
   modelData: {
     get() {
