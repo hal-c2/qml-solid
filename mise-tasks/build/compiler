@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+#MISE description="Build qmlc, the compiler"
+set -euo pipefail
+cargo build --bin qmlc

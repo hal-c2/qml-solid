@@ -1,0 +1,4 @@
+# Tasks are the scripts in mise-tasks/. Rust is whatever the system has.
+[tools]
+node = "24"
+pnpm = "12.8.1"

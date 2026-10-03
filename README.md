@@ -29,6 +29,7 @@ an inline `component` of the same file.
 - `packages/runtime`: what compiled output imports as `qml-solid/runtime`, and the Vite plugin.
 - `examples/web`: QML rendered in the browser: hal-c2 TUI bricks, and components using each other.
 - `corpus/qtdoc`: Qt's own examples (a submodule), the yardstick for what to support next.
+- `mise-tasks/`: install, build, run, test and corpus, see below.
 - `vendor/`: patched upstream crates, see below.
 
 ## Use
@@ -40,14 +41,18 @@ cargo run --bin qmlc -- --out-dir out *.qml
 
 cargo run --bin qmlc -- --alone File.qml          # without the files next to it
 
-cargo test                                        # parser, compiler, fixture snapshots
+```
 
-git submodule update --init --depth 1 corpus/qtdoc
-corpus/report.sh                                  # how much of Qt's examples compiles, and what stops the rest
+Everything else is a [mise](https://mise.jdx.dev) task, a script in
+`mise-tasks/` that names what it depends on, so each of these first does
+whatever it needs:
 
-pnpm install
-pnpm --filter qml-solid-example-web dev           # the example, with Vite
-pnpm --filter qml-solid-example-web test          # Playwright, against the built bundle
+```sh
+mise run install        # packages, Playwright's browser, the qtdoc submodule
+mise run build          # build:compiler (qmlc) and build:web (the example's bundle)
+mise run run            # the example, with Vite; QML recompiles as it is edited
+mise run test           # test:compiler (cargo test) and test:web (Playwright)
+mise run corpus         # how much of Qt's examples compiles, and what stops the rest
 ```
 
 `qml-solid/vite` is a Vite plugin that runs `qmlc` on `.qml` imports.

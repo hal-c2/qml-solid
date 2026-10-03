@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="How much of Qt's examples compiles, and what stops the rest"
+#MISE depends=["build:compiler", "install"]
+set -euo pipefail
+exec corpus/report.sh "$@"
