@@ -11,6 +11,7 @@
     "./QtQuick/Layouts": "./QtQuick/Layouts/index.js",
     "./QtQuick/Window": "./QtQuick/Window/index.js",
     "./QtQml": "./QtQml/index.js",
+    "./QtQml/XmlListModel": "./QtQml/XmlListModel/index.js",
     "./QtCore": "./QtCore/index.js",
     "./Qt/labs/settings": "./Qt/labs/settings/index.js",
     "./vite": "./vite.js"
