@@ -12,6 +12,15 @@ export { FocusScope } from "./FocusScope.js";
 export { Font } from "./font.js";
 export { FontLoader } from "./FontLoader.js";
 export { GridView } from "./GridView.js";
+export {
+  DragHandler,
+  HoverHandler,
+  PinchHandler,
+  PointerDevice,
+  PointerHandler,
+  TapHandler,
+  WheelHandler,
+} from "./handlers.js";
 export { BorderImage, Image } from "./Image.js";
 export { Instantiator } from "./Instantiator.js";
 export { Item } from "./Item.js";
@@ -32,6 +41,7 @@ export { ItemSelectionModel } from "./selection.js";
 export { MouseArea } from "./MouseArea.js";
 export { Column, Flow, Grid, Positioner, Row } from "./positioners.js";
 export { ColorGroup, Palette, SystemPalette } from "./Palette.js";
+export { Pinch, PinchArea } from "./PinchArea.js";
 import "./palettes.js";
 export { SafeArea } from "./SafeArea.js";
 export {
