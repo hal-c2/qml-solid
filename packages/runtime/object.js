@@ -578,6 +578,12 @@ function attach(name, Attached, self) {
 // given (a delegate's `index` and roles) to the object.
 export function $component(make) {
   make.$component = true;
+  // `Component.Ready`: it was compiled before the program ran, so there is
+  // nothing to wait for and nothing to tell of.
+  make.status = 1;
+  make.progress = 1;
+  make.errorString = () => "";
+  make.statusChanged = make.progressChanged = silent;
   make.createObject = (item, properties) => {
     const { object } = instantiate(make, properties ?? {}, item);
     for (const [name, value] of Object.entries(properties ?? {})) {
@@ -587,6 +593,50 @@ export function $component(make) {
     return object;
   };
   return make;
+}
+
+// A signal nothing ever emits.
+const silent = Object.assign(() => {}, { connect() {}, disconnect() {} });
+
+// A QML file as a `Component`: what `Qt.createComponent("Block.qml")` and
+// `source: "Block.qml"` are, the compiler having imported the file. `File` is
+// what the file's module exports.
+const files = new WeakMap();
+export function $file(File) {
+  let component = files.get(File);
+  if (!component) files.set(File, (component = $component((properties) => File(properties))));
+  return component;
+}
+
+// A path that is only known when the program runs, looked up among the files
+// the compiler found it could name: `table` has, for each path from the
+// directory of the module at `base`, a function that gives what the file
+// exports. The result is `find(path, required)`: the file's component, and
+// for a path that names none of them the path as it is, or with `required`
+// (`Qt.createComponent`) a component that says so.
+export function $files(table, base) {
+  const directory = new URL(".", base).href;
+  return (path, required) => {
+    // A component already: a path the compiler knew.
+    if (typeof path !== "string") return path;
+    let key = path.startsWith(directory) ? path.slice(directory.length) : path;
+    while (key.startsWith("./")) key = key.slice(2);
+    if (Object.hasOwn(table, key)) return $file(table[key]());
+    return required ? missing($url(path, base)) : path;
+  };
+}
+
+// `Component.Error`: what Qt makes of a file that is not there.
+function missing(url) {
+  const component = $component(() => null);
+  component.status = 3;
+  component.progress = 0;
+  component.errorString = () => `${url}: No such file or directory`;
+  component.createObject = () => {
+    console.warn(`QQmlComponent: Component is not ready: ${component.errorString()}`);
+    return null;
+  };
+  return component;
 }
 
 // QML finds a name by walking contexts: a component's own, then the one of
