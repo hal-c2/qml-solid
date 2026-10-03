@@ -10,7 +10,7 @@
 import { PauseJob } from "./animation/jobs.js";
 import { activate } from "./focus.js";
 import { frameOf, sceneToItem } from "./geometry.js";
-import { buttonOf, modifiersOf, NoButton } from "./keys.js";
+import { buttonOf, modifiersOf, NoButton } from "./keycodes.js";
 
 // What waits (a long press, the time a second click may take) waits on the
 // clock everything timed is on, so a test moves it with the same hand.

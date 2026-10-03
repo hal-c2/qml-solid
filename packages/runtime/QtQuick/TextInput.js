@@ -9,7 +9,7 @@ import { lazy, rules, sized } from "./compute.js";
 import { forceActiveFocus, setFocus } from "./focus.js";
 import { advance, capitalized, describe, dress, font, fonts, metrics, overhang } from "./font.js";
 import { Item } from "./Item.js";
-import { AltModifier, ControlModifier, Key, MetaModifier } from "./keys.js";
+import { AltModifier, ControlModifier, Key, MetaModifier } from "./keycodes.js";
 import { arrange } from "./Text.js";
 
 rules(`
