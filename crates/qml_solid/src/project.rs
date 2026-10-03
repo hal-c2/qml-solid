@@ -24,6 +24,11 @@ use crate::{
 #[derive(Debug, Clone, Default)]
 pub struct Project {
     files: HashMap<String, Summary>,
+    /// The project's own modules: what `import Thermostat` brings, by the
+    /// name of each type and the file it is.
+    modules: HashMap<String, HashMap<String, String>>,
+    /// The modules each file is a type of.
+    memberships: HashMap<String, Vec<String>>,
 }
 
 /// A file's component or one of its inline components.
@@ -77,6 +82,8 @@ pub(crate) struct Shape {
     /// Objects written inside an instance go somewhere the component says,
     /// not where its root type would put them.
     pub has_default: bool,
+    /// `enum Theme { Light, Dark }`: the keys of each.
+    pub enums: HashMap<String, Vec<String>>,
 }
 
 /// A `property` declaration, as far as an instance cares.
@@ -201,6 +208,32 @@ impl Project {
             }
         }
         directories.into_iter().collect()
+    }
+
+    /// Says the module `uri` has the type `name`, which is the file `file`:
+    /// what a `qmldir` says, or the build that makes the module.
+    pub fn add_type(&mut self, uri: &str, name: &str, file: &str) {
+        self.modules.entry(uri.to_string()).or_default().insert(name.to_string(), file.to_string());
+        let memberships = self.memberships.entry(file.to_string()).or_default();
+        if !memberships.iter().any(|module| module == uri) {
+            memberships.push(uri.to_string());
+        }
+    }
+
+    /// The modules `file` is a type of: it sees their other types as it sees
+    /// the files next to it.
+    pub(crate) fn modules_of(&self, file: &str) -> &[String] {
+        self.memberships.get(file).map_or(&[], Vec::as_slice)
+    }
+
+    /// Whether the file was added, and parsed.
+    pub fn has(&self, file: &str) -> bool {
+        self.files.contains_key(file)
+    }
+
+    /// The file the type `name` of the project's module `uri` is.
+    pub(crate) fn module_type(&self, uri: &str, name: &str) -> Option<&str> {
+        self.modules.get(uri)?.get(name).map(String::as_str)
     }
 
     pub(crate) fn insert(&mut self, name: &str, summary: Summary) {
@@ -344,6 +377,7 @@ fn shape(summary: &mut Summary, inline: Option<&str>, root: &QmlObject<'_>) {
         functions: HashSet::new(),
         required: Vec::new(),
         has_default: false,
+        enums: HashMap::new(),
     };
     for member in &root.members {
         match member {
@@ -370,6 +404,12 @@ fn shape(summary: &mut Summary, inline: Option<&str>, root: &QmlObject<'_>) {
                 if let Some(id) = &function.id {
                     shape.functions.insert(id.name.to_string());
                 }
+            }
+            QmlMember::Enum(declaration) => {
+                shape.enums.insert(
+                    declaration.name.name.to_string(),
+                    declaration.members.iter().map(|member| member.name.name.to_string()).collect(),
+                );
             }
             _ => {}
         }

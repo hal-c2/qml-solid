@@ -9,6 +9,7 @@ Rectangle {
     property alias bodyColor: body.color
     default property alias content: body.data
     signal resized(int width)
+    enum Kind { Plain, Raised = 2 }
 
     function grow(by) {
         width = width + by

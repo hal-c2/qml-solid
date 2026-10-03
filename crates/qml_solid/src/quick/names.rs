@@ -36,11 +36,12 @@ pub(crate) fn resolve<'a>(
     program: &mut Program<'a>,
     tree: &Tree<'a>,
     types: Types<'_>,
+    own: &str,
     uses: &mut Uses,
     errors: &mut Vec<Error>,
 ) {
     let free = free_references(program);
-    let mut resolver = Resolver { b, tree, types, free, uses, errors };
+    let mut resolver = Resolver { b, tree, types, own, free, uses, errors };
     resolver.visit_program(program);
     Pruner { used: &resolver.uses.handles }.visit_program(program);
 }
@@ -69,6 +70,10 @@ struct Resolver<'a, 's, 'p> {
     b: B<'a>,
     tree: &'s Tree<'a>,
     types: Types<'p>,
+    /// The name of the file's own type. The module binds it, to the
+    /// component or to the singleton, so JavaScript finds it; what it is to
+    /// QML still has to be asked.
+    own: &'s str,
     free: HashSet<u32>,
     uses: &'s mut Uses,
     errors: &'s mut Vec<Error>,
@@ -83,11 +88,16 @@ enum Access {
     /// A member of the object the type attaches to the one the expression is
     /// written in: `ListView.view`.
     Attached,
+    /// A member of the one object a `pragma Singleton` file is.
+    Singleton,
 }
 
 impl<'a> Resolver<'a, '_, '_> {
     fn is_free(&self, identifier: &IdentifierReference<'a>) -> bool {
-        identifier.span.end > identifier.span.start && self.free.contains(&identifier.span.start)
+        identifier.span.end > identifier.span.start
+            && (self.free.contains(&identifier.span.start)
+                // An id is never capitalised, so this is the type.
+                || (identifier.name == self.own && self.own.starts_with(|c: char| c.is_ascii_uppercase())))
     }
 
     fn handle(&mut self, object: usize) -> Expression<'a> {
@@ -102,8 +112,9 @@ impl<'a> Resolver<'a, '_, '_> {
         let b = self.b;
         let tree = self.tree;
         if name.starts_with(|c: char| c.is_ascii_uppercase()) {
-            self.type_name(name, span);
-            return None;
+            // A singleton by itself is its object.
+            let kind = self.type_name(name, span)?;
+            return self.types.is_singleton(&kind).then(|| b.call(b.id(name), []));
         }
 
         let scope = tree.object_at(span.start);
@@ -193,6 +204,12 @@ impl<'a> Resolver<'a, '_, '_> {
 
     fn access(&mut self, name: &str, member: &str, span: Span) -> Access {
         let Some(kind) = self.type_name(name, span) else { return Access::Static };
+        match self.types.declared_enum(&kind, member) {
+            Some(true) => return Access::Enum,
+            Some(false) => return Access::Static,
+            None if self.types.is_singleton(&kind) => return Access::Singleton,
+            None => {}
+        }
         let Some(ty) = self.types.base(&kind) else { return Access::Static };
         if ty.enum_value(member).is_some() {
             return Access::Static;
@@ -219,6 +236,7 @@ impl<'a> Resolver<'a, '_, '_> {
         match self.access(name, member.property.name.as_str(), span) {
             Access::Static => {}
             Access::Enum => *expression = b.id(name),
+            Access::Singleton => member.object = b.call(b.id(name), []),
             Access::Attached => {
                 let scope = self.tree.object_at(span.start);
                 let attachee = self.handle(scope);

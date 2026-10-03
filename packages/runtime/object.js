@@ -574,6 +574,23 @@ export function $component(make) {
   return make;
 }
 
+// `pragma Singleton`: the one object of a file, made the first time anything
+// asks for it and kept for as long as the page. It is nobody's child, and
+// nothing that ends takes it along. `keys` are the enums the file declares.
+export function $singleton(Component, keys) {
+  let object;
+  const get = () => {
+    if (object) return object;
+    // There before it is filled in: what is in the file may name it.
+    object = $object();
+    runWithOwner(null, () =>
+      createRoot(() => untrack(() => complete(() => inside(null, () => Component({ $self: object }))))),
+    );
+    return object;
+  };
+  return Object.assign(get, keys);
+}
+
 // `source: path`, where the path is not known until the program runs: taken
 // from the file it is written in, as a literal is when it is compiled.
 export function $url(value, base) {

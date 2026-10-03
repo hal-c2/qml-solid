@@ -172,9 +172,7 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
                 return Some(QmlMember::Function(function));
             }
             Kind::Enum if self.qml_next_is_name() => {
-                let span = self.cur_token().span();
-                self.set_fatal_error(diagnostics::qml("QML enums are not supported yet", span));
-                return None;
+                return Some(QmlMember::Enum(self.parse_qml_enum()));
             }
             Kind::At => {
                 let span = self.cur_token().span();
@@ -298,6 +296,44 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
         }
         let type_name = self.parse_qml_type_name();
         QmlSignalParameter { name: self.parse_qml_name(), type_name: Some(type_name) }
+    }
+
+    fn parse_qml_enum(&mut self) -> QmlEnumDeclaration<'a> {
+        let start = self.cur_start();
+        self.bump_any();
+        let name = self.parse_qml_name();
+        let opening_span = self.cur_token().span();
+        self.expect(Kind::LCurly);
+        let mut members = ArenaVec::new_in(&self.ast);
+        let mut next = 0;
+        while !self.at(Kind::RCurly) && !self.has_fatal_error() {
+            let name = self.parse_qml_name();
+            let value = if self.eat(Kind::Eq) {
+                let negative = self.eat(Kind::Minus);
+                let span = self.cur_token().span();
+                let text = self.cur_src();
+                let written = match text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+                    Some(digits) => i64::from_str_radix(digits, 16).ok(),
+                    None => text.parse().ok(),
+                };
+                let Some(written) = written.filter(|_| self.cur_kind().is_number()) else {
+                    self.set_fatal_error(diagnostics::qml("An enum's value is a whole number", span));
+                    break;
+                };
+                self.bump_any();
+                if negative { -written } else { written }
+            } else {
+                next
+            };
+            next = value + 1;
+            members.push(QmlEnumMember { name, value });
+            if !self.eat(Kind::Comma) {
+                break;
+            }
+        }
+        self.expect_closing(Kind::RCurly, opening_span);
+        self.bump(Kind::Semicolon);
+        QmlEnumDeclaration { span: self.end_span(start), name, members }
     }
 
     fn parse_qml_inline_component(&mut self) -> QmlInlineComponent<'a> {

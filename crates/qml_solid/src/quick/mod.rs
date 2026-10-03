@@ -31,19 +31,37 @@ pub(crate) fn lower<'a>(
     // what the name means inside it.
     // A file in a directory of the project is known by its path from it.
     let stem = options.name.rsplit('/').next().unwrap_or(&options.name);
-    let shadows = tree.objects.iter().any(|object| object.name == stem && !matches!(object.origin, Some(types::Origin::Inline)));
-    let name = if shadows { format!("{stem}$component") } else { stem.to_string() };
+    // `Screen.ui.qml` is the type `Screen`.
+    let stem = stem.strip_suffix(".ui").unwrap_or(stem);
+    // A file may name itself, for its enums or to make more of itself.
+    let is_other = |origin: &Option<types::Origin>| match origin {
+        Some(types::Origin::Inline) => false,
+        Some(types::Origin::File(file)) => *file != options.name,
+        _ => true,
+    };
+    let shadows = tree.objects.iter().any(|object| object.name == stem && is_other(&object.origin));
+    // `pragma Singleton`: what the file exports is the one object, and the
+    // function that makes it has to be called something else.
+    let is_singleton = project.summary(&options.name).is_some_and(|summary| summary.is_singleton);
+    let name = if shadows || is_singleton { format!("{stem}$component") } else { stem.to_string() };
 
     let mut lower = Lower::new(b, &tree, types, stem);
-    let component = lower.component(&name, document.root, true);
+    let (component, enums) = lower.component(&name, document.root, !is_singleton);
     errors.append(&mut lower.errors);
 
     let mut body = b.vec();
     body.extend(std::mem::take(&mut lower.module));
     body.push(component);
+    if is_singleton {
+        lower.uses.kernel.insert("$singleton");
+        body.push(b.const_(stem, b.call(b.id("$singleton"), [b.id(&name), b.record(enums)])));
+        body.push(b.export_default(b.id(stem)));
+    } else if !enums.is_empty() {
+        body.push(lower.keys(&name, enums));
+    }
     let mut program = b.program(source, body);
     let mut uses = lower.uses;
-    names::resolve(b, &mut program, &tree, types, &mut uses, &mut errors);
+    names::resolve(b, &mut program, &tree, types, stem, &mut uses, &mut errors);
     if !errors.is_empty() {
         return Err(errors);
     }
@@ -61,6 +79,9 @@ pub(crate) fn lower<'a>(
         imports.push(b.import_named(names.iter().map(String::as_str), &module));
     }
     for (name, file) in &uses.files {
+        if *file == options.name {
+            continue;
+        }
         let path = types::relative(&options.name, file);
         imports.push(b.import_default(name, &format!("{path}{}", options.component_extension)));
     }

@@ -411,6 +411,15 @@ impl<'a> B<'a> {
         ))
     }
 
+    /// `export default expression;`
+    pub(crate) fn export_default(&self, expression: Expression<'a>) -> Statement<'a> {
+        Statement::ExportDefaultDeclaration(ExportDefaultDeclaration::boxed(
+            SPAN,
+            ExportDefaultDeclarationKind::from(expression),
+            &self.ast(),
+        ))
+    }
+
     fn import(
         &self,
         specifiers: ArenaVec<'a, ImportDeclarationSpecifier<'a>>,

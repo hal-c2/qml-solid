@@ -40,6 +40,11 @@ fn members(object: &QmlObject<'_>) -> Vec<String> {
                 format!("function {}", function.id.as_ref().map_or("", |id| id.name.as_str()))
             }
             QmlMember::InlineComponent(inline) => format!("component {}", inline.name.name),
+            QmlMember::Enum(declaration) => {
+                let keys: Vec<_> =
+                    declaration.members.iter().map(|member| format!("{}={}", member.name.name, member.value)).collect();
+                format!("enum {} {}", declaration.name.name, keys.join(" "))
+            }
         })
         .collect()
 }
@@ -137,6 +142,20 @@ fn members_of_an_object() {
 
     let QmlMember::Object(behavior) = &document.root.members[12] else { panic!() };
     assert_eq!(behavior.on.as_ref().unwrap().to_string(), "width");
+}
+
+#[test]
+fn an_enum_counts_from_where_it_is_told() {
+    let allocator = Allocator::default();
+    let document = parse(
+        &allocator,
+        "Item {\n    enum Theme { Light, Dark }\n    enum Flag {\n        None = -1,\n        Bold = 0x10,\n        Italic\n    }\n    property int enum: 1\n}\n",
+    );
+    assert_eq!(
+        members(&document.root),
+        ["enum Theme Light=0 Dark=1", "enum Flag None=-1 Bold=16 Italic=17", "property enum"]
+    );
+    assert_eq!(diagnostics("Item { enum Theme { Light = 1.5 } }"), ["An enum's value is a whole number"]);
 }
 
 #[test]

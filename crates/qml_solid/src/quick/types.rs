@@ -97,6 +97,17 @@ impl<'p> Types<'p> {
             }
             match &import.source {
                 Source::Module(uri) => {
+                    // A module of the project's own. Its types are files, and
+                    // a file has one name: `M.Type` is not reached yet.
+                    if qualifier.is_none()
+                        && let Some(file) = self.project.module_type(uri, name)
+                    {
+                        let file = file.to_string();
+                        return Some(Found {
+                            kind: Kind::Component(Key { file: file.clone(), inline: None }),
+                            origin: Origin::File(file),
+                        });
+                    }
                     if let Some(ty) = qt::module(uri).and_then(|module| module.type_named(name)) {
                         let origin = match qualifier {
                             Some(_) => Origin::Namespace,
@@ -106,8 +117,7 @@ impl<'p> Types<'p> {
                     }
                 }
                 Source::Path(path) if !path.ends_with(".js") && !path.ends_with(".mjs") => {
-                    let file = join(&join(directory(self.file), path), name);
-                    if self.project.summary(&file).is_some() {
+                    if let Some(file) = self.file_named(&join(directory(self.file), path), name) {
                         let origin = match qualifier {
                             Some(_) => Origin::Namespace,
                             None => Origin::File(file.clone()),
@@ -121,15 +131,56 @@ impl<'p> Types<'p> {
         if qualifier.is_none() {
             // The file's own directory is imported before anything else, so
             // everything else comes first.
-            let file = join(directory(self.file), name);
-            if self.project.summary(&file).is_some() {
+            if let Some(file) = self.file_named(directory(self.file), name) {
                 return Some(Found {
                     kind: Kind::Component(Key { file: file.clone(), inline: None }),
                     origin: Origin::File(file),
                 });
             }
+            // So is the module the file is a type of, wherever its files are.
+            for uri in self.project.modules_of(self.file) {
+                if let Some(file) = self.project.module_type(uri, name) {
+                    let file = file.to_string();
+                    return Some(Found {
+                        kind: Kind::Component(Key { file: file.clone(), inline: None }),
+                        origin: Origin::File(file),
+                    });
+                }
+            }
         }
         None
+    }
+
+    /// The file in `directory` that is the type `name`: `Name.qml`, or the
+    /// `Name.ui.qml` Qt Design Studio writes.
+    fn file_named(&self, directory: &str, name: &str) -> Option<String> {
+        let file = join(directory, name);
+        if self.project.summary(&file).is_some() {
+            return Some(file);
+        }
+        let file = format!("{file}.ui");
+        self.project.summary(&file).is_some().then_some(file)
+    }
+
+    /// `pragma Singleton`: the type is one object, there before it is named.
+    pub(crate) fn is_singleton(&self, kind: &Kind) -> bool {
+        match kind {
+            Kind::Component(Key { file, inline: None }) => {
+                self.project.summary(file).is_some_and(|summary| summary.is_singleton)
+            }
+            _ => false,
+        }
+    }
+
+    /// What `member` is to the enums a component declares: `Some(true)` an
+    /// enum (`Type.Theme`, of `Type.Theme.Dark`), `Some(false)` a key.
+    pub(crate) fn declared_enum(&self, kind: &Kind, member: &str) -> Option<bool> {
+        let Kind::Component(key) = kind else { return None };
+        let shape = self.project.shape(key)?;
+        if shape.enums.values().any(|keys| keys.iter().any(|key| key == member)) {
+            return Some(false);
+        }
+        shape.enums.contains_key(member).then_some(true)
     }
 
     /// Whether `name` is what the file imports something `as`.

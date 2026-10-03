@@ -118,6 +118,8 @@ pub(crate) struct Lower<'a, 's> {
     specs: usize,
     /// The files the module names, each once: `$url1` is the first.
     urls: Vec<String>,
+    /// The keys of the enums the component being built declares.
+    enums: Vec<(String, Expression<'a>)>,
 }
 
 impl<'a, 's> Lower<'a, 's> {
@@ -134,11 +136,19 @@ impl<'a, 's> Lower<'a, 's> {
             children: None,
             specs: 0,
             urls: Vec::new(),
+            enums: Vec::new(),
         }
     }
 
-    /// `function Name($props) { const root = ...; return <Root .../>; }`
-    pub(crate) fn component(&mut self, name: &str, root: QmlObject<'a>, export: bool) -> Statement<'a> {
+    /// `function Name($props) { const root = ...; return <Root .../>; }`, and
+    /// the keys of the enums it declares: those are the type's, not an
+    /// object's.
+    pub(crate) fn component(
+        &mut self,
+        name: &str,
+        root: QmlObject<'a>,
+        export: bool,
+    ) -> (Statement<'a>, Vec<(String, Expression<'a>)>) {
         let b = self.b;
         let handle = self.tree.objects[self.tree.index_of(&root)].handle.clone();
         let children = children_target(&root).unwrap_or_else(|| handle.clone());
@@ -147,10 +157,12 @@ impl<'a, 's> Lower<'a, 's> {
         self.uses.handles.insert(children.clone());
         let outer_children = self.children.replace(children);
         let outer_frames = std::mem::take(&mut self.frames);
+        let outer_enums = std::mem::take(&mut self.enums);
         self.frames.push(Vec::new());
         let element = self.element(root, Role::Root);
         let frame = self.frames.pop().unwrap_or_default();
         self.frames = outer_frames;
+        let enums = std::mem::replace(&mut self.enums, outer_enums);
         self.children = outer_children;
 
         self.uses.kernel.insert("$object");
@@ -160,11 +172,19 @@ impl<'a, 's> Lower<'a, 's> {
         statements.push(b.const_(&handle, b.coalesce(given, b.call(b.id("$object"), []))));
         statements.extend(frame);
         statements.push(b.return_(element));
-        if export {
+        let function = if export {
             b.export_default_function(name, &["$props"], statements)
         } else {
             b.function_declaration(name, &["$props"], statements)
-        }
+        };
+        (function, enums)
+    }
+
+    /// `Object.assign(Name, { Light: 0, Dark: 1 })`: `Name.Dark` is read off
+    /// the component, as it is off a type of Qt's.
+    pub(crate) fn keys(&self, name: &str, enums: Vec<(String, Expression<'a>)>) -> Statement<'a> {
+        let b = self.b;
+        b.statement(b.call(b.member(b.id("Object"), "assign"), [b.id(name), b.record(enums)]))
     }
 
     fn frame(&mut self) -> &mut Vec<Statement<'a>> {
@@ -258,7 +278,10 @@ impl<'a, 's> Lower<'a, 's> {
             built.attributes.push(b.attr("$aliases", b.record(built.aliases)));
         }
         if !built.attach.is_empty() {
-            let types = built.attach.iter().map(|name| b.id(name));
+            let types = built.attach.iter().map(|name| match name.split_once('.') {
+                Some((namespace, name)) => b.member(b.id(namespace), name),
+                None => b.id(name),
+            });
             built.attributes.push(b.attr("$attach", b.array(types)));
         }
         if !built.changes.is_empty() {
@@ -292,8 +315,20 @@ impl<'a, 's> Lower<'a, 's> {
                 QmlMember::Signal(signal) => built.signals.push(signal.name.name.to_string()),
                 QmlMember::Function(function) => self.function(function, index, built),
                 QmlMember::InlineComponent(inline) => {
-                    let component = self.component(inline.name.name.as_str(), inline.object, false);
+                    let name = inline.name.name.as_str();
+                    let (component, enums) = self.component(name, inline.object, false);
                     self.module.push(component);
+                    if !enums.is_empty() {
+                        let keys = self.keys(name, enums);
+                        self.module.push(keys);
+                    }
+                }
+                QmlMember::Enum(declaration) => {
+                    for member in &declaration.members {
+                        #[expect(clippy::cast_precision_loss)]
+                        let value = self.b.number(member.value as f64);
+                        self.enums.push((member.name.name.to_string(), value));
+                    }
                 }
             }
         }
@@ -414,24 +449,28 @@ impl<'a, 's> Lower<'a, 's> {
     /// handler of the object a type attaches to this one.
     fn attached(&mut self, path: &[&'a str], value: QmlBindingValue<'a>, built: &mut Built<'a>, span: Span) {
         let b = self.b;
-        let name = path.join("$");
-        let (type_name, rest) = (path[0], &path[1..]);
+        // `T.Overlay.modal`: the type is the namespace's.
+        let qualified = path.len() > 2 && self.types.namespace(path[0]).is_some();
+        let (parts, rest) = path.split_at(if qualified { 2 } else { 1 });
+        let type_name = parts.join(".");
+        // The attached object is known by the type's own name.
+        let name = path[parts.len() - 1..].join("$");
         // `Component.onCompleted` is the kernel's: every object has it.
         if type_name == "Component" {
             let value = self.handler(value, &[], span);
             built.attributes.push(b.attr(&name, value));
             return;
         }
-        let Some(found) = self.types.find(&[type_name]) else {
+        let Some(found) = self.types.find(parts) else {
             self.errors.push(Error::new(
                 format!("`{type_name}` is not a type of anything the file imports"),
                 span,
             ));
             return;
         };
-        self.uses.origin(type_name, &found.origin);
-        if !built.attach.iter().any(|attached| attached == type_name) {
-            built.attach.push(type_name.to_string());
+        self.uses.origin(&type_name, &found.origin);
+        if !built.attach.iter().any(|attached| *attached == type_name) {
+            built.attach.push(type_name);
         }
         let attached = self.types.base(&found.kind).and_then(qt::Type::attached);
         let handler = match rest {

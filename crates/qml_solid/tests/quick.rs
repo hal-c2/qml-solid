@@ -352,3 +352,130 @@ fn solid_makes_the_objects() {
     assert_contains(&code, "get width() {\n\t\t\t\t\treturn root.width;\n\t\t\t\t},\n\t\t\t\theight: 4");
     assert_lacks(&code, "_$memo");
 }
+
+#[test]
+fn an_enum_is_keys_on_the_component() {
+    let files = [
+        (
+            "Sample",
+            r#"import QtQuick
+Item {
+    property int theme: Swatch.Theme.Dark
+    property int mine: Sample.Narrow
+    enum Width { Wide, Narrow = 4 }
+    component Chip: Item { enum Shape { Round, Square } }
+    Swatch { tone: Swatch.Light }
+}"#,
+        ),
+        ("Swatch", "import QtQuick\nItem {\n    property int tone\n    enum Theme { Light, Dark }\n}"),
+    ];
+    let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
+    // `Type.Enum.Key` and `Type.Key` are the same key, as they are in Qt's types.
+    assert_contains(&code, "theme={Swatch.Dark}");
+    assert_contains(&code, "tone={Swatch.Light}");
+    // The file is a type to itself too, and is not imported for it.
+    assert_contains(&code, "mine={Sample.Narrow}");
+    assert_lacks(&code, "import Sample");
+    assert_contains(&code, "Object.assign(Sample, {\n\tWide: 0,\n\tNarrow: 4\n});");
+    assert_contains(&code, "Object.assign(Chip, {\n\tRound: 0,\n\tSquare: 1\n});");
+
+    let code = lowered_in(&files, "Swatch").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "export default function Swatch($props) {");
+    assert_contains(&code, "Object.assign(Swatch, {\n\tLight: 0,\n\tDark: 1\n});");
+}
+
+#[test]
+fn a_singleton_is_one_object_reached_through_its_name() {
+    let files = [
+        (
+            "Sample",
+            r#"import QtQuick
+Item {
+    width: Units.grid * 2
+    height: Units.Small
+    property var units: Units
+    function reset() { Units.grid = 8 }
+}"#,
+        ),
+        (
+            "Units",
+            r#"pragma Singleton
+import QtQuick
+QtObject {
+    property int grid: 8
+    property int twice: Units.grid * 2
+    enum Size { Small, Large }
+}"#,
+        ),
+    ];
+    let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, r#"import Units from "./Units.qml";"#);
+    // The object is made when something first asks for it.
+    assert_contains(&code, "width={Units().grid * 2}");
+    assert_contains(&code, "units={Units()}");
+    assert_contains(&code, "Units().grid = 8;");
+    // Its enums are the type's: nothing is made to read one.
+    assert_contains(&code, "height={Units.Small}");
+
+    let code = lowered_in(&files, "Units").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, r#"import { $object, $singleton } from "qml-solid/object";"#);
+    assert_contains(&code, "function Units$component($props) {");
+    assert_lacks(&code, "export default function");
+    assert_contains(&code, "twice={Units().grid * 2}");
+    assert_contains(&code, "const Units = $singleton(Units$component, {\n\tSmall: 0,\n\tLarge: 1\n});");
+    assert_contains(&code, "export default Units;");
+}
+
+#[test]
+fn a_module_of_the_project_is_the_files_it_is_said_to_be() {
+    let files = [
+        ("Main", "import QtQuick\nimport Parts\nItem {\n    Dial { value: Theme.accent }\n    Gauge { }\n}"),
+        ("parts/Dial", "import QtQuick\nItem {\n    property int value\n    Needle { }\n}"),
+        ("parts/gauges/Needle", "import QtQuick\nItem { }"),
+        ("parts/Theme", "pragma Singleton\nimport QtQuick\nQtObject { property int accent: 3 }"),
+        // Qt Design Studio's files are types by the name before `.ui`.
+        ("parts/Gauge.ui", "import QtQuick\nItem { }"),
+    ];
+    let mut project = Project::new();
+    for (file, source) in &files {
+        project.add(file, source).unwrap_or_else(|errors| panic!("{file}: {errors:?}"));
+    }
+    for (name, file) in
+        [("Dial", "parts/Dial"), ("Needle", "parts/gauges/Needle"), ("Theme", "parts/Theme"), ("Gauge", "parts/Gauge.ui")]
+    {
+        project.add_type("Parts", name, file);
+    }
+    let lowered = |name: &str| {
+        let options = Options { name: name.to_string(), project: Some(project.clone()), ..Options::default() };
+        let source = files.iter().find(|(file, _)| *file == name).expect("a file of the project").1;
+        lowered_source(source, &options).unwrap_or_else(|errors| panic!("{name}: {errors:?}"))
+    };
+
+    let code = lowered("Main");
+    assert_contains(&code, r#"import Dial from "./parts/Dial.qml";"#);
+    assert_contains(&code, r#"import Theme from "./parts/Theme.qml";"#);
+    assert_contains(&code, r#"import Gauge from "./parts/Gauge.ui.qml";"#);
+    assert_contains(&code, "value={Theme().accent}");
+
+    // A file of the module sees the rest of it, wherever the files are.
+    let code = lowered("parts/Dial");
+    assert_contains(&code, r#"import Needle from "./gauges/Needle.qml";"#);
+
+    let code = lowered("parts/Gauge.ui");
+    assert_contains(&code, "export default function Gauge($props) {");
+}
+
+#[test]
+fn a_type_of_a_namespace_attaches_too() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Templates as T
+T.Control {
+    T.ScrollIndicator.vertical: T.ScrollIndicator { }
+}"#,
+    );
+    assert_contains(&code, r#"import * as T from "qml-solid/QtQuick/Templates";"#);
+    // The attached object goes by the type's own name.
+    assert_contains(&code, "ScrollIndicator$vertical={<T.ScrollIndicator");
+    assert_contains(&code, "$attach={[T.ScrollIndicator]}");
+}

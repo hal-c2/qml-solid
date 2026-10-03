@@ -58,3 +58,28 @@ test("a signal runs the component's handler and the instance's", async ({ page }
   });
   expect(read).toEqual([1, 60]);
 });
+
+test("a singleton is one object, and whoever names it reads the same one", async ({ page }) => {
+  await open(page, "singletons");
+  expect(await rect(page, "first")).toEqual({ x: 0, y: 0, width: 40, height: 10 });
+  expect(await rect(page, "second")).toEqual({ x: 40, y: 0, width: 10, height: 20 });
+  // What is assigned to it reaches every binding that reads it, its own too.
+  await page.evaluate(() => {
+    window.scene.theme.grid = 25;
+    window.flush();
+  });
+  expect(await rect(page, "first")).toEqual({ x: 0, y: 0, width: 100, height: 25 });
+  expect(await rect(page, "second")).toEqual({ x: 100, y: 0, width: 25, height: 50 });
+});
+
+test("an enum is keys of the type that declares it", async ({ page }) => {
+  await open(page, "singletons");
+  const read = await page.evaluate(() => {
+    const { scene } = window;
+    const before = scene.second.width;
+    scene.mode = 0;
+    window.flush();
+    return [scene.plain, scene.raised, before, scene.second.width];
+  });
+  expect(read).toEqual([0, 2, 10, 20]);
+});
