@@ -3,7 +3,7 @@
 // The file says what it is called; the browser is told that name, and the
 // weight and slant of the face, so that `font.bold` finds the bold file.
 import { createSignal, flush } from "solid-js";
-import { defineType, derived, effect, QtObject } from "../object.js";
+import { defineType, derived, effect, located, QtObject } from "../object.js";
 import { lazy } from "./compute.js";
 import { fontsChanged } from "./font.js";
 
@@ -162,7 +162,7 @@ export const FontLoader = defineType("FontLoader", QtObject, {
   enums: { Null: NULL, Ready: READY, Loading: LOADING, Error: ERROR },
   setup(self) {
     self.$load = lazy(self, () => {
-      const url = String(self.source ?? "");
+      const url = located(String(self.source ?? ""));
       return url ? load(url) : null;
     });
     // Loaded whether or not anything asks how it went: a family is as

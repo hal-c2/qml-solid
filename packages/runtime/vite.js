@@ -7,7 +7,7 @@
 // (the types Qt has in C++) and the QML files of the Qt that is installed,
 // compiled as any other.
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { searchForWorkspaceRoot } from "vite";
 
@@ -29,12 +29,67 @@ const MODULE = /^qml-solid\/(Qt[\w/]*)$/;
 const VIRTUAL = "\0qml-solid:";
 const path = (uri) => uri.replaceAll(".", "/");
 
-// Where the Qt installed here keeps its QML modules.
+// What the Qt installed here says of itself: where it keeps its QML modules
+// and its tools, and which Qt it is.
 function installed() {
-  if (process.env.QT_INSTALL_QML) return process.env.QT_INSTALL_QML;
   for (const tool of ["qtpaths6", "qtpaths", "qmake6"]) {
-    const asked = spawnSync(tool, [tool.startsWith("qmake") ? "-query" : "--query", "QT_INSTALL_QML"], { encoding: "utf8" });
-    if (asked.status === 0 && asked.stdout.trim()) return asked.stdout.trim();
+    const ask = (what) => {
+      const asked = spawnSync(tool, [tool.startsWith("qmake") ? "-query" : "--query", what], { encoding: "utf8" });
+      return asked.status === 0 ? asked.stdout.trim() : "";
+    };
+    const qml = ask("QT_INSTALL_QML");
+    if (qml) return { qml, bins: ask("QT_INSTALL_BINS"), version: ask("QT_VERSION") };
+  }
+  return {};
+}
+
+// `qrc:/qt-project.org/imports/QtQuick/Controls/Basic/images/check.png`:
+// where a module of Qt's keeps the pictures its QML names, inside the plugin
+// that is the module. They are read out of it by Qt's own `qml` tool, into
+// `directory`, once.
+const KEPT = "qrc:/qt-project.org/imports";
+
+const EXTRACT = (uri, folder) => `import QtQml
+import Qt.labs.folderlistmodel
+import ${uri} as Module
+
+QtObject {
+    id: root
+    property FolderListModel folder: FolderListModel {
+        showDirs: false
+        folder: "${folder}"
+        onStatusChanged: if (status === FolderListModel.Ready) root.read()
+    }
+    property Timer late: Timer { interval: 5000; running: true; onTriggered: Qt.quit() }
+    function read() {
+        for (let i = 0; i < folder.count; i++) {
+            const name = folder.get(i, "fileName")
+            const get = new XMLHttpRequest()
+            get.open("GET", folder.folder + "/" + name, false)
+            get.responseType = "arraybuffer"
+            get.send()
+            console.log("kept", name, Qt.btoa(get.response))
+        }
+        Qt.quit()
+    }
+}
+`;
+
+function extract(tool, uri, folder, directory) {
+  mkdirSync(directory, { recursive: true });
+  const script = join(directory, ".extract.qml");
+  writeFileSync(script, EXTRACT(uri, folder));
+  const ran = spawnSync(tool, [script], {
+    encoding: "utf8",
+    timeout: 20000,
+    maxBuffer: 1 << 26,
+    // Without a terminal Qt logs to the journal; without a display it has
+    // nowhere to be.
+    env: { ...process.env, QT_FORCE_STDERR_LOGGING: "1", QML_XHR_ALLOW_FILE_READ: "1", QT_QPA_PLATFORM: "offscreen" },
+  });
+  if (ran.error) return ran.error.message;
+  for (const [, name, data] of ran.stderr.matchAll(/kept (\S+) (\S+)/g)) {
+    writeFileSync(join(directory, name), Buffer.from(data, "base64"));
   }
   return null;
 }
@@ -63,8 +118,33 @@ function described(directory) {
 // - `style`: what `import QtQuick.Controls` is, "Material" or "Fusion": a
 //   name, or a function of the file that imports it when the files of one
 //   build are not all of one style. Qt's default when there is none.
-export default function qml({ qmlc = "qmlc", args = [], qt = installed(), style } = {}) {
+export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
+  let asked;
+  const found = () => (asked ??= installed());
+  qt ??= process.env.QT_INSTALL_QML ?? found().qml ?? null;
   const styled = (importer) => (typeof style === "function" ? style(importer) : style);
+  let cache = join(runtime, "node_modules/.vite/qml-solid");
+  // The pictures of a module, by what its QML names them: next to the QML
+  // when the installation has them there, otherwise read out of the plugin
+  // when the QML names any. An `@2x` one is for a screen that is not asked
+  // about yet.
+  const kept = (module, about) => {
+    const folder = `${KEPT}/${module}/images`;
+    let directory = join(qt, module, "images");
+    if (!existsSync(directory)) {
+      const named = [...about.types.values()].some((file) => readFileSync(join(qt, module, file), "utf8").includes(folder));
+      if (!named) return [];
+      const { bins, version } = found();
+      directory = join(cache, version || "qt", module, "images");
+      if (!existsSync(directory)) {
+        const failed = extract(join(bins || "", "qml"), module.replaceAll("/", "."), folder, directory);
+        if (failed) console.warn(`qml-solid: the pictures of ${module} could not be read out of Qt: ${failed}`);
+      }
+    }
+    return readdirSync(directory)
+      .filter((name) => !name.startsWith(".") && !name.includes("@"))
+      .map((name) => [`${folder}/${name}`, join(directory, name)]);
+  };
   // A module that is put together here: one with QML files or a style, or
   // one the runtime has nothing of that only brings others. What the runtime
   // has whole (QtQuick) is left to it.
@@ -81,6 +161,9 @@ export default function qml({ qmlc = "qmlc", args = [], qt = installed(), style 
     // Before Vite's own: a script is told from any other `.js` file by who
     // imports it, and only here is that known.
     enforce: "pre",
+    configResolved(config) {
+      cache = join(config.cacheDir, "qml-solid");
+    },
     // Qt's own QML is outside the project.
     config(config) {
       if (!qt) return null;
@@ -123,6 +206,13 @@ export default function qml({ qmlc = "qmlc", args = [], qt = installed(), style 
         const chosen = new URLSearchParams(query).get("style");
         const brought = chosen ? [`${about.style.split(".").slice(0, -1).join(".")}.${chosen}`] : about.imports;
         for (const uri of brought.map(path).filter((uri) => has(uri))) lines.push(`export * from "qml-solid/${uri}";`);
+        const pictures = kept(module, about);
+        if (pictures.length > 0) {
+          lines.push(`import { resources as $resources } from ${JSON.stringify(join(runtime, natives()["./object"]))};`);
+          pictures.forEach(([url, file], index) => {
+            lines.push(`import $${index} from ${JSON.stringify(file)};`, `$resources.set(${JSON.stringify(url)}, $${index});`);
+          });
+        }
         return { code: lines.join("\n") + "\n", map: null };
       }
       const [file] = id.split("?");

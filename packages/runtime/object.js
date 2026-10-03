@@ -713,6 +713,16 @@ export function $url(value, base) {
   }
 }
 
+// `qrc:/…`: a file Qt keeps inside a program or one of its plugins, as the
+// pictures of a style of Qt Quick Controls are. A build says which there are
+// and where the browser has them; `located` is what a type loads a source by.
+export const resources = new Map();
+
+export function located(url) {
+  if (!/^(qrc)?:\//.test(url)) return url;
+  return resources.get(url.replace(/^(qrc)?:\/+/, "qrc:/")) ?? url;
+}
+
 // Creates a component's object apart from the tree that asked for it: a
 // delegate, a loaded item. `dispose` destroys it; so does the end of `owner`.
 export function instantiate(component, data, item, owner = item?.$owner ?? getOwner()) {

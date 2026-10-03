@@ -88,8 +88,10 @@ types Qt has in C++) and the QML files of the Qt that is installed, which it
 compiles as it does the project's. `qt` is where that Qt keeps its QML modules,
 when not where `qtpaths6 --query QT_INSTALL_QML` says; `style` is what
 `import QtQuick.Controls` is (`"Material"`, `"Fusion"`), or a function of the
-importing file that says. Qt's QML is read from the installation and is not
-part of this repository: what is built from it carries Qt's licence.
+importing file that says. The pictures a style names by `qrc:/` are inside
+its plugin; Qt's own `qml` tool reads them out, once, into Vite's cache. Qt's
+QML and pictures are read from the installation and are not part of this
+repository: what is built from them carries Qt's licence.
 
 ## Components
 

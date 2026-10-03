@@ -24,6 +24,16 @@ test("a module of Qt's is what the runtime has of it and the QML Qt has", async 
   expect(read.elide).toEqual([1, 1, 1]);
 });
 
+test("a picture Qt keeps inside a module is one the build has", async ({ page }) => {
+  await open(page, "modules");
+  await page.waitForFunction(() => window.objects.shelf.knot.status === 1);
+  const read = await page.evaluate(() => {
+    const { knot } = window.objects.shelf;
+    return [knot.source, knot.implicitWidth, knot.implicitHeight];
+  });
+  expect(read).toEqual(["qrc:/qt-project.org/imports/QtShelf/Pine/images/knot.png", 40, 20]);
+});
+
 test("the style of a module is chosen by the file that imports it", async ({ page }) => {
   await open(page, "modules-oak");
   expect(await page.evaluate(() => [window.objects.shelf.width, window.objects.shelf.height])).toEqual([60, 20]);
