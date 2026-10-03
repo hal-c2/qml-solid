@@ -764,7 +764,7 @@
       ],
       "qt": {
         "runnable": false,
-        "reason": "QtGraphs is not installed, and the data comes from the C++ singleton StockEngine. The Imagine style, from qtquickcontrols2.conf."
+        "reason": "QtGraphs is not installed. The data comes from the C++ singleton StockEngine, which corpus/standins/stocqt stands in for. The Imagine style, from qtquickcontrols2.conf."
       }
     },
     {
