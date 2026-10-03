@@ -307,11 +307,21 @@ function filter(point, item) {
   }
 }
 
+// Whether an item around `item` keeps the press from it: one that has
+// `$blocks(point, receiver)`, as a StackView has while it is busy.
+function blocked(point, item) {
+  for (let parent = parentOf(item); parent; parent = parentOf(parent)) {
+    if (parent.$blocks?.(point, item)) return true;
+  }
+  return false;
+}
+
 // Qt's `deliverPressOrReleaseEvent`.
 function press(point, hits) {
   let handlersOnly = false;
   asked.length = 0;
   for (const item of hits) {
+    if (!handlersOnly && blocked(point, item)) continue;
     if (!handlersOnly) filter(point, item);
     let accepted = false;
     const handlers = item.$handlers;
