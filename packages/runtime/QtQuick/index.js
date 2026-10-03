@@ -9,6 +9,7 @@ export { AnimatedImage } from "./AnimatedImage.js";
 export { AnimatedSprite } from "./AnimatedSprite.js";
 export { Canvas } from "./Canvas.js";
 export { DelegateModel, DelegateModelGroup } from "./DelegateModel.js";
+export { Drag, DropArea } from "./Drag.js";
 export { Flickable } from "./Flickable.js";
 export { FocusScope } from "./FocusScope.js";
 export { Font } from "./font.js";
