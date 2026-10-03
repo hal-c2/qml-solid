@@ -61,11 +61,32 @@ function common(self, role) {
   return all.explicit() ? all.own() : undefined;
 }
 
-// A group's colour: its own, else the palette's for every group, else that
-// of the palette this one follows (an item's follows its parent's: `$from`
-// is set by whatever gives items a palette), else Qt's.
+// What the palette was given for a role of a group, or the one it follows
+// was: not what either answers when nothing was said.
+function said(self, name, role) {
+  for (let at = self; at; at = at.$from?.()) {
+    const own = slot(at, `${name}$${role}`);
+    const value = own.explicit() ? own.get() : common(at, role);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+// A group's colour: its own, else the palette's for every group, else what
+// the palette this one follows was given (an item's follows its parent's:
+// `$from` is set by `palettes.js`, which gives items a palette), else the
+// colours of whatever has the palette (`$base`: a control's are its
+// style's), else Qt's.
 const part = (name) =>
-  group(each((role) => derived((self) => common(self, role) ?? self.$from?.()?.[name][role] ?? NUMBERS[name][role])));
+  group(
+    each((role) =>
+      derived((self) => common(self, role) ?? said(self.$from?.(), name, role) ?? (self.$base?.() ?? NUMBERS)[name][role]),
+    ),
+  );
+
+// The colours of a style, as a palette's defaults: the active ones, and what
+// is different of an object that is not enabled.
+export const colours = (active, disabled) => ({ active, inactive: active, disabled: { ...active, ...disabled } });
 
 const resolve = each((role) => (self) => self[self.$group?.() ?? "active"][role]);
 for (const name of Object.keys(NUMBERS)) {
