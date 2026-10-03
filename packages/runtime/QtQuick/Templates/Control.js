@@ -147,7 +147,6 @@ const VISUAL = [1, 2, 5];
 // `$handleMove`, `$handleRelease` and `$handleUngrab`, Qt's names.
 const live = {
   $accepts: 0,
-  $through: true,
   forceActiveFocus(reason = OtherFocusReason) {
     forceActiveFocus(this, reason);
   },

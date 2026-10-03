@@ -367,8 +367,7 @@ function ungrab(point, cancelled) {
 
 // What the mouse is over is told so, and what it no longer is over after
 // that. Something that hovers hides what is under it from the mouse, but not
-// what it is inside of. One that lets the mouse `$through` hides nothing: a
-// control of Qt Quick Controls, which ignores the hover it is told of.
+// what it is inside of.
 function hover(point, hits) {
   const was = point.hovered;
   const now = point.spare;
@@ -386,7 +385,7 @@ function hover(point, hits) {
     }
     if (item.$hover && item.$hovers(point)) {
       now.push(item);
-      if (!item.$through) blocker = item;
+      blocker = item;
     }
   }
   point.hovered = now;
