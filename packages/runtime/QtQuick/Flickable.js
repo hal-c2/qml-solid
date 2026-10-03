@@ -27,8 +27,8 @@ const SMOOTH = { left: 0, top: 0, behavior: "smooth" };
 
 // Puts the element where the properties say, when it may have forgotten: an
 // element scrolls only while it is in the page and shown.
-function restore(self) {
-  if (!self.$left && !self.$top) return;
+function restore(self, anywhere) {
+  if (!anywhere && !self.$left && !self.$top) return;
   self.$set = true;
   INSTANT.left = self.$left;
   INSTANT.top = self.$top;
@@ -77,6 +77,15 @@ function show(self, [minX, minY, extentWidth, extentHeight, contentX, contentY, 
   INSTANT.left = left;
   INSTANT.top = top;
   self.$viewport.scrollTo(INSTANT);
+  // An element that snaps goes to where an item is, and the items of rows
+  // that have just come are not where they will be: it is told again once
+  // what changed has settled.
+  if (!self.$viewport.style.scrollSnapType || self.$again) return;
+  self.$again = true;
+  queueMicrotask(() => {
+    self.$again = false;
+    restore(self, true);
+  });
 }
 
 const SCROLLEND = "onscrollend" in window;

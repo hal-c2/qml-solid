@@ -175,6 +175,11 @@ function refresh(self, state) {
   if (current !== state.shown) {
     state.shown = current;
     state.follow = self.highlightFollowsCurrentItem;
+  } else if (!self.moving && self.highlightRangeMode === StrictlyEnforceRange) {
+    // With a range that is enforced the current item is in it wherever the
+    // rows that came, went or grew have left it, unless the user is moving
+    // the view.
+    state.follow = true;
   }
   if (current < 0 || current >= count) current = -1;
   // Where the current item is decides which rows are needed.
