@@ -92,6 +92,7 @@ pub enum QmlMember<'a> {
     Signal(QmlSignalDeclaration<'a>),
     Function(ArenaBox<'a, Function<'a>>),
     InlineComponent(QmlInlineComponent<'a>),
+    Enum(QmlEnumDeclaration<'a>),
 }
 
 /// `name: value`, including `id: name` and `onSignal: handler`.
@@ -153,4 +154,19 @@ pub struct QmlInlineComponent<'a> {
     pub span: Span,
     pub name: IdentifierName<'a>,
     pub object: QmlObject<'a>,
+}
+
+/// `enum Name { First, Second = 4 }`.
+#[derive(Debug)]
+pub struct QmlEnumDeclaration<'a> {
+    pub span: Span,
+    pub name: IdentifierName<'a>,
+    pub members: ArenaVec<'a, QmlEnumMember<'a>>,
+}
+
+#[derive(Debug)]
+pub struct QmlEnumMember<'a> {
+    pub name: IdentifierName<'a>,
+    /// What was written, or one more than the member before.
+    pub value: i64,
 }

@@ -74,7 +74,7 @@ fn what_an_instance_sets_must_exist() {
     // The types are the imports', not the compiler's.
     assert_eq!(
         lowered_in(&[("App", "Item {}")], "App").unwrap_err(),
-        ["`Item` is not a type: no imported module the web target knows has it, and no `Item.qml` is next to this file"]
+        ["`Item` is not a type of anything the file imports"]
     );
 }
 

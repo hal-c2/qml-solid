@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Serve the web example with Vite; QML recompiles as it is edited"
-#MISE alias="dev"
 #MISE depends=["build:compiler", "packages"]
 set -euo pipefail
 exec pnpm --filter qml-solid-example-web dev "$@"

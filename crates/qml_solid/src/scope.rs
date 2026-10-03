@@ -664,7 +664,7 @@ fn walk_leaves<'a>(object: &QmlObject<'a>, visitor: &mut impl Visit<'a>) {
             }
             QmlMember::Function(function) => visitor.visit_function(function, ScopeFlags::Function),
             QmlMember::InlineComponent(inline) => walk_leaves(&inline.object, visitor),
-            QmlMember::Signal(_) => {}
+            QmlMember::Signal(_) | QmlMember::Enum(_) => {}
         }
     }
 }

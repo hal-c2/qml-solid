@@ -13,9 +13,11 @@
 
 mod build;
 mod dialects;
+pub mod discover;
 mod lower;
 mod project;
 mod qt;
+mod quick;
 mod registry;
 mod resolve;
 mod scope;
@@ -39,6 +41,9 @@ pub struct Options {
     pub host_module: String,
     /// Module that exports the unit helpers and `Qt`.
     pub runtime_module: String,
+    /// What Qt's modules are imported under: `QtQuick.Controls` is
+    /// `qml-solid/QtQuick/Controls`, and the object model `qml-solid/object`.
+    pub qt_module: String,
     /// Extension put on the import of a sibling component (`./Name.qml`).
     pub component_extension: String,
     /// The files the component is compiled with: what their instances of it
@@ -47,6 +52,10 @@ pub struct Options {
     /// what it declares, and a type it does not know is taken to be a
     /// component next to it.
     pub project: Option<Project>,
+    /// The QML files in the file's directory and under it, by their path
+    /// from it (`towers/Melee.qml`): what a path may name that is only put
+    /// together when the program runs. None when nobody looked.
+    pub files: Option<Vec<String>>,
     pub solid: SolidOptions,
 }
 
@@ -56,8 +65,10 @@ impl Default for Options {
             name: "Component".to_string(),
             host_module: "qml-solid/host".to_string(),
             runtime_module: "qml-solid/runtime".to_string(),
+            qt_module: "qml-solid".to_string(),
             component_extension: ".qml".to_string(),
             project: None,
+            files: None,
             solid: SolidOptions::default(),
         }
     }
@@ -94,17 +105,35 @@ impl Error {
 /// component.
 pub fn compile(source: &str, options: &Options) -> Result<Output, Vec<Error>> {
     let allocator = Allocator::default();
-    let program = lower(&allocator, source, options)?;
-    solidjs_compiler::compile_program(&allocator, program, source, &options.solid)
+    let (program, target) = lower(&allocator, source, options)?;
+    let mut solid = options.solid.clone();
+    if target == Target::Quick {
+        // A binding is a getter the object's slot memoizes itself, and a
+        // conditional in one is just an expression.
+        solid.wrap_conditionals = false;
+        solid.memo_wrapper = solidjs_compiler::Wrapper::Disabled;
+        // Nothing of the DOM is in the output: what makes an object is
+        // Solid's own `createComponent`.
+        if solid.module_name == SolidOptions::default().module_name {
+            solid.module_name = "solid-js".into();
+        }
+    }
+    solidjs_compiler::compile_program(&allocator, program, source, &solid)
         .map(|output| Output { code: output.code, map: output.source_map })
         .map_err(|error| vec![Error::new(error.to_string(), Span::default())])
+}
+
+/// Compiles a script a QML file imports (`import "logic.js" as Logic`) to
+/// the module that import is: what the script declares, exported.
+pub fn compile_script(source: &str, options: &Options) -> Result<Output, Vec<Error>> {
+    quick::script::compile(source, options).map(|code| Output { code, map: None })
 }
 
 /// The tree handed to Solid's compiler, printed. Solid never sees this text;
 /// it is here to look at what the lowering built.
 pub fn lowered_source(source: &str, options: &Options) -> Result<String, Vec<Error>> {
     let allocator = Allocator::default();
-    let program = lower(&allocator, source, options)?;
+    let (program, _) = lower(&allocator, source, options)?;
     Ok(oxc_codegen::Codegen::new().build(&program).code)
 }
 
@@ -121,11 +150,20 @@ pub(crate) fn parse_errors(diagnostics: Diagnostics) -> Vec<Error> {
         .collect()
 }
 
+/// What the file's types are, which decides everything about the output.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Target {
+    /// A dialect of the registry: its elements are the target's own.
+    Dialect,
+    /// Qt's modules: objects of the QtQuick runtime.
+    Quick,
+}
+
 fn lower<'a>(
     allocator: &'a Allocator,
     source: &'a str,
     options: &Options,
-) -> Result<Program<'a>, Vec<Error>> {
+) -> Result<(Program<'a>, Target), Vec<Error>> {
     let parsed = Parser::new(allocator, source, SourceType::ts()).parse_qml();
     if !parsed.diagnostics.is_empty() {
         return Err(parse_errors(parsed.diagnostics));
@@ -136,10 +174,14 @@ fn lower<'a>(
     let open = options.project.is_none();
     let mut project = options.project.clone().unwrap_or_default();
     project.insert(&options.name, project::summarize(&parsed.document));
-    let usages = project.usages();
     let types = Types::of(&parsed.document.imports);
-
     let b = B::new(allocator);
+    if !types.has_dialect() {
+        let program = quick::lower(b, source, parsed.document, &project, options)?;
+        return Ok((program, Target::Quick));
+    }
+    let usages = project.usages();
+
     let mut errors = Vec::new();
     let scopes = Scopes::analyze(&parsed.document, &mut errors);
     let mut lower = Lower::new(b, &scopes, types, &project, &usages, &options.name, open);
@@ -175,5 +217,5 @@ fn lower<'a>(
     for (index, import) in imports.into_iter().enumerate() {
         program.body.insert(index, import);
     }
-    Ok(program)
+    Ok((program, Target::Dialect))
 }

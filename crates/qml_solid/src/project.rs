@@ -10,11 +10,13 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use oxc_allocator::Allocator;
+use oxc_ast::ast::{Expression, IdentifierReference};
+use oxc_ast_visit::Visit;
 use oxc_parser::{Parser, qml::ast::*};
 use oxc_span::SourceType;
 
 use crate::{
-    Error, parse_errors,
+    Error, parse_errors, qt,
     registry::{Element, Prop, Types},
     scope::{Own, alias_target, classify, object_id},
 };
@@ -24,6 +26,11 @@ use crate::{
 #[derive(Debug, Clone, Default)]
 pub struct Project {
     files: HashMap<String, Summary>,
+    /// The project's own modules: what `import Thermostat` brings, by the
+    /// name of each type and the file it is.
+    modules: HashMap<String, HashMap<String, String>>,
+    /// The modules each file is a type of.
+    memberships: HashMap<String, Vec<String>>,
 }
 
 /// A file's component or one of its inline components.
@@ -37,6 +44,61 @@ pub(crate) struct Key {
 pub(crate) struct Summary {
     components: Vec<Interface>,
     instances: Vec<Instance>,
+    /// What the file imports, in the order it does.
+    pub imports: Vec<Import>,
+    /// `pragma Singleton`: the file is one object, not a type to instantiate.
+    pub is_singleton: bool,
+    shapes: Vec<Shape>,
+}
+
+/// One `import` of a file.
+#[derive(Debug, Clone)]
+pub(crate) struct Import {
+    pub source: Source,
+    /// `import QtQuick.Controls as C`: its types are `C.Button`.
+    pub alias: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Source {
+    /// A module, by its URI.
+    Module(String),
+    /// A directory or a JavaScript file, as written.
+    Path(String),
+}
+
+/// What a component declares, by name, for the files that use it: an instance
+/// is an object of the root's type with these members too.
+#[derive(Debug, Clone)]
+pub(crate) struct Shape {
+    inline: Option<String>,
+    /// The type of the root object, as written.
+    pub root: Vec<String>,
+    pub properties: HashMap<String, Declaration>,
+    /// A signal's parameter names.
+    pub signals: HashMap<String, Vec<String>>,
+    pub functions: HashSet<String>,
+    /// The properties whoever makes the object has to set, the inherited ones
+    /// the component asks for (`required name`) among them.
+    pub required: Vec<String>,
+    /// Objects written inside an instance go somewhere the component says,
+    /// not where its root type would put them.
+    pub has_default: bool,
+    /// `enum Theme { Light, Dark }`: the keys of each.
+    pub enums: HashMap<String, Vec<String>>,
+    /// The ids of its objects.
+    pub ids: HashSet<String>,
+    /// The names its scripts use that nothing in it declares: members of
+    /// Qt's types, mostly.
+    pub mentions: HashSet<String>,
+}
+
+/// A `property` declaration, as far as an instance cares.
+#[derive(Debug, Clone)]
+pub(crate) struct Declaration {
+    /// `int`, `var`, `alias`, `Component`, `Item`.
+    pub type_name: String,
+    pub is_list: bool,
 }
 
 /// What a component declares: the names an instance may set that are the
@@ -136,6 +198,76 @@ impl Project {
         Ok(())
     }
 
+    /// The directories the files import by path (`import "content"`), as the
+    /// keys their files are to be added under: `content` for `content/Clock`.
+    /// What is in them may import others, so this is asked again after they
+    /// are added.
+    pub fn directories(&self) -> Vec<String> {
+        let mut directories = BTreeSet::new();
+        for (file, summary) in &self.files {
+            for import in &summary.imports {
+                if let Source::Path(path) = &import.source
+                    && !path.ends_with(".js")
+                    && !path.ends_with(".mjs")
+                {
+                    directories.insert(join(directory(file), path));
+                }
+            }
+        }
+        directories.into_iter().collect()
+    }
+
+    /// Says the module `uri` has the type `name`, which is the file `file`:
+    /// what a `qmldir` says, or the build that makes the module.
+    pub fn add_type(&mut self, uri: &str, name: &str, file: &str) {
+        self.modules.entry(uri.to_string()).or_default().insert(name.to_string(), file.to_string());
+        let memberships = self.memberships.entry(file.to_string()).or_default();
+        if !memberships.iter().any(|module| module == uri) {
+            memberships.push(uri.to_string());
+        }
+    }
+
+    /// The modules `file` is a type of: it sees their other types as it sees
+    /// the files next to it.
+    pub(crate) fn modules_of(&self, file: &str) -> &[String] {
+        self.memberships.get(file).map_or(&[], Vec::as_slice)
+    }
+
+    /// Whether the file was added, and parsed.
+    pub fn has(&self, file: &str) -> bool {
+        self.files.contains_key(file)
+    }
+
+    /// The names QML finds only when the program runs: an id of one
+    /// component, or something its root declares, that another one's scripts
+    /// use. An object is made in the context of whatever made it, and a name
+    /// its own component does not have is looked for there.
+    ///
+    /// Which names those are is settled when each file is compiled; this is
+    /// what they can be, so that the components between the two know to
+    /// pass the context on. A name some type of Qt's has is taken to be
+    /// that, unless it is an id: nobody names an object for a property.
+    pub(crate) fn dynamic_names(&self) -> HashSet<String> {
+        let mut has: HashSet<&str> = HashSet::new();
+        for shape in self.files.values().flat_map(|summary| &summary.shapes) {
+            has.extend(shape.ids.iter().map(String::as_str));
+            let declared =
+                shape.properties.keys().chain(shape.signals.keys()).chain(&shape.functions).map(String::as_str);
+            has.extend(declared.filter(|name| !qt::is_member_name(name)));
+        }
+        self.files
+            .values()
+            .flat_map(|summary| &summary.shapes)
+            .flat_map(|shape| shape.mentions.iter().filter(|name| has.contains(name.as_str())))
+            .cloned()
+            .collect()
+    }
+
+    /// The file the type `name` of the project's module `uri` is.
+    pub(crate) fn module_type(&self, uri: &str, name: &str) -> Option<&str> {
+        self.modules.get(uri)?.get(name).map(String::as_str)
+    }
+
     pub(crate) fn insert(&mut self, name: &str, summary: Summary) {
         self.files.insert(name.to_string(), summary);
     }
@@ -152,6 +284,14 @@ impl Project {
         } else {
             None
         }
+    }
+
+    pub(crate) fn summary(&self, file: &str) -> Option<&Summary> {
+        self.files.get(file)
+    }
+
+    pub(crate) fn shape(&self, key: &Key) -> Option<&Shape> {
+        self.files.get(&key.file)?.shapes.iter().find(|shape| shape.inline == key.inline)
     }
 
     pub(crate) fn interface(&self, key: &Key) -> Option<&Interface> {
@@ -244,7 +384,163 @@ pub(crate) fn summarize(document: &QmlDocument<'_>) -> Summary {
     let mut summary = Summary::default();
     let types = Types::of(&document.imports);
     component(&mut summary, types, None, &document.root);
+    summary.imports = document
+        .imports
+        .iter()
+        .map(|import| Import {
+            source: match &import.source {
+                QmlImportSource::Module(module) => Source::Module(module.to_string()),
+                QmlImportSource::Path(path) => Source::Path((*path).to_string()),
+            },
+            alias: import.alias.as_ref().map(|alias| alias.name.to_string()),
+        })
+        .collect();
+    summary.is_singleton = document.pragmas.iter().any(|pragma| pragma.name == "Singleton");
+    shape(&mut summary, None, &document.root);
     summary
+}
+
+fn shape(summary: &mut Summary, inline: Option<&str>, root: &QmlObject<'_>) {
+    let mut shape = Shape {
+        inline: inline.map(str::to_string),
+        root: root.type_name.parts.iter().map(|part| (*part).to_string()).collect(),
+        properties: HashMap::new(),
+        signals: HashMap::new(),
+        functions: HashSet::new(),
+        required: Vec::new(),
+        has_default: false,
+        enums: HashMap::new(),
+        ids: HashSet::new(),
+        mentions: HashSet::new(),
+    };
+    let mut names = Names { ids: HashSet::new(), declared: HashSet::new(), mentions: HashSet::new() };
+    names.object(root);
+    shape.mentions =
+        names.mentions.into_iter().filter(|name| !names.ids.contains(name) && !names.declared.contains(name)).collect();
+    shape.ids = names.ids;
+    for member in &root.members {
+        match member {
+            QmlMember::Property(property) => {
+                let name = property.name.name.to_string();
+                if property.is_required {
+                    shape.required.push(name.clone());
+                }
+                shape.has_default |= property.is_default;
+                if let Some(type_name) = &property.type_name {
+                    shape.properties.insert(
+                        name,
+                        Declaration { type_name: type_name.name.to_string(), is_list: type_name.is_list },
+                    );
+                }
+            }
+            QmlMember::Signal(signal) => {
+                shape.signals.insert(
+                    signal.name.name.to_string(),
+                    signal.params.iter().map(|param| param.name.name.to_string()).collect(),
+                );
+            }
+            QmlMember::Function(function) => {
+                if let Some(id) = &function.id {
+                    shape.functions.insert(id.name.to_string());
+                }
+            }
+            QmlMember::Enum(declaration) => {
+                shape.enums.insert(
+                    declaration.name.name.to_string(),
+                    declaration.members.iter().map(|member| member.name.name.to_string()).collect(),
+                );
+            }
+            _ => {}
+        }
+    }
+    summary.shapes.push(shape);
+    inline_shapes(summary, root);
+}
+
+/// The ids of a component's objects and the names its scripts use. An inline
+/// component is one of its own.
+struct Names {
+    ids: HashSet<String>,
+    /// What any of its objects declares.
+    declared: HashSet<String>,
+    mentions: HashSet<String>,
+}
+
+impl Names {
+    fn object(&mut self, object: &QmlObject<'_>) {
+        for member in &object.members {
+            match member {
+                QmlMember::Property(property) => {
+                    self.declared.insert(property.name.name.to_string());
+                }
+                QmlMember::Signal(signal) => {
+                    self.declared.insert(signal.name.name.to_string());
+                }
+                QmlMember::Function(function) => {
+                    self.declared.extend(function.id.as_ref().map(|id| id.name.to_string()));
+                }
+                _ => {}
+            }
+            match member {
+                QmlMember::Object(child) => self.object(child),
+                QmlMember::Binding(QmlBinding {
+                    name,
+                    value: QmlBindingValue::Expression(Expression::Identifier(id)),
+                    ..
+                }) if name.as_simple() == Some("id") => {
+                    self.ids.insert(id.name.to_string());
+                }
+                QmlMember::Binding(QmlBinding { value, .. })
+                | QmlMember::Property(QmlPropertyDeclaration { value: Some(value), .. }) => match value {
+                    QmlBindingValue::Expression(expression) => self.visit_expression(expression),
+                    QmlBindingValue::Statement(statement) => self.visit_statement(statement),
+                    QmlBindingValue::Object(child) => self.object(child),
+                    QmlBindingValue::Objects(children) => {
+                        for child in children {
+                            self.object(child);
+                        }
+                    }
+                },
+                QmlMember::Function(function) => {
+                    if let Some(body) = &function.body {
+                        self.visit_function_body(body);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl<'a> Visit<'a> for Names {
+    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        if identifier.name.starts_with(|c: char| c.is_ascii_lowercase() || c == '_') {
+            self.mentions.insert(identifier.name.to_string());
+        }
+    }
+}
+
+/// Inline components may be declared anywhere in the file.
+fn inline_shapes(summary: &mut Summary, object: &QmlObject<'_>) {
+    for member in &object.members {
+        match member {
+            QmlMember::Object(child) => inline_shapes(summary, child),
+            QmlMember::Binding(QmlBinding { value, .. })
+            | QmlMember::Property(QmlPropertyDeclaration { value: Some(value), .. }) => match value {
+                QmlBindingValue::Object(child) => inline_shapes(summary, child),
+                QmlBindingValue::Objects(children) => {
+                    for child in children {
+                        inline_shapes(summary, child);
+                    }
+                }
+                _ => {}
+            },
+            QmlMember::InlineComponent(inline) => {
+                shape(summary, Some(inline.name.name.as_str()), &inline.object);
+            }
+            _ => {}
+        }
+    }
 }
 
 /// The aliases of the component being walked: they make its interface reach
@@ -404,4 +700,30 @@ fn instance<'a>(
 /// `font { ... }`: an object whose "type" is a lowercase property name.
 pub(crate) fn is_group(object: &QmlObject<'_>) -> bool {
     object.type_name.parts[0].starts_with(|c: char| c.is_ascii_lowercase())
+}
+
+/// The directory of a file's key: `content` of `content/Clock`.
+pub(crate) fn directory(file: &str) -> &str {
+    file.rsplit_once('/').map_or("", |(directory, _)| directory)
+}
+
+/// `path` from `directory`, without `.` and with `..` taken up where it can be.
+pub(crate) fn join(directory: &str, path: &str) -> String {
+    let absolute = path.starts_with('/') || directory.starts_with('/');
+    let mut parts: Vec<&str> = if path.starts_with('/') {
+        Vec::new()
+    } else {
+        directory.split('/').filter(|part| !part.is_empty()).collect()
+    };
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|last| *last != "..") => {
+                parts.pop();
+            }
+            part => parts.push(part),
+        }
+    }
+    let joined = parts.join("/");
+    if absolute { format!("/{joined}") } else { joined }
 }

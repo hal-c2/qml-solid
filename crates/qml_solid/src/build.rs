@@ -10,7 +10,7 @@ use oxc_span::{SPAN, SourceType};
 use oxc_str::{Ident, Str};
 use oxc_syntax::{
     number::NumberBase,
-    operator::{BinaryOperator, UnaryOperator},
+    operator::{BinaryOperator, LogicalOperator, UnaryOperator},
 };
 
 #[derive(Clone, Copy)]
@@ -63,6 +63,10 @@ impl<'a> B<'a> {
 
     pub(crate) fn boolean(&self, value: bool) -> Expression<'a> {
         Expression::new_boolean_literal(SPAN, value, &self.ast())
+    }
+
+    pub(crate) fn null(&self) -> Expression<'a> {
+        Expression::new_null_literal(SPAN, &self.ast())
     }
 
     pub(crate) fn void_0(&self) -> Expression<'a> {
@@ -120,6 +124,69 @@ impl<'a> B<'a> {
         alternate: Expression<'a>,
     ) -> Expression<'a> {
         Expression::new_conditional_expression(SPAN, test, consequent, alternate, &self.ast())
+    }
+
+    /// `left ?? right`
+    pub(crate) fn coalesce(&self, left: Expression<'a>, right: Expression<'a>) -> Expression<'a> {
+        Expression::new_logical_expression(SPAN, left, LogicalOperator::Coalesce, right, &self.ast())
+    }
+
+    /// `new callee(arguments)`
+    pub(crate) fn new_(
+        &self,
+        callee: Expression<'a>,
+        arguments: impl IntoIterator<Item = Expression<'a>>,
+    ) -> Expression<'a> {
+        let arguments =
+            ArenaVec::from_iter_in(arguments.into_iter().map(Argument::from), &self.ast());
+        Expression::new_new_expression(SPAN, callee, None, arguments, &self.ast())
+    }
+
+    /// `import.meta.url`
+    pub(crate) fn import_meta_url(&self) -> Expression<'a> {
+        let meta = Expression::new_import_meta(SPAN, &self.ast());
+        self.member(meta, "url")
+    }
+
+    /// `[elements]`
+    pub(crate) fn array(&self, elements: impl IntoIterator<Item = Expression<'a>>) -> Expression<'a> {
+        let elements = ArenaVec::from_iter_in(
+            elements.into_iter().map(ArrayExpressionElement::from),
+            &self.ast(),
+        );
+        Expression::new_array_expression(SPAN, elements, &self.ast())
+    }
+
+    /// `{ key: value, ... }`, the keys built here.
+    pub(crate) fn record(
+        &self,
+        entries: impl IntoIterator<Item = (String, Expression<'a>)>,
+    ) -> Expression<'a> {
+        let properties = ArenaVec::from_iter_in(
+            entries.into_iter().map(|(key, value)| {
+                ObjectPropertyKind::new_object_property(
+                    SPAN,
+                    PropertyKind::Init,
+                    PropertyKey::StaticIdentifier(IdentifierName::boxed(
+                        SPAN,
+                        self.ident(&key),
+                        &self.ast(),
+                    )),
+                    value,
+                    false,
+                    false,
+                    false,
+                    &self.ast(),
+                )
+            }),
+            &self.ast(),
+        );
+        Expression::new_object_expression(SPAN, properties, &self.ast())
+    }
+
+    /// `(() => { statements })()`
+    pub(crate) fn iife(&self, statements: ArenaVec<'a, Statement<'a>>) -> Expression<'a> {
+        self.call(self.arrow_block(&[], statements), [])
     }
 
     /// `{ "key": value, ... }`
@@ -339,6 +406,20 @@ impl<'a> B<'a> {
         ))
     }
 
+    /// `export declaration`
+    pub(crate) fn export(&self, declaration: Declaration<'a>) -> Statement<'a> {
+        Statement::ExportDeclaration(ExportDeclaration::boxed(SPAN, declaration, &self.ast()))
+    }
+
+    /// `export default expression;`
+    pub(crate) fn export_default(&self, expression: Expression<'a>) -> Statement<'a> {
+        Statement::ExportDefaultDeclaration(ExportDefaultDeclaration::boxed(
+            SPAN,
+            ExportDefaultDeclarationKind::from(expression),
+            &self.ast(),
+        ))
+    }
+
     fn import(
         &self,
         specifiers: ArenaVec<'a, ImportDeclarationSpecifier<'a>>,
@@ -374,6 +455,16 @@ impl<'a> B<'a> {
             &self.ast(),
         );
         self.import(specifiers, source)
+    }
+
+    /// `import * as name from "source";`
+    pub(crate) fn import_namespace(&self, name: &str, source: &str) -> Statement<'a> {
+        let specifier = ImportDeclarationSpecifier::new_import_namespace_specifier(
+            SPAN,
+            BindingIdentifier::new(SPAN, self.ident(name), &self.ast()),
+            &self.ast(),
+        );
+        self.import(self.vec1(specifier), source)
     }
 
     /// `import name from "source";`
@@ -447,7 +538,8 @@ impl<'a> B<'a> {
     }
 
     /// `<name attributes>children</name>`. A lowercase name is a DOM tag, any
-    /// other name a reference to a component in scope.
+    /// other name a reference to a component in scope, `Space.Name` one to a
+    /// member of a namespace in scope.
     pub(crate) fn element(
         &self,
         name: &str,
@@ -457,6 +549,17 @@ impl<'a> B<'a> {
         let element_name = || {
             if name.starts_with(|c: char| c.is_ascii_lowercase()) {
                 JSXElementName::Identifier(JSXIdentifier::boxed(SPAN, self.str(name), &self.ast()))
+            } else if let Some((space, member)) = name.split_once('.') {
+                JSXElementName::MemberExpression(JSXMemberExpression::boxed(
+                    SPAN,
+                    JSXMemberExpressionObject::IdentifierReference(IdentifierReference::boxed(
+                        SPAN,
+                        self.ident(space),
+                        &self.ast(),
+                    )),
+                    JSXIdentifier::new(SPAN, self.str(member), &self.ast()),
+                    &self.ast(),
+                ))
             } else {
                 JSXElementName::IdentifierReference(IdentifierReference::boxed(
                     SPAN,

@@ -9,7 +9,7 @@
 pub mod ast;
 
 use oxc_allocator::ArenaVec;
-use oxc_ast::ast::{Comment, IdentifierName};
+use oxc_ast::ast::{Comment, Expression, IdentifierName, ObjectPropertyKind};
 use oxc_diagnostics::Diagnostics;
 
 use crate::{
@@ -56,6 +56,7 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
     }
 
     fn parse_qml_document(&mut self) -> QmlDocument<'a> {
+        self.lexer.qml = true;
         self.token = self.lexer.first_token();
         let start = self.cur_start();
 
@@ -172,9 +173,7 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
                 return Some(QmlMember::Function(function));
             }
             Kind::Enum if self.qml_next_is_name() => {
-                let span = self.cur_token().span();
-                self.set_fatal_error(diagnostics::qml("QML enums are not supported yet", span));
-                return None;
+                return Some(QmlMember::Enum(self.parse_qml_enum()));
             }
             Kind::At => {
                 let span = self.cur_token().span();
@@ -300,6 +299,44 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
         QmlSignalParameter { name: self.parse_qml_name(), type_name: Some(type_name) }
     }
 
+    fn parse_qml_enum(&mut self) -> QmlEnumDeclaration<'a> {
+        let start = self.cur_start();
+        self.bump_any();
+        let name = self.parse_qml_name();
+        let opening_span = self.cur_token().span();
+        self.expect(Kind::LCurly);
+        let mut members = ArenaVec::new_in(&self.ast);
+        let mut next = 0;
+        while !self.at(Kind::RCurly) && !self.has_fatal_error() {
+            let name = self.parse_qml_name();
+            let value = if self.eat(Kind::Eq) {
+                let negative = self.eat(Kind::Minus);
+                let span = self.cur_token().span();
+                let text = self.cur_src();
+                let written = match text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+                    Some(digits) => i64::from_str_radix(digits, 16).ok(),
+                    None => text.parse().ok(),
+                };
+                let Some(written) = written.filter(|_| self.cur_kind().is_number()) else {
+                    self.set_fatal_error(diagnostics::qml("An enum's value is a whole number", span));
+                    break;
+                };
+                self.bump_any();
+                if negative { -written } else { written }
+            } else {
+                next
+            };
+            next = value + 1;
+            members.push(QmlEnumMember { name, value });
+            if !self.eat(Kind::Comma) {
+                break;
+            }
+        }
+        self.expect_closing(Kind::RCurly, opening_span);
+        self.bump(Kind::Semicolon);
+        QmlEnumDeclaration { span: self.end_span(start), name, members }
+    }
+
     fn parse_qml_inline_component(&mut self) -> QmlInlineComponent<'a> {
         let start = self.cur_start();
         self.bump_any();
@@ -347,13 +384,28 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
 
     /// `name: { ... }` is an object literal when it parses as one and a script
     /// block otherwise, which is how Qt's own parser resolves the ambiguity.
+    /// `{ a }` and `{ a = b }` are both to JavaScript's grammar, the second
+    /// until it turns out not to be a pattern; in QML they are blocks.
     fn parse_qml_braced_value(&mut self) -> QmlBindingValue<'a> {
         let checkpoint = self.checkpoint_with_error_recovery();
         let errors_before = self.errors_count();
+        let start = self.cur_token().span().start;
         let value = self.parse_qml_expression_value();
-        if self.fatal_error.is_none() && self.errors_count() == errors_before {
+        let initialized = self.state.cover_initialized_name.keys().any(|at| *at >= start);
+        let is_literal = match &value {
+            QmlBindingValue::Expression(Expression::ObjectExpression(object)) => {
+                object.properties.is_empty()
+                    || object.properties.iter().any(|property| match property {
+                        ObjectPropertyKind::ObjectProperty(property) => !property.shorthand,
+                        ObjectPropertyKind::SpreadProperty(_) => true,
+                    })
+            }
+            _ => true,
+        };
+        if self.fatal_error.is_none() && self.errors_count() == errors_before && !initialized && is_literal {
             return value;
         }
+        self.state.cover_initialized_name.retain(|at, _| *at < start);
         self.rewind(checkpoint);
         QmlBindingValue::Statement(
             self.context_add(Context::Return, |p| p.parse_block_statement()),

@@ -103,6 +103,11 @@ impl Types {
         Self { dialect }
     }
 
+    /// Whether the file imports a dialect: if not, its types are Qt's.
+    pub(crate) fn has_dialect(&self) -> bool {
+        self.dialect.is_some()
+    }
+
     pub(crate) fn lookup(&self, name: &str) -> Option<Type> {
         (self.dialect?.lookup)(name)
     }

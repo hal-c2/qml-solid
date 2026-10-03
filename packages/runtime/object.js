@@ -28,6 +28,8 @@ import {
 const WRITABLE = { ownedWrite: true };
 // A binding gives a value, never a promise of one.
 const SYNC = { sync: true };
+// What `Qt.binding(f)` marks its function with: assigning one binds.
+const BINDING = Symbol.for("qml-solid.binding");
 
 const hidden = (object, key, value) =>
   Object.defineProperty(object, key, { value, writable: true, configurable: true });
@@ -64,6 +66,24 @@ export const group = (properties) => ({ [GROUP]: properties });
 
 const next = (version) => version + 1;
 
+// An effect's callback runs while Solid settles what changed, and what it
+// assigns is settled by the same flush: it must not ask for another.
+let settling = 0;
+function settled(work, ...args) {
+  settling++;
+  try {
+    return work(...args);
+  } finally {
+    settling--;
+  }
+}
+
+// What a type's method does once it has changed something, so that what
+// depends on the change is up to date when it returns, as it is in QML.
+export function settle() {
+  if (!settling) flush();
+}
+
 class Slot {
   constructor(self, key, initial, resolve, whole, member) {
     this.self = self;
@@ -73,17 +93,9 @@ class Slot {
     // `bold` for `font.bold`, which `font: other.font` gives too.
     this.whole = whole;
     this.member = member;
-    const props = self.$props;
-    const descriptor = Object.getOwnPropertyDescriptor(props, key);
-    // A binding: evaluated when first read and again when what it read
-    // changes, however many readers there are. An item it makes
-    // (`background: Rectangle {}`) is made as a child of this one.
-    this.bound = descriptor?.get
-      ? runWithOwner(self.$owner, () =>
-          createMemo(() => complete(() => inside(self.$node ? self : null, () => props[key])), SYNC),
-        )
-      : null;
-    this.given = descriptor && !descriptor.get ? descriptor.value : undefined;
+    this.bound = null;
+    this.given = undefined;
+    this.take(self.$props, key);
     this.assigned = false;
     this.value = undefined;
     // Set by whatever lays the object out: a positioner, a layout, a view.
@@ -95,6 +107,30 @@ class Slot {
     this.version = null;
     this.bump = null;
     this.given$ = resolve ? () => this.own() : null;
+  }
+
+  // What the object's creator gave the property: `props[key]`.
+  take(props, key) {
+    const self = this.self;
+    const descriptor = Object.getOwnPropertyDescriptor(props, key);
+    // A binding: evaluated when first read and again when what it read
+    // changes, however many readers there are. An item it makes
+    // (`background: Rectangle {}`) is made as a child of this one.
+    this.bound = descriptor?.get
+      ? runWithOwner(self.$owner, () =>
+          createMemo(() => complete(() => inside(self.$node ? self : null, () => props[key])), SYNC),
+        )
+      : null;
+    this.given = descriptor && !descriptor.get ? descriptor.value : undefined;
+  }
+
+  // The same from somewhere else: what an instance binds to an alias is a
+  // binding of the property the alias names.
+  bind(props, key) {
+    this.take(props, key);
+    this.assigned = false;
+    this.value = undefined;
+    this.changed();
   }
 
   get() {
@@ -137,15 +173,27 @@ class Slot {
   // An assignment: it replaces the binding, as in QML, and what depends on
   // the property is up to date when it returns.
   set(value) {
-    if (this.write(value)) flush();
+    if (this.write(value) && !settling) flush();
   }
 
   // The same without settling what depends on it: for a type's own writes,
   // which an animation makes every frame.
   write(value) {
+    if (typeof value === "function" && value[BINDING]) return this.rebind(value);
     if (this.assigned && Object.is(this.value, value)) return false;
     this.assigned = true;
     this.value = value;
+    this.changed();
+    return true;
+  }
+
+  // `x = Qt.binding(f)`: bound again, by an assignment. `this` in `f` is
+  // the object.
+  rebind(compute) {
+    const self = this.self;
+    this.bound = runWithOwner(self.$owner, () => createMemo(() => compute.call(self), SYNC));
+    this.assigned = false;
+    this.value = undefined;
     this.changed();
     return true;
   }
@@ -310,7 +358,7 @@ export function whenComplete(work) {
 // A render effect that waits likewise: `compute` reads properties, `apply`
 // writes what it returned to the DOM.
 export function effect(compute, apply) {
-  whenComplete(() => createRenderEffect(compute, apply));
+  whenComplete(() => createRenderEffect(compute, (...args) => settled(apply, ...args)));
 }
 
 function complete(make) {
@@ -339,7 +387,90 @@ export function inside(item, make) {
   }
 }
 
+// A component's root is two things at once: the object its file describes
+// and the instance somebody wrote (`Clock { city: "Oslo" }`). `own` is what
+// the file binds, `given` what the instance does, which wins; a handler both
+// have is run for both, the file's first.
+function inherit(own, given) {
+  if (given.$given) given = inherit(given, given.$given);
+  const props = {};
+  for (const key of Object.keys(own)) {
+    if (key !== "$given") Object.defineProperty(props, key, Object.getOwnPropertyDescriptor(own, key));
+  }
+  for (const key of Object.keys(given)) {
+    // Its children are put where the component says, and the object itself
+    // is the one the component made.
+    // What it finds names in is its own context, not the one it was made in.
+    if (key === "children" || key === "$self" || key === "$given" || key === "$context") continue;
+    const descriptor = Object.getOwnPropertyDescriptor(given, key);
+    if (!(key in own)) Object.defineProperty(props, key, descriptor);
+    else if (key === "$declare") props.$declare = [own.$declare, given.$declare].flat();
+    else if (key === "$attach") props.$attach = [...new Set([...own.$attach, ...given.$attach])];
+    else if (key === "$functions" || key === "$aliases") props[key] = { ...own[key], ...given[key] };
+    else if (HANDLER.test(key)) {
+      props[key] = (...args) => {
+        own[key]?.(...args);
+        return given[key]?.(...args);
+      };
+    } else Object.defineProperty(props, key, descriptor);
+  }
+  return props;
+}
+
+// `onClicked`, `Keys$onPressed`, `Component$onCompleted`.
+const HANDLER = /^(\w+\$)?on[A-Z_]/;
+
+// The type of an object that declares properties and signals of its own:
+// `Item { property int hours; signal ticked }`. One per declaration, however
+// many objects are made from it.
+const derivations = new WeakMap();
+function derive(Type, declared) {
+  if (Array.isArray(declared)) return declared.reduce(derive, Type);
+  let derivedTypes = derivations.get(Type);
+  if (!derivedTypes) derivations.set(Type, (derivedTypes = new WeakMap()));
+  let Derived = derivedTypes.get(declared);
+  if (!Derived) {
+    Derived = defineType(Type.typeName, Type, { properties: declared.properties, signals: declared.signals });
+    if (Type.attached) Derived.attached = Type.attached;
+    derivedTypes.set(declared, Derived);
+  }
+  return Derived;
+}
+
+// `property alias text: label.text`: the property is another object's.
+function defineAlias(self, name, [target, ...path]) {
+  const last = path.at(-1);
+  const holder = () => path.slice(0, -1).reduce((object, member) => object?.[member], target);
+  Object.defineProperty(self, name, {
+    get: path.length ? () => holder()?.[last] : () => (target.$type ? target : (target.$track(), null)),
+    set(value) {
+      const object = holder();
+      if (path.length && object) object[last] = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  if (!path.length || !(name in self.$props)) return;
+  // What the instance binds to the alias is the target's binding.
+  const key = path.join("$");
+  whenComplete(() => {
+    const aliased = target.$type && slot(target, key);
+    if (aliased) return aliased.bind(self.$props, name);
+    // An alias of an alias, or of an object made later: assigned instead.
+    createRenderEffect(
+      () => self.$props[name],
+      (value) =>
+        settled(() => {
+          const object = holder();
+          if (object) object[last] = value;
+        }),
+    );
+  });
+}
+
 function create(Type, props) {
+  if (props.$given) props = inherit(props, props.$given);
+  if (props.$declare) Type = derive(Type, props.$declare);
   const self = props.$self ?? $object();
   return complete(() => {
     Object.setPrototypeOf(self, Type.proto);
@@ -350,14 +481,28 @@ function create(Type, props) {
     hidden(self, "$slots", Object.create(null));
     hidden(self, "$groups", Object.create(null));
     hidden(self, "$signals", Object.create(null));
+    // `function tick() { }`: what the object's QML declares it can do.
+    if (props.$functions) {
+      for (const [name, declared] of Object.entries(props.$functions)) hidden(self, name, declared);
+    }
     for (const type of Type.chain) type.spec.setup?.(self, props);
+    if (props.$aliases) {
+      for (const [name, path] of Object.entries(props.$aliases)) defineAlias(self, name, path);
+    }
     if (Type.adopt && "children" in props) Type.adopt(self, props);
     for (const key of Object.keys(props)) {
       // `onWidthChanged`: a handler of a property's changes, not of a signal.
       const property = /^on([A-Z]\w*)Changed$/.exec(key)?.[1];
       if (!property) continue;
       const name = property[0].toLowerCase() + property.slice(1);
-      if (name in Type.slots) onChange(self, name, () => untrack(() => props[key])?.());
+      if (name in Type.slots || props.$aliases?.[name]) onChange(self, name, () => untrack(() => props[key])?.());
+    }
+    // `Keys.onPressed`, `Layout.fillWidth`: the attached object is what does
+    // something about them, so it has to exist.
+    if (props.$attach) {
+      whenComplete(() => {
+        for (const type of props.$attach) type.attached?.(self);
+      });
     }
     const completed = props.Component$onCompleted;
     if (completed) completions.push(() => untrack(completed));
@@ -372,19 +517,36 @@ function create(Type, props) {
 // The objects declared inside one, created now: its `children` prop,
 // flattened. With `item`, they are created as its children.
 export function contents(props, item) {
-  const made = untrack(() => (item ? inside(item, () => props.children) : props.children));
-  if (made == null) return [];
-  return Array.isArray(made) ? made.flat(Infinity).filter((child) => child != null) : [made];
+  const made = untrack(() => (item ? inside(item, () => flatten(props.children, [])) : flatten(props.children, [])));
+  return made;
+}
+
+// A component puts its instance's children among its own
+// (`{$props.children}`), which Solid hands over as a function.
+function flatten(made, into) {
+  if (made == null) return into;
+  if (Array.isArray(made)) for (const child of made) flatten(child, into);
+  else if (typeof made === "function" && !made.$component && !made.proto) flatten(made(), into);
+  else into.push(made);
+  return into;
 }
 
 // Runs `handler` when the property changes, not when it is first read.
 export function onChange(self, name, handler) {
+  let seen = false;
+  let last;
   whenComplete(() =>
     createEffect(
       () => self[name],
-      // A handler reads what it likes: it is run, not kept up to date.
-      () => void untrack(handler),
-      { defer: true },
+      (value) => {
+        // Reading it again is not a change: what it was computed from may
+        // have changed and left it as it was.
+        const changed = seen && !Object.is(value, last);
+        seen = true;
+        last = value;
+        // A handler reads what it likes: it is run, not kept up to date.
+        if (changed) settled(untrack, handler);
+      },
     ),
   );
 }
@@ -421,6 +583,13 @@ function attach(name, Attached, self) {
 // What a `Component` is at run time: a function from what its object is
 // given (a delegate's `index` and roles) to the object.
 export function $component(make) {
+  make.$component = true;
+  // `Component.Ready`: it was compiled before the program ran, so there is
+  // nothing to wait for and nothing to tell of.
+  make.status = 1;
+  make.progress = 1;
+  make.errorString = () => "";
+  make.statusChanged = make.progressChanged = silent;
   make.createObject = (item, properties) => {
     const { object } = instantiate(make, properties ?? {}, item);
     for (const [name, value] of Object.entries(properties ?? {})) {
@@ -430,6 +599,118 @@ export function $component(make) {
     return object;
   };
   return make;
+}
+
+// A signal nothing ever emits.
+const silent = Object.assign(() => {}, { connect() {}, disconnect() {} });
+
+// A QML file as a `Component`: what `Qt.createComponent("Block.qml")` and
+// `source: "Block.qml"` are, the compiler having imported the file. `File` is
+// what the file's module exports.
+// What it makes finds names in `context`, the one of the object that named
+// the file, when the compiler gives one.
+const files = new WeakMap();
+const nowhere = {};
+export function $file(File, context) {
+  let made = files.get(File);
+  if (!made) files.set(File, (made = new WeakMap()));
+  let component = made.get(context ?? nowhere);
+  if (!component) {
+    const make = context ? (properties) => File(within(properties, context)) : (properties) => File(properties);
+    made.set(context ?? nowhere, (component = $component(make)));
+  }
+  return component;
+}
+
+// What a component is given, and the context it is made in.
+function within(properties, context) {
+  const props = { $context: context };
+  for (const key of Object.keys(properties ?? {})) {
+    if (key !== "$context") Object.defineProperty(props, key, Object.getOwnPropertyDescriptor(properties, key));
+  }
+  return props;
+}
+
+// A path that is only known when the program runs, looked up among the files
+// the compiler found it could name: `table` has, for each path from the
+// directory of the module at `base`, a function that gives what the file
+// exports. The result is `find(path, required)`: the file's component, and
+// for a path that names none of them the path as it is, or with `required`
+// (`Qt.createComponent`) a component that says so. `context` as for `$file`.
+export function $files(table, base) {
+  const directory = new URL(".", base).href;
+  return (path, required, context) => {
+    // A component already: a path the compiler knew.
+    if (typeof path !== "string") return path;
+    let key = path.startsWith(directory) ? path.slice(directory.length) : path;
+    while (key.startsWith("./")) key = key.slice(2);
+    if (Object.hasOwn(table, key)) return $file(table[key](), context);
+    return required ? missing($url(path, base)) : path;
+  };
+}
+
+// `Component.Error`: what Qt makes of a file that is not there.
+function missing(url) {
+  const component = $component(() => null);
+  component.status = 3;
+  component.progress = 0;
+  component.errorString = () => `${url}: No such file or directory`;
+  component.createObject = () => {
+    console.warn(`QQmlComponent: Component is not ready: ${component.errorString()}`);
+    return null;
+  };
+  return component;
+}
+
+// QML finds a name by walking contexts: a component's own, then the one of
+// whatever made it. The compiler does the first part; where a project uses
+// an id of another component, the rest is done here. A context is a
+// component's ids and its root, and the context it was made in.
+export function $context(outer, root, ids) {
+  return { outer, root, ids };
+}
+
+// What `name` is to an object made in `context`: an id or a property of the
+// root of the nearest component around it that has one, or something the
+// program was given for every context.
+export function $lookup(context, name) {
+  for (let around = context.outer; around; around = around.outer) {
+    const ids = around.ids?.();
+    if (ids && name in ids) return ids[name];
+    if (name in around.root) return around.root[name];
+  }
+  return globals[name];
+}
+
+// What every context has: the context properties a host sets.
+export const globals = Object.create(null);
+
+// `pragma Singleton`: the one object of a file, made the first time anything
+// asks for it and kept for as long as the page. It is nobody's child, and
+// nothing that ends takes it along. `keys` are the enums the file declares.
+export function $singleton(Component, keys) {
+  let object;
+  const get = () => {
+    if (object) return object;
+    // There before it is filled in: what is in the file may name it.
+    object = $object();
+    runWithOwner(null, () =>
+      createRoot(() => untrack(() => complete(() => inside(null, () => Component({ $self: object }))))),
+    );
+    return object;
+  };
+  return Object.assign(get, keys);
+}
+
+// `source: path`, where the path is not known until the program runs: taken
+// from the file it is written in, as a literal is when it is compiled.
+export function $url(value, base) {
+  if (typeof value !== "string" || value === "") return value;
+  try {
+    return new URL(value, base).href;
+  } catch {
+    return value;
+  }
 }
 
 // Creates a component's object apart from the tree that asked for it: a
@@ -443,12 +724,15 @@ export function instantiate(component, data, item, owner = item?.$owner ?? getOw
   );
 }
 
-// Puts a component's object in the page.
-export function mount(Component, element, props = {}) {
+// Puts a component's object in the page. A Window is told what it was put
+// in and with what `options`: it fills the element, or with
+// `{ fill: false }` gives it the size its QML says.
+export function mount(Component, element, props = {}, options = {}) {
   return createRoot((dispose) => {
     const object = untrack(() => complete(() => Component(props)));
     element.classList.add("q-scene");
     if (object.$node) element.append(object.$node);
+    object.$mounted?.(element, options);
     return { object, dispose };
   });
 }
@@ -485,10 +769,17 @@ export function $signal(initial) {
   };
   const set = (given) => {
     if (assigned && Object.is(value, given)) return given;
-    assigned = true;
-    value = given;
+    if (typeof given === "function" && given[BINDING]) {
+      // `count = Qt.binding(f)`: the binding is replaced, not the value.
+      bound = runWithOwner(owner, () => createMemo(() => given(), SYNC));
+      assigned = false;
+      value = undefined;
+    } else {
+      assigned = true;
+      value = given;
+    }
     bump(next);
-    flush();
+    if (!settling) flush();
     return given;
   };
   return [get, set];

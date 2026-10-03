@@ -1,0 +1,611 @@
+// Models, and the rows a view makes delegates for.
+//
+// A view's `model` may be a number, a JavaScript array, a ListModel, an
+// ObjectModel, or any object with `count` and `get(i)`. `Rows` puts them
+// behind one interface: how many rows there are, the object a delegate is
+// given for one (`index`, `modelData`, `model` and a property per role), and
+// what happened to them. A view is told of rows inserted, removed and moved,
+// never to start again: the delegate of a row lives as long as the row does.
+import { createSignal, getObserver, runWithOwner, untrack } from "solid-js";
+import { contents, defineType, derived, inside, instantiate, QtObject, slot } from "../object.js";
+import { settle } from "./settle.js";
+
+const WRITABLE = { ownedWrite: true };
+const next = (version) => version + 1;
+
+// What can change under a reader, by name: a row's index, an element's
+// role. The signal is made when something first reads it in a binding, so
+// that rows nobody looks at cost nothing.
+const SIGNALS = Symbol("signals");
+
+export function track(holder, name) {
+  if (!getObserver()) return;
+  const signals = (holder[SIGNALS] ??= Object.create(null));
+  (signals[name] ??= createSignal(0, WRITABLE))[0]();
+}
+
+export function touch(holder, name) {
+  holder[SIGNALS]?.[name]?.[1](next);
+}
+
+// ---------------------------------------------------------------- ListModel
+
+const RECORD = Symbol("record");
+const VALUES = Symbol("values");
+
+// `ListElement { name: "a"; cost: 2 }`: what it was given, for the ListModel
+// it is declared in.
+export const ListElement = (props) => ({ [RECORD]: props });
+
+// What a role reads as in an element that has no value for it: Qt's roles
+// are typed by the first value they were given.
+const blank = (value) =>
+  typeof value === "string" ? "" : typeof value === "number" ? 0 : typeof value === "boolean" ? false : undefined;
+
+function defineRole(model, name, value) {
+  model.$roles.push(name);
+  if (!untrack(() => model.dynamicRoles)) model.$blank[name] = blank(value);
+  Object.defineProperty(model.$element, name, {
+    get() {
+      track(this, name);
+      const held = this[VALUES][name];
+      return held === undefined ? model.$blank[name] : held;
+    },
+    // `model.get(0).name = "x"` changes the model.
+    set(given) {
+      if (store(model, this, name, given)) settle();
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  for (const listener of model.$listeners) listener.role(name);
+}
+
+// A list in an element is a model of its own.
+function nested(model, list) {
+  const made = runWithOwner(model.$owner, () => untrack(() => ListModel({ dynamicRoles: model.dynamicRoles })));
+  splice(made, 0, list);
+  return made;
+}
+
+function store(model, element, name, value) {
+  if (!(name in model.$element)) defineRole(model, name, value);
+  if (Array.isArray(value)) value = nested(model, value);
+  if (Object.is(element[VALUES][name], value)) return false;
+  element[VALUES][name] = value;
+  touch(element, name);
+  return true;
+}
+
+function element(model, given) {
+  const record = given?.[RECORD] ?? given ?? {};
+  const made = Object.create(model.$element);
+  made[VALUES] = {};
+  for (const name of Object.keys(record)) {
+    if (name[0] !== "$" && name !== "children") store(model, made, name, record[name]);
+  }
+  return made;
+}
+
+function counted(model, length) {
+  slot(model, "count").write(length);
+}
+
+// Puts elements made from `given` (one, or a list of them) at `index`.
+function splice(model, index, given) {
+  const made = (Array.isArray(given) ? given : [given]).map((each) => element(model, each));
+  if (!made.length) return;
+  model.$elements.splice(index, 0, ...made);
+  counted(model, model.$elements.length);
+  for (const listener of model.$listeners) listener.inserted(index, made.length);
+}
+
+export const ListModel = defineType("ListModel", QtObject, {
+  properties: { count: 0, dynamicRoles: false },
+  methods: {
+    get(index) {
+      return this.$elements[index];
+    },
+    append(dict) {
+      splice(this, this.$elements.length, dict);
+      settle();
+    },
+    insert(index, dict) {
+      if (!(index >= 0 && index <= this.$elements.length)) {
+        console.warn(`ListModel: insert: index ${index} out of range`);
+        return;
+      }
+      splice(this, index, dict);
+      settle();
+    },
+    remove(index, count = 1) {
+      const elements = this.$elements;
+      if (!(index >= 0 && count >= 0 && index + count <= elements.length)) {
+        console.warn(`ListModel: remove: indices [${index} - ${index + count}] out of range [0 - ${elements.length}]`);
+        return;
+      }
+      if (!count) return;
+      elements.splice(index, count);
+      counted(this, elements.length);
+      for (const listener of this.$listeners) listener.removed(index, count);
+      settle();
+    },
+    // `count` elements from `from` on, so that the first is at `to`.
+    move(from, to, count) {
+      const elements = this.$elements;
+      if (!(count >= 0 && from >= 0 && to >= 0 && from + count <= elements.length && to + count <= elements.length)) {
+        console.warn("ListModel: move: out of range");
+        return;
+      }
+      if (!count || from === to) return;
+      elements.splice(to, 0, ...elements.splice(from, count));
+      for (const listener of this.$listeners) listener.moved(from, to, count);
+      settle();
+    },
+    set(index, dict) {
+      const elements = this.$elements;
+      if (index === elements.length) return this.append(dict);
+      if (!(index >= 0 && index < elements.length)) {
+        console.warn(`ListModel: set: index ${index} out of range`);
+        return;
+      }
+      const record = dict?.[RECORD] ?? dict ?? {};
+      for (const name of Object.keys(record)) store(this, elements[index], name, record[name]);
+      settle();
+    },
+    setProperty(index, property, value) {
+      const elements = this.$elements;
+      if (!(index >= 0 && index < elements.length)) {
+        console.warn(`ListModel: setProperty: index ${index} out of range`);
+        return;
+      }
+      if (store(this, elements[index], property, value)) settle();
+    },
+    clear() {
+      const length = this.$elements.length;
+      if (!length) return;
+      this.$elements.length = 0;
+      counted(this, 0);
+      for (const listener of this.$listeners) listener.removed(0, length);
+      settle();
+    },
+    // For a model changed from a WorkerScript: there is nothing to wait for.
+    sync() {},
+    // How a view follows the model: `listener` is told of `inserted`,
+    // `removed` and `moved` rows and of a new `role`.
+    $observe(listener) {
+      this.$listeners.add(listener);
+      return () => this.$listeners.delete(listener);
+    },
+  },
+  setup(self) {
+    self.$elements = [];
+    self.$roles = [];
+    self.$blank = Object.create(null);
+    self.$listeners = new Set();
+    // What its elements inherit: an accessor per role.
+    self.$element = {};
+  },
+  adopt(self, props) {
+    self.$elements = untrack(() =>
+      contents(props)
+        .filter((child) => child[RECORD])
+        .map((child) => element(self, child)),
+    );
+    counted(self, self.$elements.length);
+  },
+});
+
+// -------------------------------------------------------------- ObjectModel
+
+const ObjectModelAttached = defineType("ObjectModelAttached", QtObject, {
+  properties: {
+    index: derived((self) => {
+      const model = self.$object.$objectModel;
+      if (!model) return -1;
+      model.$ordered();
+      return model.$objects.indexOf(self.$object);
+    }),
+  },
+  setup(self, props) {
+    self.$object = props.$attachee;
+  },
+});
+
+function reordered(model) {
+  counted(model, model.$objects.length);
+  model.$reorder(next);
+}
+
+// A model whose rows are the objects themselves: a view shows them as they
+// are, without a delegate.
+export const ObjectModel = defineType("ObjectModel", QtObject, {
+  properties: { count: 0 },
+  attached: ObjectModelAttached,
+  methods: {
+    get children() {
+      this.$ordered();
+      return this.$objects;
+    },
+    get(index) {
+      return this.$objects[index];
+    },
+    append(object) {
+      this.insert(this.$objects.length, object);
+    },
+    insert(index, object) {
+      if (!(index >= 0 && index <= this.$objects.length)) return;
+      object.$objectModel = this;
+      this.$objects.splice(index, 0, object);
+      reordered(this);
+      for (const listener of this.$listeners) listener.inserted(index, 1);
+      settle();
+    },
+    move(from, to, count = 1) {
+      const objects = this.$objects;
+      if (!(count > 0 && from >= 0 && to >= 0 && from + count <= objects.length && to + count <= objects.length)) return;
+      if (from === to) return;
+      objects.splice(to, 0, ...objects.splice(from, count));
+      reordered(this);
+      for (const listener of this.$listeners) listener.moved(from, to, count);
+      settle();
+    },
+    remove(index, count = 1) {
+      const objects = this.$objects;
+      if (!(index >= 0 && count > 0 && index + count <= objects.length)) return;
+      for (const object of objects.splice(index, count)) object.$objectModel = null;
+      reordered(this);
+      for (const listener of this.$listeners) listener.removed(index, count);
+      settle();
+    },
+    clear() {
+      this.remove(0, this.$objects.length);
+    },
+    $observe(listener) {
+      this.$listeners.add(listener);
+      return () => this.$listeners.delete(listener);
+    },
+  },
+  setup(self) {
+    self.$objects = [];
+    self.$listeners = new Set();
+    [self.$ordered, self.$reorder] = createSignal(0, WRITABLE);
+  },
+  adopt(self, props) {
+    // They are children of whatever view shows them, not of where the
+    // model was declared.
+    self.$objects = inside(null, () => contents(props));
+    for (const object of self.$objects) object.$objectModel = self;
+    counted(self, self.$objects.length);
+  },
+});
+
+// --------------------------------------------------------------------- Rows
+
+const NONE = 0;
+const NUMBER = 1;
+const ARRAY = 2;
+const LIST = 3;
+const OBJECTS = 4;
+const COUNTED = 5;
+
+function kindOf(source) {
+  if (typeof source === "number") return NUMBER;
+  if (Array.isArray(source)) return ARRAY;
+  if (source == null || typeof source !== "object") return NONE;
+  if (source.$type === ListModel) return LIST;
+  if (source.$type === ObjectModel) return OBJECTS;
+  return typeof source.get === "function" && "count" in source ? COUNTED : NONE;
+}
+
+// How many rows a model has, for a view to depend on when the model does
+// not say what changed in it: an object with `count` and `get(i)`.
+export function size(source) {
+  const kind = kindOf(source);
+  if (kind === NUMBER) return Math.max(0, Math.floor(source)) || 0;
+  if (kind === ARRAY) return source.length;
+  return kind === COUNTED ? Number(source.count) || 0 : 0;
+}
+
+// What a delegate is given. A row is its own `model`: `model.name` reads a
+// role and `model.name = v` writes it. It inherits from nothing, so that
+// `"name" in row` is true of `index`, `model`, `modelData` and the roles
+// alone: compiled QML asks, when a name may be a role or something further
+// out.
+const Row = Object.setPrototypeOf(
+  {
+    get index() {
+      track(this, "index");
+      return this.$index;
+    },
+    get model() {
+      return this;
+    },
+    get modelData() {
+      return this.$value;
+    },
+  },
+  null,
+);
+
+const NumberRow = Object.create(Row, {
+  modelData: {
+    get() {
+      return this.index;
+    },
+  },
+});
+
+// A ListModel's row has `modelData` only when there is one role to be it.
+const ListRow = Object.create(Row, {
+  modelData: {
+    get() {
+      const roles = this.$rows.source.$roles;
+      return roles.length === 1 ? this.$value[roles[0]] : undefined;
+    },
+  },
+});
+
+const BASES = [Row, NumberRow, Row, ListRow, Row, Row];
+
+// A role, read from and written to the row's value: a ListModel's element
+// (which tells its readers), or a plain object (which cannot: assigning to
+// a key of an array's object is seen by the next read, as in Qt).
+function defineRowRole(proto, name) {
+  if (name in proto) return;
+  Object.defineProperty(proto, name, {
+    get() {
+      return this.$value?.[name];
+    },
+    set(value) {
+      if (this.$value) this.$value[name] = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+// `view` is what uses the rows: `{ owner, parent(), inserted(index, count),
+// removed(index, count, rows), moved(from, to, count) }` and, optionally,
+// `created(row)` and `destroyed(row)`. `self`, if given, is what a row's
+// `$view` is. A row has `$index`, `$value` and, once made, `$item`: the
+// delegate's object.
+export class Rows {
+  constructor(view) {
+    this.view = view;
+    this.count = 0;
+    this.source = undefined;
+    this.kind = NONE;
+    this.component = undefined;
+    // An array's values as they were last seen: the array may be changed
+    // in place before it is given again.
+    this.values = null;
+    // The rows a delegate was made for, by index.
+    this.live = new Map();
+    this.proto = null;
+    this.unobserve = null;
+    // The component, and a note on its object of the row it is for: the
+    // attached properties of a delegate are found through it.
+    this.make = (row) => {
+      const object = this.component(row);
+      if (object) object.$delegate = row;
+      return object;
+    };
+  }
+
+  // The model and the delegate, when either may have changed.
+  set(source, component) {
+    const kind = kindOf(source);
+    const length = size(source);
+    if (component !== this.component) {
+      this.remove(0, this.count);
+      this.component = component;
+    } else if (kind === NUMBER && this.kind === NUMBER) {
+      this.source = source;
+      if (length > this.count) this.insert(this.count, length - this.count);
+      else this.remove(length, this.count - length);
+      return;
+    } else if (kind === ARRAY && this.kind === ARRAY) {
+      this.source = source;
+      this.reconcile(source);
+      return;
+    } else if (kind === this.kind && source === this.source) {
+      // The same model: one that reports is followed, one that does not
+      // has changed in a way only it knows.
+      if (kind !== COUNTED || length === this.count) return;
+    }
+    this.remove(0, this.count);
+    this.unobserve?.();
+    this.unobserve = null;
+    this.source = source;
+    this.kind = kind;
+    this.values = kind === ARRAY ? source.slice() : null;
+    this.proto = Object.create(BASES[kind]);
+    this.proto.$rows = this;
+    this.proto.$view = this.view.self;
+    if (kind === LIST) for (const name of source.$roles) defineRowRole(this.proto, name);
+    if (kind === LIST || kind === OBJECTS) {
+      this.unobserve = source.$observe(this);
+      this.insert(0, kind === LIST ? source.$elements.length : source.$objects.length);
+    } else {
+      this.insert(0, length);
+    }
+  }
+
+  // Whether rows have what it takes to be shown.
+  get ready() {
+    return this.kind === OBJECTS || typeof this.component === "function";
+  }
+
+  value(index) {
+    switch (this.kind) {
+      case ARRAY:
+        return this.values[index];
+      case LIST:
+        return this.source.$elements[index];
+      case OBJECTS:
+        return this.source.$objects[index];
+      case COUNTED:
+        return untrack(() => this.source.get(index));
+      default:
+        return index;
+    }
+  }
+
+  // A role of a row no delegate was made for: what section it is in.
+  read(index, role) {
+    return this.kind === NUMBER || this.kind === NONE ? undefined : this.value(index)?.[role];
+  }
+
+  // The row at `index`, with its delegate, made if it has to be.
+  row(index) {
+    let row = this.live.get(index);
+    if (row) return row;
+    const value = this.value(index);
+    if ((this.kind === ARRAY || this.kind === COUNTED) && value && typeof value === "object") {
+      for (const name of Object.keys(value)) defineRowRole(this.proto, name);
+    }
+    row = Object.create(this.proto);
+    row.$index = index;
+    row.$value = value;
+    row.$dispose = null;
+    if (this.kind === OBJECTS) {
+      row.$item = value;
+      value.$delegate = row;
+    } else {
+      const made = instantiate(this.make, row, this.view.parent(), this.view.owner);
+      row.$item = made.object;
+      row.$dispose = made.dispose;
+    }
+    this.live.set(index, row);
+    this.view.created?.(row);
+    return row;
+  }
+
+  // The view no longer shows the row.
+  release(row) {
+    if (this.live.get(row.$index) === row) this.live.delete(row.$index);
+    this.discard(row);
+  }
+
+  discard(row) {
+    this.view.destroyed?.(row);
+    row.$dispose?.();
+    row.$dispose = null;
+    row.$index = -1;
+  }
+
+  // The rows whose index is to change: `shift` gives the new one, or -1
+  // for a row that is gone.
+  reindex(shift) {
+    const gone = [];
+    const live = new Map();
+    for (const row of this.live.values()) {
+      const index = shift(row.$index);
+      if (index < 0) {
+        gone.push(row);
+        continue;
+      }
+      if (index !== row.$index) {
+        row.$index = index;
+        touch(row, "index");
+      }
+      live.set(index, row);
+    }
+    this.live = live;
+    return gone;
+  }
+
+  insert(index, count, values) {
+    if (count <= 0) return;
+    if (values) this.values.splice(index, 0, ...values);
+    this.reindex((at) => (at >= index ? at + count : at));
+    this.count += count;
+    this.view.inserted(index, count);
+  }
+
+  remove(index, count) {
+    if (count <= 0) return;
+    if (this.values) this.values.splice(index, count);
+    const gone = this.reindex((at) => (at < index ? at : at < index + count ? -1 : at - count));
+    gone.sort((a, b) => a.$index - b.$index);
+    this.count -= count;
+    this.view.removed(index, count, gone);
+    for (const row of gone) this.discard(row);
+  }
+
+  move(from, to, count) {
+    if (this.values) this.values.splice(to, 0, ...this.values.splice(from, count));
+    this.reindex((at) => moved(at, from, to, count));
+    this.view.moved(from, to, count);
+  }
+
+  // What a model that reports says.
+  inserted(index, count) {
+    this.insert(index, count);
+  }
+
+  removed(index, count) {
+    this.remove(index, count);
+  }
+
+  moved(from, to, count) {
+    this.move(from, to, count);
+  }
+
+  role(name) {
+    defineRowRole(this.proto, name);
+  }
+
+  // An array given in place of another: the values in both keep their rows.
+  reconcile(values) {
+    const held = this.values;
+    let start = 0;
+    const shorter = Math.min(held.length, values.length);
+    while (start < shorter && held[start] === values[start]) start++;
+    let heldEnd = held.length;
+    let end = values.length;
+    while (heldEnd > start && end > start && held[heldEnd - 1] === values[end - 1]) {
+      heldEnd--;
+      end--;
+    }
+    if (heldEnd === start) return this.insert(start, end - start, values.slice(start, end));
+    if (end === start) return this.remove(start, heldEnd - start);
+    // In between: what is no longer there goes, what stays is moved to
+    // where it now is, and what is new is put in.
+    const wanted = new Map();
+    for (let index = start; index < end; index++) wanted.set(values[index], (wanted.get(values[index]) ?? 0) + 1);
+    for (let index = heldEnd - 1; index >= start; index--) {
+      const left = wanted.get(held[index]);
+      if (left) wanted.set(held[index], left - 1);
+      else this.remove(index, 1);
+    }
+    for (let index = start; index < end; index++) {
+      const value = values[index];
+      if (held[index] === value && index < held.length - (values.length - end)) continue;
+      const tail = held.length - (values.length - end);
+      let at = -1;
+      for (let other = index + 1; other < tail; other++) {
+        if (held[other] === value) {
+          at = other;
+          break;
+        }
+      }
+      if (at < 0) this.insert(index, 1, [value]);
+      else this.move(at, index, 1);
+    }
+  }
+
+  dispose() {
+    this.unobserve?.();
+    this.unobserve = null;
+  }
+}
+
+// Where the row at `at` is once `count` rows have moved from `from` to `to`.
+export function moved(at, from, to, count) {
+  if (at >= from && at < from + count) return at - from + to;
+  if (from < to && at >= from + count && at < to + count) return at - count;
+  if (to < from && at >= to && at < from) return at + count;
+  return at;
+}

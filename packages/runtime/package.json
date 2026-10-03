@@ -8,6 +8,11 @@
     "./runtime.css": "./style.css",
     "./object": "./object.js",
     "./QtQuick": "./QtQuick/index.js",
+    "./QtQuick/Layouts": "./QtQuick/Layouts/index.js",
+    "./QtQuick/Window": "./QtQuick/Window/index.js",
+    "./QtQml": "./QtQml/index.js",
+    "./QtCore": "./QtCore/index.js",
+    "./Qt/labs/settings": "./Qt/labs/settings/index.js",
     "./vite": "./vite.js"
   },
   "scripts": {

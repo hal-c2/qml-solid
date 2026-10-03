@@ -40,6 +40,11 @@ fn members(object: &QmlObject<'_>) -> Vec<String> {
                 format!("function {}", function.id.as_ref().map_or("", |id| id.name.as_str()))
             }
             QmlMember::InlineComponent(inline) => format!("component {}", inline.name.name),
+            QmlMember::Enum(declaration) => {
+                let keys: Vec<_> =
+                    declaration.members.iter().map(|member| format!("{}={}", member.name.name, member.value)).collect();
+                format!("enum {} {}", declaration.name.name, keys.join(" "))
+            }
         })
         .collect()
 }
@@ -140,6 +145,20 @@ fn members_of_an_object() {
 }
 
 #[test]
+fn an_enum_counts_from_where_it_is_told() {
+    let allocator = Allocator::default();
+    let document = parse(
+        &allocator,
+        "Item {\n    enum Theme { Light, Dark }\n    enum Flag {\n        None = -1,\n        Bold = 0x10,\n        Italic\n    }\n    property int enum: 1\n}\n",
+    );
+    assert_eq!(
+        members(&document.root),
+        ["enum Theme Light=0 Dark=1", "enum Flag None=-1 Bold=16 Italic=17", "property enum"]
+    );
+    assert_eq!(diagnostics("Item { enum Theme { Light = 1.5 } }"), ["An enum's value is a whole number"]);
+}
+
+#[test]
 fn binding_values() {
     let allocator = Allocator::default();
     let source = r#"Item {
@@ -154,6 +173,9 @@ fn binding_values() {
     states: [ State { name: "a" }, State { name: "b" } ]
     model: [1, 2, 3]
     range: ({ from: 0, to: 9 })
+    limits: { "from": 0, to: 9 }
+    onMoved: { count = 0 }
+    height: { width }
 }"#;
     let document = parse(&allocator, source);
     let value = |index: usize| {
@@ -180,6 +202,10 @@ fn binding_values() {
     assert_eq!(states.len(), 2);
     assert!(matches!(value(9), QmlBindingValue::Expression(Expression::ArrayExpression(_))));
     assert!(matches!(value(10), QmlBindingValue::Expression(Expression::ParenthesizedExpression(_))));
+    // Braces are an object when what is in them could be nothing else.
+    assert!(matches!(value(11), QmlBindingValue::Expression(Expression::ObjectExpression(_))));
+    assert!(matches!(value(12), QmlBindingValue::Statement(Statement::BlockStatement(_))));
+    assert!(matches!(value(13), QmlBindingValue::Statement(Statement::BlockStatement(_))));
 }
 
 #[test]

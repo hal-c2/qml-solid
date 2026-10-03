@@ -4,11 +4,12 @@
 // layout: `x`, `y`, `width` and `height` are properties other bindings read,
 // so they are computed here, anchors included, and the element is only told
 // the result.
-import { flush, runWithOwner } from "solid-js";
-import { contents, defineType, derived, effect, group, QtObject } from "../object.js";
+import { runWithOwner } from "solid-js";
+import { contents, defineType, derived, effect, group, QtObject, settle } from "../object.js";
 import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus } from "./focus.js";
 import { methods as geometry } from "./geometry.js";
 import { navigable } from "./Keys.js";
+import { stateful } from "./states.js";
 import "./style.js";
 
 const EMPTY = Object.freeze([]);
@@ -161,7 +162,8 @@ function children(self) {
 // keeps there, moving only what is out of place.
 function arrange(container, nodes, previous) {
   const wanted = new Set(nodes);
-  for (const node of previous) if (!wanted.has(node)) node.remove();
+  // One that is gone may be another item's by now: a ParentChange moved it.
+  for (const node of previous) if (!wanted.has(node) && node.parentNode === container) node.remove();
   let cursor = null;
   for (let index = nodes.length - 1; index >= 0; index--) {
     const node = nodes[index];
@@ -211,6 +213,7 @@ export const Item = defineType("Item", QtObject, {
     activeFocus: false,
     activeFocusOnTab: false,
     parent: derived((self) => self.$parent),
+    ...stateful.properties,
     anchors: group({
       fill: undefined,
       centerIn: undefined,
@@ -276,6 +279,7 @@ export const Item = defineType("Item", QtObject, {
     node.className = "qq";
     self.$node = node;
     self.$static = EMPTY;
+    stateful.setup(self, props);
     effect(
       () => [transform(self), self.width, self.height],
       ([css, width, height]) => {
@@ -308,9 +312,12 @@ Object.defineProperty(Item.proto, "focus", {
   ...Object.getOwnPropertyDescriptor(Item.proto, "focus"),
   set(value) {
     setFocus(this, value);
-    flush();
+    settle();
   },
 });
+
+// `state` reads as the state the item is in, and assigning it enters one.
+Object.defineProperties(Item.proto, Object.getOwnPropertyDescriptors(stateful.methods));
 
 for (const edge of LINES) {
   Object.defineProperty(Item.proto, edge, {

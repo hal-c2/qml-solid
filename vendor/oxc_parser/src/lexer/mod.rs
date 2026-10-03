@@ -109,6 +109,9 @@ pub struct Lexer<'a, C: Config> {
 
     /// Config
     pub(crate) config: C,
+
+    /// The source is QML, whose string literals may have line breaks in them.
+    pub(crate) qml: bool,
 }
 
 impl<'a, C: Config> Lexer<'a, C> {
@@ -157,6 +160,7 @@ impl<'a, C: Config> Lexer<'a, C> {
             multi_line_comment_end_finder: None,
             tokens,
             config,
+            qml: false,
         }
     }
 

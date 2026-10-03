@@ -1,10 +1,11 @@
 // Rectangle: a colour, rounded corners, a border, a gradient.
 import { contents, defineType, effect, group, QtObject, slot } from "../object.js";
-import { css } from "./color.js";
+import { colorValue, css } from "./color.js";
 import { Item } from "./Item.js";
 
 export const GradientStop = defineType("GradientStop", QtObject, {
   properties: { position: 0, color: "black" },
+  resolve: { color: colorValue },
 });
 
 export const Gradient = defineType("Gradient", QtObject, {
@@ -38,6 +39,8 @@ export const Rectangle = defineType("Rectangle", Item, {
     gradient: undefined,
     border: group({ width: 1, color: "black", pixelAligned: true }),
   },
+  // Colours read back as values: `rect.color.r`, `Qt.lighter(rect.color)`.
+  resolve: { color: colorValue, border$color: colorValue },
   setup(self) {
     const style = self.$node.style;
     effect(

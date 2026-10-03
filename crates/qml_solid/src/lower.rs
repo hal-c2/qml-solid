@@ -309,6 +309,10 @@ impl<'a, 's> Lower<'a, 's> {
                 Entry::Member(QmlMember::InlineComponent(inline)) => {
                     ok &= self.inline_component(inline);
                 }
+                Entry::Member(QmlMember::Enum(declaration)) => {
+                    self.errors.push(Error::new("an `enum` is QtQuick's: this dialect has none", declaration.span));
+                    ok = false;
+                }
                 Entry::Member(QmlMember::Binding(_)) => unreachable!("bindings are entries"),
             }
         }
