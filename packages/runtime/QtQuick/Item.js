@@ -6,6 +6,7 @@
 // the result.
 import { runWithOwner } from "solid-js";
 import { contents, defineType, derived, effect, group, QtObject } from "../object.js";
+import { stateful } from "./states.js";
 import "./style.js";
 
 const EMPTY = Object.freeze([]);
@@ -155,7 +156,8 @@ function children(self) {
 // keeps there, moving only what is out of place.
 function arrange(container, nodes, previous) {
   const wanted = new Set(nodes);
-  for (const node of previous) if (!wanted.has(node)) node.remove();
+  // One that is gone may be another item's by now: a ParentChange moved it.
+  for (const node of previous) if (!wanted.has(node) && node.parentNode === container) node.remove();
   let cursor = null;
   for (let index = nodes.length - 1; index >= 0; index--) {
     const node = nodes[index];
@@ -202,6 +204,7 @@ export const Item = defineType("Item", QtObject, {
     smooth: true,
     antialiasing: false,
     parent: derived((self) => self.$parent),
+    ...stateful.properties,
     anchors: group({
       fill: undefined,
       centerIn: undefined,
@@ -253,11 +256,12 @@ export const Item = defineType("Item", QtObject, {
       this.$touch((version) => version + 1);
     },
   },
-  setup(self) {
+  setup(self, props) {
     const node = document.createElement("div");
     node.className = "qq";
     self.$node = node;
     self.$static = EMPTY;
+    stateful.setup(self, props);
     effect(
       () => [transform(self), self.width, self.height],
       ([css, width, height]) => {
@@ -281,6 +285,9 @@ export const Item = defineType("Item", QtObject, {
     if (self.$static.length) arranged(self);
   },
 });
+
+// `state` reads as the state the item is in, and assigning it enters one.
+Object.defineProperties(Item.proto, Object.getOwnPropertyDescriptors(stateful.methods));
 
 for (const edge of LINES) {
   Object.defineProperty(Item.proto, edge, {
