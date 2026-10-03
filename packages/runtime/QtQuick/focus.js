@@ -4,8 +4,8 @@
 // at most one item has `focus`, and the one that has `activeFocus` is found
 // by going from the window down through the scopes that have it. A window
 // here is one tree of items, whatever it was mounted in.
-import { createEffect, flush, onCleanup, runWithOwner, untrack } from "solid-js";
-import { slot, whenComplete } from "../object.js";
+import { createEffect, onCleanup, runWithOwner, untrack } from "solid-js";
+import { settle, slot, whenComplete } from "../object.js";
 
 const parentOf = (item) => {
   const parent = untrack(() => item.parent);
@@ -27,10 +27,10 @@ export function whenOpened(start) {
 export function windowOf(item) {
   let top = item;
   for (let parent = parentOf(top); parent; parent = parentOf(top)) top = parent;
-  if (top.$window) return top.$window;
+  if (top.$focusWindow) return top.$focusWindow;
   // A scope like the others, that always has active focus.
   const window = { top, $subFocus: null, active: null };
-  top.$window = window;
+  top.$focusWindow = window;
   windows.add(window);
   opened?.();
   runWithOwner(top.$owner, () =>
@@ -110,13 +110,16 @@ function forget(item) {
       const window = windowOf(item);
       const changed = [];
       take(window, scopeOf(item, window), item, changed);
-      tell(changed);
+      tell(window, changed);
     }),
   );
 }
 
-function tell(changed) {
+// A Window says which of its items the keys go to: `activeFocusItem`.
+function tell(window, changed) {
   for (let index = 0; index < changed.length; index += 2) slot(changed[index], changed[index + 1]).changed();
+  const shown = window.top.$window;
+  if (shown?.$slots) slot(shown, "activeFocusItem").provide(window.active);
 }
 
 // `item.focus = value`, without settling what depends on it.
@@ -127,7 +130,7 @@ export function setFocus(item, value) {
   const changed = [];
   if (value) give(window, scope, item, changed);
   else take(window, scope, item, changed);
-  tell(changed);
+  tell(window, changed);
 }
 
 // Focus for the item and for every scope around it, so that it is the one
@@ -138,7 +141,7 @@ export function forceActiveFocus(item) {
     if (parent.$focusScope) setFocus(parent, true);
   }
   current = windowOf(item);
-  flush();
+  settle();
 }
 
 // What `focus: true` in an item's declaration does. Of several in a scope
@@ -154,14 +157,18 @@ export function declared(self, props) {
       if (scope.$subFocus) return;
       const changed = [];
       give(window, scope, self, changed);
-      tell(changed);
+      tell(window, changed);
       return;
     }
-    if (untrack(() => slot(self, "focus").own())) setFocus(self, true);
+    let last = Boolean(untrack(() => slot(self, "focus").own()));
+    if (last) setFocus(self, true);
     createEffect(
-      () => slot(self, "focus").own(),
-      (value) => void untrack(() => setFocus(self, value)),
-      { defer: true },
+      () => Boolean(slot(self, "focus").own()),
+      (value) => {
+        if (value === last) return;
+        last = value;
+        untrack(() => setFocus(self, value));
+      },
     );
   });
 }
