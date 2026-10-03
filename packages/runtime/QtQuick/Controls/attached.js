@@ -38,8 +38,18 @@ export function preferred(style) {
   if (!chosen.has("QtQuick.Controls")) chosen.set("QtQuick.Controls", style);
 }
 
-// `Qt::ColorScheme::Dark`: what the theme `System` is.
-export const dark = () => styleHints().colorScheme === 2;
+// A style's `Theme`: Light, Dark, and System, which is whichever of the two
+// the platform is in (`Qt::ColorScheme::Dark`).
+export const Theme = { Light: 0, Dark: 1, System: 2 };
+export const system = (theme) => (theme !== Theme.System ? theme : styleHints().colorScheme === 2 ? Theme.Dark : Theme.Light);
+
+// The theme an object is in, Light or Dark: the one it was given, else that
+// of what it is in (`up`), else the application's (`all`).
+export function themeOf(self, up, all) {
+  const given = said(self, "theme");
+  if (given === Theme.Light || given === Theme.Dark || given === Theme.System) return system(given);
+  return up ? up.$style.theme() : system(all);
+}
 
 // A colour as Qt writes one in its tables, `0xAARRGGBB`, and back.
 export const fromArgb = (argb) => color(`#${(argb >>> 0).toString(16).padStart(8, "0")}`);

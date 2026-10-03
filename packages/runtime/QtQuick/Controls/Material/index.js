@@ -7,10 +7,9 @@ import { defineType, derived, QtObject } from "../../../object.js";
 import { color as colour, hsla, rgba } from "../../color.js";
 import { lazy } from "../../compute.js";
 import { themed } from "../../Templates/theme.js";
-import { around, chosenColour, dark, fromArgb, preferred, reached, said } from "../attached.js";
+import { around, chosenColour, fromArgb, preferred, reached, said, Theme, themeOf } from "../attached.js";
 import { configured } from "../settings.js";
 
-const Theme = { Light: 0, Dark: 1, System: 2 };
 const Variant = { Normal: 0, Dense: 1 };
 const COLOURS = [
   "Red",
@@ -226,8 +225,6 @@ configured("Material", (group) => {
   fonts(all.variant === Variant.Dense);
 });
 
-const system = (theme) => (theme === Theme.System ? (dark() ? Theme.Dark : Theme.Light) : theme);
-
 // What the object has of each thing that is handed down, as Qt keeps it: a
 // colour is one of the table's by its number, or any other (`custom`) by its
 // `0xAARRGGBB`.
@@ -251,11 +248,7 @@ function state(self, object) {
       return from.explicit ? { ...from, explicit: false } : from;
     });
   const style = {
-    theme: lazy(self, () => {
-      const given = said(self, "theme");
-      if (given === Theme.Light || given === Theme.Dark || given === Theme.System) return system(given);
-      return up() ? up().$style.theme() : system(settings().theme);
-    }),
+    theme: lazy(self, () => themeOf(self, up(), settings().theme)),
     primary: one("primary"),
     accent: one("accent"),
     foreground: other("foreground", PRIMARY_TEXT, (chose) => chose),
