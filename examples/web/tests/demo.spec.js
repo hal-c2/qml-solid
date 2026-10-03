@@ -20,7 +20,7 @@ test("renders every brick", async ({ page }) => {
   const bricks = await named(page, "demo").locator("> *").evaluateAll((all) => all.map((el) => el.dataset.objectName));
   expect(bricks).toEqual([
     "workingIndicator", "notifications", "approvals", "pendingUserInput", "revertPicker", "threadOverlay",
-    "addProjectInvite",
+    "addProjectInvite", "features",
   ]);
   await expect(named(page, "workingIndicator")).toHaveText("● Working… 12s");
   await expect(named(page, "notifications").locator("> *")).toHaveCount(2);
@@ -67,4 +67,55 @@ test("a new theme restyles the nodes in place", async ({ page }) => {
   await page.evaluate(() => demo.setTheme("light"));
   await expect(named(page, "addProjectInviteTitle")).not.toHaveCSS("color", before);
   expect(await title.evaluate((el) => el.isConnected)).toBe(true);
+});
+
+// What one QML file asks of another, decided when both are compiled.
+const logged = (page, action) =>
+  page.evaluate((action) => demo.Shell.log.filter(([name]) => name === action).map(([, payload]) => payload), action);
+
+test("an instance sets the component's properties and its root object's", async ({ page }) => {
+  // `objectName` is the root's, `title` the component's, `note` an alias of a child's text.
+  const [counter, plain] = [named(page, "counterCard"), named(page, "plainCard")];
+  await expect(named(page, "card")).toHaveCount(0);
+  await expect(counter.locator('[data-object-name="cardTitle"]')).toHaveText("Picked 0");
+  await expect(counter.locator('[data-object-name="cardNote"]')).toHaveText("keep going");
+  await expect(plain.locator('[data-object-name="cardTitle"]')).toHaveText("Untitled");
+  await expect(plain.locator('[data-object-name="cardNote"]')).toHaveText("no note");
+  const border = (card) => card.evaluate((el) => getComputedStyle(el).borderTopColor);
+  expect(await border(counter)).not.toBe(await border(plain));
+});
+
+test("an instance's children go where the default alias points", async ({ page }) => {
+  const names = (card) =>
+    named(page, card).locator('[data-object-name="cardBody"] > *').evaluateAll((all) => all.map((el) => el.dataset.objectName));
+  expect(await names("counterCard")).toEqual(["pill", "cardChild"]);
+  expect(await names("plainCard")).toEqual([]);
+});
+
+test("an inline component takes its own properties and its root's", async ({ page }) => {
+  await expect(named(page, "pill")).toHaveText("[inline]");
+  // The instance's colour (the theme's `success`), not the component's own.
+  await expect(named(page, "pill")).toHaveCSS("color", "rgb(158, 206, 106)");
+});
+
+test("a signal reaches the instance's handler with its arguments", async ({ page }) => {
+  const title = named(page, "counterCard").locator('[data-object-name="cardTitle"]');
+  const node = await title.elementHandle();
+  for (const count of [1, 2, 3]) {
+    await title.click();
+    await expect(title).toHaveText(`Picked ${count}`);
+  }
+  await expect(named(page, "counterCard").locator('[data-object-name="cardNote"]')).toHaveText("enough");
+  expect(await node.evaluate((el) => el.isConnected)).toBe(true);
+  // A card nothing listens to still emits.
+  await named(page, "plainCard").locator('[data-object-name="cardTitle"]').click();
+  expect(page.problems).toEqual([]);
+});
+
+test("lifecycle and change handlers run when QML runs them", async ({ page }) => {
+  expect(await logged(page, "card.completed")).toEqual([{ title: "Picked 0" }, { title: "Untitled" }]);
+  // Not for the first value, only for a change.
+  expect(await logged(page, "card.retitled")).toEqual([]);
+  await named(page, "counterCard").locator('[data-object-name="cardTitle"]').click();
+  await expect.poll(() => logged(page, "card.retitled")).toEqual([{ title: "Picked 1" }]);
 });

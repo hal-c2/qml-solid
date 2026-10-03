@@ -16,4 +16,5 @@ Rectangle {
     RevertPicker {}
     ThreadOverlay {}
     AddProjectInvite {}
+    Features {}
 }
