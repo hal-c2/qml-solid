@@ -185,7 +185,17 @@ importers:
         specifier: ^8.0.0
         version: 8.3.2
 
-  packages/runtime: {}
+  packages/runtime:
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.63.0
+        version: 1.63.0
+      solid-js:
+        specifier: 2.0.0-rc.13
+        version: 2.0.0-rc.13
+      vite:
+        specifier: ^8.0.0
+        version: 8.3.2
 
 packages:
 

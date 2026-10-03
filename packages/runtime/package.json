@@ -6,6 +6,19 @@
   "exports": {
     "./runtime": "./index.js",
     "./runtime.css": "./style.css",
+    "./object": "./object.js",
+    "./QtQuick": "./QtQuick/index.js",
     "./vite": "./vite.js"
+  },
+  "scripts": {
+    "test": "playwright test -c tests"
+  },
+  "peerDependencies": {
+    "solid-js": "2.0.0-rc.13"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "solid-js": "2.0.0-rc.13",
+    "vite": "^8.0.0"
   }
 }

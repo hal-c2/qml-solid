@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Test the runtime's QtQuick types in a browser, with Playwright"
+#MISE depends=["browser"]
+set -euo pipefail
+
+pnpm --filter qml-solid test "$@"

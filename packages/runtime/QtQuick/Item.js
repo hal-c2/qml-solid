@@ -1,0 +1,293 @@
+// Item: where an object is, how big, and what is inside it.
+//
+// An item is an absolutely positioned element. QML geometry is not CSS
+// layout: `x`, `y`, `width` and `height` are properties other bindings read,
+// so they are computed here, anchors included, and the element is only told
+// the result.
+import { runWithOwner } from "solid-js";
+import { contents, defineType, derived, effect, group, QtObject } from "../object.js";
+import "./style.js";
+
+const EMPTY = Object.freeze([]);
+
+// `item.left`: one of an item's seven lines, for another item to anchor to.
+const LINES = ["left", "right", "top", "bottom", "horizontalCenter", "verticalCenter", "baseline"];
+
+// Where a line is, in the coordinates `self` is positioned in: its parent's.
+function position(self, { item, edge }) {
+  // An item anchors to its parent or to a sibling; the parent's own lines
+  // are measured from its top left corner.
+  const own = item === self.parent;
+  const x = own ? 0 : item.x;
+  const y = own ? 0 : item.y;
+  switch (edge) {
+    case "left":
+      return x;
+    case "right":
+      return x + item.width;
+    case "horizontalCenter":
+      return x + item.width / 2;
+    case "top":
+      return y;
+    case "bottom":
+      return y + item.height;
+    case "verticalCenter":
+      return y + item.height / 2;
+    default:
+      return y + item.baselineOffset;
+  }
+}
+
+const left = (self, item) => (item === self.parent ? 0 : item.x);
+const top = (self, item) => (item === self.parent ? 0 : item.y);
+
+const resolve = {
+  x(self, own) {
+    const anchors = self.anchors;
+    const fill = anchors.fill;
+    if (fill) return left(self, fill) + anchors.leftMargin;
+    const centerIn = anchors.centerIn;
+    if (centerIn) {
+      return left(self, centerIn) + (centerIn.width - self.width) / 2 + anchors.horizontalCenterOffset;
+    }
+    if (anchors.left) return position(self, anchors.left) + anchors.leftMargin;
+    if (anchors.right) return position(self, anchors.right) - anchors.rightMargin - self.width;
+    if (anchors.horizontalCenter) {
+      return position(self, anchors.horizontalCenter) - self.width / 2 + anchors.horizontalCenterOffset;
+    }
+    return own();
+  },
+  y(self, own) {
+    const anchors = self.anchors;
+    const fill = anchors.fill;
+    if (fill) return top(self, fill) + anchors.topMargin;
+    const centerIn = anchors.centerIn;
+    if (centerIn) {
+      return top(self, centerIn) + (centerIn.height - self.height) / 2 + anchors.verticalCenterOffset;
+    }
+    if (anchors.top) return position(self, anchors.top) + anchors.topMargin;
+    if (anchors.bottom) return position(self, anchors.bottom) - anchors.bottomMargin - self.height;
+    if (anchors.verticalCenter) {
+      return position(self, anchors.verticalCenter) - self.height / 2 + anchors.verticalCenterOffset;
+    }
+    if (anchors.baseline) {
+      return position(self, anchors.baseline) - self.baselineOffset + anchors.baselineOffset;
+    }
+    return own();
+  },
+  width(self, own) {
+    const anchors = self.anchors;
+    const fill = anchors.fill;
+    if (fill) return fill.width - anchors.leftMargin - anchors.rightMargin;
+    if (anchors.left && anchors.right) {
+      return (
+        position(self, anchors.right) - anchors.rightMargin - position(self, anchors.left) - anchors.leftMargin
+      );
+    }
+    return own();
+  },
+  height(self, own) {
+    const anchors = self.anchors;
+    const fill = anchors.fill;
+    if (fill) return fill.height - anchors.topMargin - anchors.bottomMargin;
+    if (anchors.top && anchors.bottom) {
+      return (
+        position(self, anchors.bottom) - anchors.bottomMargin - position(self, anchors.top) - anchors.topMargin
+      );
+    }
+    return own();
+  },
+  // An item inside one that is not shown is not shown, whatever it says.
+  visible: (self, own) => Boolean(own()) && (self.parent?.visible ?? true),
+  enabled: (self, own) => Boolean(own()) && (self.parent?.enabled ?? true),
+};
+
+const margin = derived((self) => self.anchors.margins);
+
+// The point `rotation` and `scale` are about, as fractions of the size.
+const ORIGINS = [
+  [0, 0],
+  [0.5, 0],
+  [1, 0],
+  [0, 0.5],
+  [0.5, 0.5],
+  [1, 0.5],
+  [0, 1],
+  [0.5, 1],
+  [1, 1],
+];
+
+// What Qt's `itemToParentTransform` computes, as CSS: the position, then the
+// `transform` list from its last to its first, then scale and rotation about
+// the transform origin.
+function transform(self) {
+  let css = `translate(${self.x}px,${self.y}px)`;
+  const list = self.transform;
+  if (list) {
+    const all = Array.isArray(list) ? list : [list];
+    for (let index = all.length - 1; index >= 0; index--) css += ` ${all[index].$css()}`;
+  }
+  const scale = self.scale;
+  const rotation = self.rotation;
+  if (scale !== 1 || rotation !== 0) {
+    const [fx, fy] = ORIGINS[self.transformOrigin] ?? ORIGINS[4];
+    const x = fx * self.width;
+    const y = fy * self.height;
+    css += ` translate(${x}px,${y}px) scale(${scale}) rotate(${rotation}deg) translate(${-x}px,${-y}px)`;
+  }
+  return css;
+}
+
+// The items inside one, in order. A child may stand for others that follow
+// it (`$siblings`): a Repeater's are its parent's children.
+function children(self) {
+  self.$track();
+  const all = self.$extra ? [...self.$static, ...self.$extra] : self.$static;
+  const items = [];
+  for (const child of all) {
+    if (child.$node) items.push(child);
+    if (child.$siblings) items.push(...child.$siblings());
+  }
+  return items;
+}
+
+// Puts `nodes` in `container` in that order, after what the type itself
+// keeps there, moving only what is out of place.
+function arrange(container, nodes, previous) {
+  const wanted = new Set(nodes);
+  for (const node of previous) if (!wanted.has(node)) node.remove();
+  let cursor = null;
+  for (let index = nodes.length - 1; index >= 0; index--) {
+    const node = nodes[index];
+    if (node.parentNode !== container || node.nextSibling !== cursor) container.insertBefore(node, cursor);
+    cursor = node;
+  }
+}
+
+// Keeps the element's children those of the item. Only an item that has
+// some needs it.
+function arranged(self) {
+  if (self.$arranged) return;
+  self.$arranged = true;
+  let previous = EMPTY;
+  runWithOwner(self.$owner, () =>
+    effect(
+      () => children(self).map((item) => item.$node),
+      (nodes) => {
+        arrange(self.$content ?? self.$node, nodes, previous);
+        previous = nodes;
+      },
+    ),
+  );
+}
+
+export const Item = defineType("Item", QtObject, {
+  properties: {
+    x: 0,
+    y: 0,
+    z: 0,
+    width: derived((self) => self.implicitWidth),
+    height: derived((self) => self.implicitHeight),
+    implicitWidth: 0,
+    implicitHeight: 0,
+    opacity: 1,
+    visible: true,
+    enabled: true,
+    clip: false,
+    rotation: 0,
+    scale: 1,
+    transformOrigin: 4,
+    transform: undefined,
+    baselineOffset: 0,
+    smooth: true,
+    antialiasing: false,
+    parent: derived((self) => self.$parent),
+    anchors: group({
+      fill: undefined,
+      centerIn: undefined,
+      left: undefined,
+      right: undefined,
+      top: undefined,
+      bottom: undefined,
+      horizontalCenter: undefined,
+      verticalCenter: undefined,
+      baseline: undefined,
+      margins: 0,
+      leftMargin: margin,
+      rightMargin: margin,
+      topMargin: margin,
+      bottomMargin: margin,
+      horizontalCenterOffset: 0,
+      verticalCenterOffset: 0,
+      baselineOffset: 0,
+      alignWhenCentered: true,
+    }),
+  },
+  enums: {
+    TopLeft: 0,
+    Top: 1,
+    TopRight: 2,
+    Left: 3,
+    Center: 4,
+    Right: 5,
+    BottomLeft: 6,
+    Bottom: 7,
+    BottomRight: 8,
+  },
+  resolve,
+  methods: {
+    // The items inside this one: a list that changes as they come and go.
+    get children() {
+      return children(this);
+    },
+    // Adds an item made after this one was: `Component.createObject(parent)`.
+    $add(item) {
+      (this.$extra ??= []).push(item);
+      arranged(this);
+      this.$touch((version) => version + 1);
+    },
+    $remove(item) {
+      const index = this.$extra?.indexOf(item) ?? -1;
+      if (index < 0) return;
+      this.$extra.splice(index, 1);
+      this.$touch((version) => version + 1);
+    },
+  },
+  setup(self) {
+    const node = document.createElement("div");
+    node.className = "qq";
+    self.$node = node;
+    self.$static = EMPTY;
+    effect(
+      () => [transform(self), self.width, self.height],
+      ([css, width, height]) => {
+        node.style.transform = css;
+        node.style.width = `${width}px`;
+        node.style.height = `${height}px`;
+      },
+    );
+    effect(
+      () => [self.visible, self.opacity, self.z, self.clip],
+      ([visible, opacity, z, clip]) => {
+        node.style.display = visible ? "" : "none";
+        node.style.opacity = opacity === 1 ? "" : opacity;
+        node.style.zIndex = z === 0 ? "" : z;
+        node.style.overflow = clip ? "hidden" : "";
+      },
+    );
+  },
+  adopt(self, props) {
+    self.$static = contents(props, self);
+    if (self.$static.length) arranged(self);
+  },
+});
+
+for (const edge of LINES) {
+  Object.defineProperty(Item.proto, edge, {
+    get() {
+      return ((this.$lines ??= {})[edge] ??= { item: this, edge });
+    },
+    enumerable: true,
+    configurable: true,
+  });
+}
