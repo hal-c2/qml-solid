@@ -9,13 +9,19 @@ const ButtonGroupAttached = defineType("ButtonGroupAttached", QtObject, {
   setup(self, props) {
     const button = props.$attachee;
     let last = null;
+    let declared = true;
     effect(
       () => self.group,
       (chosen) => {
+        const first = declared;
+        declared = false;
         if (chosen === last) return;
         untrack(() => {
           last?.removeButton(button);
           last = chosen;
+          // Of the buttons declared checked in a group the first stays so:
+          // Qt hears of them last first, and the one it hears of last wins.
+          if (first && chosen?.exclusive && chosen.$buttons.current && button.checked) button.$setChecked(false);
           chosen?.addButton(button);
         });
       },

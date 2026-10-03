@@ -108,17 +108,24 @@ export function put(self, name, value) {
 }
 
 // A property that the control writes and its user may bind (`checked`,
-// `value`): what the control wrote holds until the binding says something
-// else, as in Qt, where a control's own setter leaves a binding in place.
+// `value`). As in Qt, the property holds a value and the binding assigns to
+// it when what it computes changes: what the control wrote holds until
+// then. The property is never read through its binding, so two bound to
+// each other, a check box and the group it checks, do not go round: it
+// starts as what the type starts with, and the binding is heard after.
 export function loose(self, name) {
   const held = slot(self, name);
   if (!held.bound) return;
-  let seen = false;
+  let last = held.initial;
+  held.write(last);
   effect(
     () => held.bound(),
-    () => {
-      if (seen) held.reset();
-      seen = true;
+    (value = held.initial) => {
+      // An effect is run again for any write of its object: what the
+      // control wrote since is not undone by what the binding said before.
+      if (Object.is(value, last)) return;
+      last = value;
+      held.write(value);
     },
   );
 }

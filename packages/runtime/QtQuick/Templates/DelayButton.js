@@ -3,7 +3,7 @@
 import { onCleanup, untrack } from "solid-js";
 import { defineType, settle } from "../../object.js";
 import { Property } from "../animation/property.js";
-import { AbstractButton, checkable } from "./AbstractButton.js";
+import { AbstractButton } from "./AbstractButton.js";
 import { put } from "./Control.js";
 
 const full = (self) => Math.abs(untrack(() => self.progress) - 1) < 1e-12;
@@ -53,7 +53,7 @@ function beginTransition(self, to) {
 
 export const DelayButton = defineType("DelayButton", AbstractButton, {
   properties: {
-    checkable: checkable(true),
+    checkable: true,
     delay: 300,
     progress: 0,
     transition: null,

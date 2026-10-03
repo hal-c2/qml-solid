@@ -1,7 +1,7 @@
 // The buttons that are only pressed: Button, RoundButton, ToolButton, and
 // TabButton, of which one of a bar is checked.
 import { defineType } from "../../object.js";
-import { AbstractButton, checkable } from "./AbstractButton.js";
+import { AbstractButton } from "./AbstractButton.js";
 
 export const Button = defineType("Button", AbstractButton, {
   properties: { highlighted: false, flat: false },
@@ -21,5 +21,5 @@ export const RoundButton = defineType("RoundButton", Button, {
 export const ToolButton = defineType("ToolButton", Button);
 
 export const TabButton = defineType("TabButton", AbstractButton, {
-  properties: { checkable: checkable(true), autoExclusive: true },
+  properties: { checkable: true, autoExclusive: true },
 });

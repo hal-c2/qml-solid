@@ -2,7 +2,7 @@
 import { untrack } from "solid-js";
 import { defineType, derived } from "../../object.js";
 import { styleHints } from "../../QtQml/application.js";
-import { AbstractButton, checkable } from "./AbstractButton.js";
+import { AbstractButton } from "./AbstractButton.js";
 import { put } from "./Control.js";
 
 function setPosition(self, position) {
@@ -23,7 +23,7 @@ const over = (position) => position >= 0 && position <= 1;
 // What a switch and a switch delegate have in common.
 export const switching = {
   properties: {
-    checkable: checkable(true),
+    checkable: true,
     position: 0,
     visualPosition: derived((self) => (self.mirrored ? 1 - self.position : self.position)),
   },

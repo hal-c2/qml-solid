@@ -2,7 +2,7 @@
 // RadioButton: one of its siblings is checked.
 import { untrack } from "solid-js";
 import { defineType, effect } from "../../object.js";
-import { AbstractButton, checkable } from "./AbstractButton.js";
+import { AbstractButton } from "./AbstractButton.js";
 import { loose, put } from "./Control.js";
 
 // Qt's `setCheckState`: `checked` is whether the state is Checked.
@@ -24,7 +24,7 @@ function follow(self, state) {
 // What a check box and a check delegate have in common.
 export const checking = {
   properties: {
-    checkable: checkable(true),
+    checkable: true,
     tristate: false,
     checkState: 0,
     // A function that says which state a click leads to.
@@ -62,5 +62,5 @@ export const checking = {
 export const CheckBox = defineType("CheckBox", AbstractButton, checking);
 
 export const RadioButton = defineType("RadioButton", AbstractButton, {
-  properties: { checkable: checkable(true), autoExclusive: true },
+  properties: { checkable: true, autoExclusive: true },
 });

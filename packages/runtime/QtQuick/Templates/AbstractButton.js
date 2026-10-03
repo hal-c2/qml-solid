@@ -20,9 +20,6 @@ const CLICKS = [Key.Key_Space, Key.Key_Select, Key.Key_Return, Key.Key_Enter];
 // How long `animateClick` keeps the button down.
 const ANIMATE = 100;
 
-// A button with an action is checkable when the action is.
-export const checkable = (otherwise) => derived((self) => self.action?.checkable ?? otherwise);
-
 // A button with an action shows the action's icon, where it has none itself.
 const icon = Object.fromEntries(
   Object.entries(ICON).map(([name, initial]) => [name, derived((self) => self.action?.icon[name] ?? initial)]),
@@ -128,7 +125,7 @@ export const AbstractButton = defineType("AbstractButton", Control, {
     // A style shows a button as pressed by `down`, which a program may set.
     down: derived((self) => self.pressed),
     checked: false,
-    checkable: checkable(false),
+    checkable: false,
     autoExclusive: false,
     autoRepeat: false,
     autoRepeatDelay: 300,
@@ -330,6 +327,7 @@ export const AbstractButton = defineType("AbstractButton", Control, {
       // `checked` and the action's, as last heard.
       checked: false,
       followed: undefined,
+      able: undefined,
       action: null,
       // Where the press was.
       x: 0,
@@ -348,28 +346,35 @@ export const AbstractButton = defineType("AbstractButton", Control, {
     self.$buttonGroup = null;
     self.$pressed = signal(() => untrack(() => props.onPressed));
     loose(self, "checked");
+    loose(self, "enabled");
     keeps(self, () => [self.indicator]);
     // The action clicks the button: by its key, or from a menu.
     const clicked = () => {
       if (now(self, "enabled") || mine.triggering) self.clicked();
     };
     effect(
-      () => [self.action, self.action?.enabled, self.action?.checked],
-      ([action, enabled, checked]) => {
+      () => [self.action, self.action?.enabled, self.action?.checked, self.action?.checkable],
+      ([action, enabled, checked, checkable]) => {
         if (action !== mine.action) {
           if (mine.action) {
             uses(mine.action, self, false);
             mine.action.triggered.disconnect(clicked);
           }
           mine.action = action;
-          mine.followed = undefined;
+          mine.followed = mine.able = undefined;
           if (action) {
             uses(action, self, true);
             action.triggered.connect(clicked);
           }
         }
+        // What the action gave the button stays when the action is gone.
         if (!action) return;
-        slot(self, "enabled").provide(enabled);
+        slot(self, "checkable").provide(checkable);
+        // The button is as able as its action says at first, unless it says
+        // itself; when the action changes its mind, the button does.
+        if (mine.able === undefined) slot(self, "enabled").provide(enabled);
+        else if (enabled !== mine.able) slot(self, "enabled").write(enabled);
+        mine.able = enabled;
         if (checked === mine.followed) return;
         mine.followed = checked;
         untrack(() => self.$setChecked(checked));

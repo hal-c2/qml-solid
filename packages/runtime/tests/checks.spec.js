@@ -1,36 +1,10 @@
 // The buttons that are checked. What is expected is what Qt 6.11 answers for
 // the same scene (`qml6`), and what it notes when a QtTest `TestCase` makes
 // the same moves with its mouse.
+import { advance, read, said, set, still as base } from "./notes.js";
 import { expect, open, test } from "./open.js";
 
-const take = (page) => page.evaluate(() => window.scene.take());
-
-// What was noted is what Qt notes, but for one thing: properties that changed
-// together say so in whatever order here, where Qt's is the order it set them
-// in. So those next to each other are compared sorted; signals are in order.
-function order(notes) {
-  const sorted = [];
-  for (let from = 0; from < notes.length; ) {
-    let to = from;
-    while (to < notes.length && notes[to].includes(" ")) to++;
-    if (to === from) sorted.push(notes[from++]);
-    else sorted.push(...notes.slice(from, to).sort());
-    from = Math.max(from, to);
-  }
-  return sorted;
-}
-const said = async (page, notes) => expect(order(await take(page))).toEqual(order(notes));
-const read = (page, ...names) =>
-  page.evaluate((names) => names.map((name) => name.split(".").reduce((at, part) => at[part], window.scene)), names);
-const advance = (page, ms) => page.evaluate((ms) => window.clock.advance(ms), ms);
-const set = (page, name, property, value) =>
-  page.evaluate(([name, property, value]) => (window.scene[name][property] = value), [name, property, value]);
-
-async function still(page) {
-  await open(page, "checks");
-  await page.evaluate(() => window.clock.stop());
-  await said(page, []);
-}
+const still = (page) => base(page, "checks");
 
 // Where the buttons are in the scene.
 const at = {
@@ -91,12 +65,12 @@ test("a check box is checked or not, and what it is assigned it is", async ({ pa
   await said(page, ["cb.checkState 2", "cb.checked true", "cb.toggled", "cb.clicked"]);
   await click(page, "cb");
   await said(page, ["cb.checkState 0", "cb.checked false", "cb.toggled", "cb.clicked"]);
-  await set(page, "cb", "checkState", 1);
+  await set(page, "cb.checkState", 1);
   await said(page, ["cb.checkState 1"]);
   expect(await read(page, "cb.checked", "cb.checkState")).toEqual([false, 1]);
-  await set(page, "cb", "checked", true);
+  await set(page, "cb.checked", true);
   await said(page, ["cb.checkState 2", "cb.checked true"]);
-  await set(page, "cb", "checkState", 0);
+  await set(page, "cb.checkState", 0);
   await said(page, ["cb.checkState 0", "cb.checked false"]);
   await page.evaluate(() => window.scene.cb.toggle());
   await said(page, ["cb.checkState 2", "cb.checked true"]);
@@ -141,15 +115,15 @@ test("of the radio buttons in an item one is checked by a click", async ({ page 
   await click(page, "r1");
   await said(page, ["r1.checked false", "r1.toggled", "r1.clicked"]);
   expect(await radios()).toEqual([false, false, true]);
-  await set(page, "r3", "checked", true);
+  await set(page, "r3.checked", true);
   await said(page, []);
-  await set(page, "r3", "checked", false);
+  await set(page, "r3.checked", false);
   await said(page, ["r3.checked false"]);
   await page.evaluate(() => window.scene.r2.toggle());
   await said(page, ["r2.checked true"]);
   expect(await radios()).toEqual([false, true, false]);
   // One that excludes nothing is toggled like any button.
-  await set(page, "r2", "autoExclusive", false);
+  await set(page, "r2.autoExclusive", false);
   await click(page, "r2");
   await said(page, ["r2.checked false", "r2.toggled"]);
   await click(page, "r1");
@@ -187,7 +161,7 @@ test("a switch is toggled by a click", async ({ page }) => {
   expect(await read(page, "sw.pressed")).toEqual([true]);
   await release(page);
   await said(page, ["sw.position 1", "sw.checked true", "sw.toggled", "sw.released", "sw.clicked"]);
-  await set(page, "sw", "checked", false);
+  await set(page, "sw.checked", false);
   await said(page, ["sw.position 0", "sw.checked false"]);
 
   await click(page, "sd");
@@ -250,7 +224,7 @@ test("a delay button is checked by being held to the end", async ({ page }) => {
   await release(page);
   await said(page, ["dl.progress 0", "dl.clicked"]);
   expect(await read(page, "dl.progress", "dl.checked")).toEqual([0, false]);
-  await set(page, "dl", "checked", true);
+  await set(page, "dl.checked", true);
   await said(page, ["dl.progress 1", "dl.checked true"]);
   await click(page, "dl");
   await said(page, ["dl.progress 0", "dl.checked false", "dl.clicked"]);
