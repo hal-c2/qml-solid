@@ -55,7 +55,7 @@ whatever it needs:
 ```sh
 mise run install        # the tooling in mise.toml: Rust (with the wasm target), Node, pnpm
 mise run build          # build:compiler (qmlc) and build:web (the example's bundle)
-mise run run            # the example, with Vite; QML recompiles as it is edited
+mise run dev            # the example, with Vite; QML recompiles as it is edited
 mise run test           # test:compiler, test:web, test:runtime and test:gallery
 mise run gallery        # Qt's examples in a browser, against Qt's pictures of them
 mise run gallery:serve  # the same page, to look at
