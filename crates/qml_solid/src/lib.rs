@@ -13,6 +13,7 @@
 
 mod build;
 mod dialects;
+pub mod discover;
 mod lower;
 mod project;
 mod qt;
