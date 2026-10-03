@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite"
+    "dev": "vite",
+    "report": "playwright test"
   },
   "dependencies": {
     "@solidjs/web": "2.0.0-rc.13",
