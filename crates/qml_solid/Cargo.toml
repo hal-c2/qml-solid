@@ -1,0 +1,19 @@
+[package]
+name = "qml_solid"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+oxc_allocator = "0.144"
+oxc_ast = "0.144"
+oxc_ast_visit = "0.144"
+oxc_codegen = "0.144"
+oxc_diagnostics = "0.144"
+oxc_parser = "0.144"
+oxc_semantic = "0.144"
+oxc_span = "0.144"
+oxc_str = "0.144"
+oxc_syntax = "0.144"
+solidjs-compiler = { path = "../../vendor/solidjs-compiler", default-features = false }
