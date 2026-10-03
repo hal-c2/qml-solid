@@ -72,6 +72,9 @@ for (const example of readManifest()) {
     await page
       .waitForFunction(() => window.gallery && window.gallery.status !== "loading", null, { timeout: 20000 })
       .catch(() => pageErrors.push("the page did not finish loading the example"));
+    // Its pictures and fonts are asked for when it is made: a busy server
+    // may take longer over them than the wait that follows.
+    await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
     await page.waitForTimeout(example.qt?.settle ?? 1500);
     const state = await page.evaluate(() => ({ ...window.gallery, children: document.getElementById("stage").childElementCount }));
     await Promise.all(answers);
