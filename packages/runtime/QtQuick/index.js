@@ -3,6 +3,8 @@ export { QtObject } from "../object.js";
 export { Item } from "./Item.js";
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
 export { Rotation, Scale, Translate } from "./transforms.js";
+export { Binding } from "./Binding.js";
+export { Connections } from "./Connections.js";
 export {
   Animation,
   ParallelAnimation,
