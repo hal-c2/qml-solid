@@ -45,6 +45,14 @@ function style(importer) {
   return "Fusion";
 }
 
+// What an example's qtquickcontrols2.conf says besides the style: the theme
+// and the colours its style has.
+function controls(importer) {
+  const example = readManifest().find(({ directory }) => importer?.startsWith(directory + sep));
+  const conf = example?.qt.controlsConf && join(example.directory, example.qt.controlsConf);
+  return conf && existsSync(conf) ? conf : undefined;
+}
+
 // The plugin stops the build at a file `qmlc` does not take. Here that is the
 // usual case and must not stop anything: the file becomes a module that
 // throws the compiler's message when it is imported, so the example that
@@ -65,7 +73,7 @@ function tolerant(plugin) {
 
 export default defineConfig({
   base: "./",
-  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), style }))],
+  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), style, controls }))],
   resolve: {
     // Qt's examples have no app behind them: nothing to find here.
     alias: { "qml-solid/host": path("./host.js") },
