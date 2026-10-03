@@ -467,6 +467,93 @@ test("callLater calls once, with the last arguments", async ({ page }) => {
   expect(log).toEqual(["before", 2]);
 });
 
+test("settings are kept in the page's storage, as text", async ({ page }) => {
+  await open(page, "settings");
+  const stored = () => page.evaluate(() => Object.fromEntries(Object.entries(localStorage).sort()));
+  // What the QML says is stored when nothing was.
+  expect(await stored()).toEqual({
+    "qml-solid:count": '"10"',
+    "qml-solid:main/count": '"1"',
+    "qml-solid:main/flag": '"true"',
+    "qml-solid:main/list": '["1","2"]',
+    "qml-solid:main/name": '"n"',
+    "qml-solid:main/ratio": '"1.5"',
+  });
+  expect(
+    await answers(page, () => {
+      st.count = 4;
+      st.name = "changed";
+      st.flag = false;
+      return [
+        () => st.count,
+        // Written since the page loaded: as it was written.
+        () => st.value("count"),
+        () => st.value("missing", 7),
+        () => st.value("missing"),
+        () => st.setValue("extra", 5),
+        () => st.value("extra"),
+        () => other.count,
+        () => LabsSettings === Settings,
+        () => st.category,
+        () => st.location,
+      ];
+    }),
+  ).toEqual([4, 4, 7, undefined, undefined, 5, 10, true, "main", ""]);
+  expect(await stored()).toMatchObject({
+    "qml-solid:main/count": '"4"',
+    "qml-solid:main/name": '"changed"',
+    "qml-solid:main/flag": '"false"',
+    "qml-solid:main/extra": '"5"',
+    "qml-solid:count": '"10"',
+  });
+
+  // The next run of the program: what was stored replaces what the QML says,
+  // as the kind of thing the property holds.
+  await open(page, "settings");
+  expect(
+    await answers(page, () => [
+      () => st.count,
+      () => st.name,
+      () => st.flag,
+      () => st.ratio,
+      () => JSON.stringify(st.list),
+      () => other.count,
+      // Read from storage: as text, which is how Qt keeps it.
+      () => st.value("count"),
+      () => st.value("flag"),
+      () => st.value("ratio"),
+      () => st.value("extra"),
+      () => st.value("list").join(),
+    ]),
+  ).toEqual([4, "changed", false, 1.5, '["1","2"]', 10, "4", "false", "1.5", "5", "1,2"]);
+
+  // The application's name and the settings' location say which settings.
+  expect(
+    await answers(page, () => {
+      Application.organization = "Org";
+      Application.name = "App";
+      return [() => st.value("count"), () => (st.location = "elsewhere"), () => st.value("count", "none"), () => st.sync(), () => st.value("count")];
+    }),
+  ).toEqual([undefined, "elsewhere", "none", undefined, 4]);
+  expect(await page.evaluate(() => localStorage.getItem("qml-solid:elsewhere/Org/App/main/count"))).toBe('"4"');
+});
+
+test("a page has no standard paths", async ({ page }) => {
+  await open(page, "settings");
+  expect(
+    await answers(page, () => [
+      () => StandardPaths.DesktopLocation,
+      () => StandardPaths.PicturesLocation,
+      () => StandardPaths.AppDataLocation,
+      () => StandardPaths.GenericStateLocation,
+      () => StandardPaths.LocateDirectory,
+      () => StandardPaths.writableLocation(StandardPaths.PicturesLocation),
+      () => StandardPaths.standardLocations(StandardPaths.PicturesLocation).length,
+      () => StandardPaths.locate(StandardPaths.HomeLocation, "file"),
+    ]),
+  ).toEqual([0, 6, 17, 22, 1, "", 0, ""]);
+});
+
 // These warn, which the scenes' `test` takes for a failure.
 base("creating a component from a file at run time is refused aloud", async ({ page }) => {
   const warnings = [];
