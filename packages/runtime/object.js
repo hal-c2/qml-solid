@@ -118,7 +118,9 @@ class Slot {
     this.assigned = false;
     this.value = undefined;
     // Set by whatever lays the object out: a positioner, a layout, a view.
+    // An assignment is over it until it is laid out somewhere else.
     this.placed = undefined;
+    this.over = false;
     // Set by a Behavior: what is shown while the value it follows moves.
     this.shown = null;
     // Most properties are never written, so a slot has no signal of its own
@@ -175,7 +177,7 @@ class Slot {
   }
 
   own() {
-    if (this.placed !== undefined) return this.placed;
+    if (this.placed !== undefined && !this.over) return this.placed;
     if (this.assigned) return this.value;
     let value = this.bound ? this.bound() : this.given;
     if (value === undefined && this.whole) value = slot(this.self, this.whole).get()?.[this.member];
@@ -210,7 +212,13 @@ class Slot {
   // which an animation makes every frame.
   write(value) {
     if (typeof value === "function" && value[BINDING]) return this.rebind(value);
-    if (this.assigned && Object.is(this.value, value)) return false;
+    // Where an object was put, it is until what laid it out puts it
+    // somewhere else: a row that is dragged stays where it was dragged to
+    // until its view lays its rows out again, as in Qt. (Qt puts every row
+    // back then, and this only those that are to be elsewhere.) How big it
+    // is is not its own to say: a layout that sized it sizes it again.
+    if (this.placed !== undefined && !this.over && (this.key === "x" || this.key === "y")) this.over = true;
+    else if (this.assigned && Object.is(this.value, value)) return false;
     this.assigned = true;
     this.value = value;
     this.changed();
@@ -238,6 +246,7 @@ class Slot {
   place(value) {
     if (Object.is(this.placed, value)) return;
     this.placed = value;
+    this.over = false;
     this.changed();
   }
 
