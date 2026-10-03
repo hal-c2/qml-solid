@@ -7,17 +7,31 @@
 // passive (they watch it, and may take it later), and gets its moves and its
 // release wherever they happen. The page is asked what is under a point, so
 // what is seen there is what is hit.
+import { PauseJob } from "./animation/jobs.js";
 import { activate } from "./focus.js";
 import { frameOf, sceneToItem } from "./geometry.js";
 import { buttonOf, modifiersOf, NoButton } from "./keys.js";
 
-// Time, for what waits (a long press) or compares (a double click). A test
-// drives it by replacing these, or with the page's own clock.
-export const clock = {
-  now: () => performance.now(),
-  after: (ms, work) => setTimeout(work, ms),
-  cancel: (timer) => clearTimeout(timer),
-};
+// What waits (a long press, the time a second click may take) waits on the
+// clock everything timed is on, so a test moves it with the same hand.
+// `after` starts the wait over on the job it is given, and makes one if it
+// is given none.
+const due = { finished: (job) => job.work() };
+
+export function after(ms, work, job = new PauseJob(0)) {
+  cancel(job);
+  job.length = Math.max(ms, 1);
+  job.work = work;
+  job.listener = due;
+  job.start();
+  return job;
+}
+
+export function cancel(job) {
+  if (!job) return;
+  job.listener = null;
+  job.stop();
+}
 
 // `QPointingDevice::GrabTransition`: what `$grab` is told.
 export const GrabPassive = 0x01;
@@ -115,10 +129,6 @@ class Point {
     this.hovered = [];
     this.spare = [];
     this.claimed = false;
-    this.lastButton = NoButton;
-    this.lastTime = 0;
-    this.lastX = 0;
-    this.lastY = 0;
   }
 
   // Where it is in an item.
@@ -217,21 +227,24 @@ export function drop(point, who) {
 // Several touches move in one event of the device and arrive here one by
 // one. What acts on them together waits for the last: the touch event that
 // follows them, or the next move of the same touch.
-const unsettled = [];
+// Whoever asks is told once they have all moved: `$gathered()`.
+const waiting = [];
 const moved = [];
 
-export function settle(who, point) {
-  if (point.type !== "touch") return who.$settle();
-  if (!unsettled.includes(who)) unsettled.push(who);
+export function gather(who, point) {
+  if (point.type !== "touch") return who.$gathered();
+  if (!waiting.includes(who)) waiting.push(who);
   if (!moved.includes(point.id)) moved.push(point.id);
 }
 
-function settled() {
+function gathered() {
   moved.length = 0;
-  while (unsettled.length) unsettled.shift().$settle();
+  while (waiting.length) waiting.shift().$gathered();
 }
 
-const sceneOf = (target) => target?.closest?.(".q-scene") ?? null;
+// A scene is what a tree of items is shown in: the element it was mounted
+// in, or a window's.
+const sceneOf = (target) => target?.closest?.(".qq-window,.q-scene") ?? null;
 
 const NONE = Object.freeze([]);
 
@@ -250,6 +263,10 @@ function hitsAt(scene, x, y, press) {
   return hits;
 }
 
+// The same for where a point is: for an item that passes on what it did not
+// want.
+export const under = (point) => hitsAt(point.scene, point.clientX, point.clientY, true);
+
 function pointOf(event) {
   let point = points.get(event.pointerId);
   if (!point) points.set(event.pointerId, (point = new Point(event.pointerId)));
@@ -260,7 +277,7 @@ function place(point, event) {
   const { left, top, zoom } = frameOf(point.scene);
   const x = (event.clientX - left) / zoom;
   const y = (event.clientY - top) / zoom;
-  const time = clock.now();
+  const time = performance.now();
   const elapsed = (time - point.time) / 1000;
   if (elapsed > 0) {
     point.velocityX = (x - point.x) / elapsed;
@@ -281,12 +298,12 @@ function place(point, event) {
 const asked = [];
 
 // The items around `item` that filter what their children are sent, nearest
-// first, each asked once per press.
+// first. One that took the press is not asked again for what is under it.
 function filter(point, item) {
   for (let parent = parentOf(item); parent; parent = parentOf(parent)) {
-    if (!parent.$filter || asked.includes(parent)) continue;
+    if (!parent.$filter || asked.includes(parent) || !parent.$filter(point, item)) continue;
     asked.push(parent);
-    if (parent.$filter(point, item)) point.filters.push(parent);
+    point.filters.push(parent);
   }
 }
 
@@ -381,10 +398,14 @@ function hover(point, hits) {
 // it is left undone.
 let claimed = false;
 
+// The press a second one makes a double click with, while there is time.
+const last = { button: NoButton, scene: null, x: 0, y: 0, job: new PauseJob(0) };
+const forgotten = () => void (last.button = NoButton);
+
 function onDown(event) {
   const scene = sceneOf(event.target);
   if (!scene) return;
-  if (unsettled.length) settled();
+  if (waiting.length) gathered();
   const point = pointOf(event);
   if (point.down) return;
   point.scene = scene;
@@ -396,15 +417,20 @@ function onDown(event) {
   point.pressY = point.y;
   point.pressTime = point.time;
   point.double =
-    point.button === point.lastButton &&
-    point.time - point.lastTime < DOUBLE_CLICK_INTERVAL &&
-    Math.abs(point.x - point.lastX) <= DOUBLE_CLICK_DISTANCE &&
-    Math.abs(point.y - point.lastY) <= DOUBLE_CLICK_DISTANCE;
-  // The press after a double click starts over.
-  point.lastButton = point.double ? NoButton : point.button;
-  point.lastTime = point.time;
-  point.lastX = point.x;
-  point.lastY = point.y;
+    point.primary &&
+    point.button === last.button &&
+    scene === last.scene &&
+    Math.abs(point.x - last.x) <= DOUBLE_CLICK_DISTANCE &&
+    Math.abs(point.y - last.y) <= DOUBLE_CLICK_DISTANCE;
+  if (point.primary) {
+    // The press after a double click starts over.
+    last.button = point.double ? NoButton : point.button;
+    last.scene = scene;
+    last.x = point.x;
+    last.y = point.y;
+    if (point.double) cancel(last.job);
+    else after(DOUBLE_CLICK_INTERVAL, forgotten, last.job);
+  }
   const hits = hitsAt(scene, point.clientX, point.clientY, true);
   press(point, hits);
   point.claimed = Boolean(point.exclusive || point.passive.length || point.filters.length);
@@ -429,14 +455,11 @@ function onMove(event) {
     if (point?.hovered.length) hover(point, NONE);
     return;
   }
-  if (moved.includes(event.pointerId)) settled();
+  if (moved.includes(event.pointerId)) gathered();
   point ??= pointOf(event);
   point.scene = scene;
   place(point, event);
   point.moving = true;
-  if (Math.abs(point.x - point.lastX) > DOUBLE_CLICK_DISTANCE || Math.abs(point.y - point.lastY) > DOUBLE_CLICK_DISTANCE) {
-    point.lastButton = NoButton;
-  }
   // A button pressed or released while another is held comes as a move.
   if (event.button >= 0 && point.down) {
     point.button = buttonOf(event);
@@ -454,7 +477,7 @@ function onMove(event) {
 function onUp(event) {
   const point = points.get(event.pointerId);
   if (!point?.down) return;
-  if (unsettled.length) settled();
+  if (waiting.length) gathered();
   place(point, event);
   point.button = buttonOf(event);
   point.moving = false;
@@ -475,7 +498,7 @@ function onUp(event) {
 function onCancel(event) {
   const point = points.get(event.pointerId);
   if (!point) return;
-  if (unsettled.length) settled();
+  if (waiting.length) gathered();
   point.down = false;
   point.claimed = false;
   point.moving = false;
@@ -537,7 +560,7 @@ function listen() {
   document.addEventListener("mousedown", onMouseDown);
   document.addEventListener("contextmenu", onContextMenu);
   for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) {
-    document.addEventListener(type, settled, { passive: true });
+    document.addEventListener(type, gathered, { passive: true });
   }
 }
 
