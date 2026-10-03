@@ -286,6 +286,16 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
             *expression = inner;
         }
 
+        // What a file named by its path makes finds names where the path is
+        // written, if the project finds any as it runs.
+        let scope = (!self.dynamic.is_empty() && !expression.span().is_empty())
+            .then(|| self.tree.scope_of(self.tree.object_at(expression.span().start)));
+        let Uses { paths, kernel, handles, .. } = &mut *self.uses;
+        if paths.rewrite(self.b, kernel, expression, scope.as_deref())
+            && let Some(scope) = scope
+        {
+            handles.insert(scope);
+        }
         if self.type_member(expression) {
             return;
         }
@@ -316,6 +326,13 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
             return;
         }
         walk_mut::walk_simple_assignment_target(self, target);
+    }
+
+    /// `{ "Page.qml": 1 }`: a key is a name, whatever it looks like.
+    fn visit_property_key(&mut self, key: &mut PropertyKey<'a>) {
+        if !matches!(key, PropertyKey::StringLiteral(_)) {
+            walk_mut::walk_property_key(self, key);
+        }
     }
 
     fn visit_object_property(&mut self, property: &mut ObjectProperty<'a>) {
@@ -396,7 +413,7 @@ impl<'a> VisitMut<'a> for Pruner<'_> {
 }
 
 /// What QML puts in every script's scope, whatever is imported.
-const QML_GLOBALS: &[&str] = &[
+pub(crate) const QML_GLOBALS: &[&str] = &[
     "Qt",
     "qsTr",
     "qsTrId",
@@ -411,7 +428,7 @@ const QML_GLOBALS: &[&str] = &[
     "gc",
 ];
 
-const JS_GLOBALS: &[&str] = &[
+pub(crate) const JS_GLOBALS: &[&str] = &[
     "undefined",
     "NaN",
     "Infinity",

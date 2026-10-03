@@ -1,14 +1,34 @@
-// Vite plugin: a `.qml` import is compiled by `qmlc` as it is loaded.
+// Vite plugin: a `.qml` import is compiled by `qmlc` as it is loaded, and so
+// is a script it imports.
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+// What marks a `.js` file as the script a QML file imports
+// (`import "logic.js" as Logic`), which `qmlc` makes a module of.
+const SCRIPT = "qml";
+
+const isScript = (id) => {
+  const [file, query] = id.split("?");
+  return file.endsWith(".js") && new URLSearchParams(query).has(SCRIPT);
+};
+
 export default function qml({ qmlc = "qmlc", args = [] } = {}) {
   return {
     name: "qml-solid",
+    // Before Vite's own: a script is told from any other `.js` file by who
+    // imports it, and only here is that known.
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (!importer || !source.endsWith(".js") || !/^\.\.?\//.test(source)) return null;
+      if (!importer.split("?")[0].endsWith(".qml") && !isScript(importer)) return null;
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      if (!resolved || resolved.external || resolved.id.includes("?")) return resolved;
+      return { ...resolved, id: `${resolved.id}?${SCRIPT}` };
+    },
     load(id) {
       const [file] = id.split("?");
-      if (!file.endsWith(".qml")) return null;
+      if (!file.endsWith(".qml") && !isScript(id)) return null;
       // A component is compiled with the files next to it: what they set on
       // its instances decides what it takes. A build that watches rebuilds
       // it when any of them changes.

@@ -78,6 +78,12 @@ function settled(work, ...args) {
   }
 }
 
+// What a type's method does once it has changed something, so that what
+// depends on the change is up to date when it returns, as it is in QML.
+export function settle() {
+  if (!settling) flush();
+}
+
 class Slot {
   constructor(self, key, initial, resolve, whole, member) {
     this.self = self;
@@ -578,6 +584,12 @@ function attach(name, Attached, self) {
 // given (a delegate's `index` and roles) to the object.
 export function $component(make) {
   make.$component = true;
+  // `Component.Ready`: it was compiled before the program ran, so there is
+  // nothing to wait for and nothing to tell of.
+  make.status = 1;
+  make.progress = 1;
+  make.errorString = () => "";
+  make.statusChanged = make.progressChanged = silent;
   make.createObject = (item, properties) => {
     const { object } = instantiate(make, properties ?? {}, item);
     for (const [name, value] of Object.entries(properties ?? {})) {
@@ -587,6 +599,67 @@ export function $component(make) {
     return object;
   };
   return make;
+}
+
+// A signal nothing ever emits.
+const silent = Object.assign(() => {}, { connect() {}, disconnect() {} });
+
+// A QML file as a `Component`: what `Qt.createComponent("Block.qml")` and
+// `source: "Block.qml"` are, the compiler having imported the file. `File` is
+// what the file's module exports.
+// What it makes finds names in `context`, the one of the object that named
+// the file, when the compiler gives one.
+const files = new WeakMap();
+const nowhere = {};
+export function $file(File, context) {
+  let made = files.get(File);
+  if (!made) files.set(File, (made = new WeakMap()));
+  let component = made.get(context ?? nowhere);
+  if (!component) {
+    const make = context ? (properties) => File(within(properties, context)) : (properties) => File(properties);
+    made.set(context ?? nowhere, (component = $component(make)));
+  }
+  return component;
+}
+
+// What a component is given, and the context it is made in.
+function within(properties, context) {
+  const props = { $context: context };
+  for (const key of Object.keys(properties ?? {})) {
+    if (key !== "$context") Object.defineProperty(props, key, Object.getOwnPropertyDescriptor(properties, key));
+  }
+  return props;
+}
+
+// A path that is only known when the program runs, looked up among the files
+// the compiler found it could name: `table` has, for each path from the
+// directory of the module at `base`, a function that gives what the file
+// exports. The result is `find(path, required)`: the file's component, and
+// for a path that names none of them the path as it is, or with `required`
+// (`Qt.createComponent`) a component that says so. `context` as for `$file`.
+export function $files(table, base) {
+  const directory = new URL(".", base).href;
+  return (path, required, context) => {
+    // A component already: a path the compiler knew.
+    if (typeof path !== "string") return path;
+    let key = path.startsWith(directory) ? path.slice(directory.length) : path;
+    while (key.startsWith("./")) key = key.slice(2);
+    if (Object.hasOwn(table, key)) return $file(table[key](), context);
+    return required ? missing($url(path, base)) : path;
+  };
+}
+
+// `Component.Error`: what Qt makes of a file that is not there.
+function missing(url) {
+  const component = $component(() => null);
+  component.status = 3;
+  component.progress = 0;
+  component.errorString = () => `${url}: No such file or directory`;
+  component.createObject = () => {
+    console.warn(`QQmlComponent: Component is not ready: ${component.errorString()}`);
+    return null;
+  };
+  return component;
 }
 
 // QML finds a name by walking contexts: a component's own, then the one of

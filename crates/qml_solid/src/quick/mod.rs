@@ -7,7 +7,9 @@
 
 mod lower;
 mod names;
+mod paths;
 mod scope;
+pub(crate) mod script;
 mod types;
 
 use oxc_ast::ast::Program;
@@ -46,6 +48,7 @@ pub(crate) fn lower<'a>(
     let name = if shadows || is_singleton { format!("{stem}$component") } else { stem.to_string() };
 
     let mut lower = Lower::new(b, &tree, types, stem);
+    lower.uses.paths.known.clone_from(&options.files);
     let (component, enums) = lower.component(&name, document.root, !is_singleton);
     errors.append(&mut lower.errors);
 
@@ -100,6 +103,9 @@ pub(crate) fn lower<'a>(
     if !errors.is_empty() {
         return Err(errors);
     }
+    let (files, tables) = uses.paths.statements(b, &options.component_extension);
+    imports.extend(files);
+    imports.extend(tables);
     for (index, import) in imports.into_iter().enumerate() {
         program.body.insert(index, import);
     }
