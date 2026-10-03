@@ -9,6 +9,7 @@
 // yet is there all the same, to say so when it is used: a style names every
 // control, and a program that uses three of them needs those three.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { searchForWorkspaceRoot } from "vite";
@@ -94,6 +95,40 @@ function extract(tool, uri, folder, directory) {
     writeFileSync(join(directory, name), Buffer.from(data, "base64"));
   }
   return null;
+}
+
+// `wave.frag.qsb`: a shader as Qt draws with it, baked by Qt's `qsb` tool
+// from its source, `wave.frag`, when a program is built. It is baked here
+// likewise when it is not there. In what is baked is the same shader for
+// each way of drawing Qt knows: a browser's is OpenGL ES, and that text is
+// what the runtime is given.
+const BAKED = ".qsb";
+
+function baked(context, tool, file, directory) {
+  let read = file;
+  const run = (args) => {
+    const ran = spawnSync(tool, args, { encoding: "utf8", maxBuffer: 1 << 26 });
+    if (ran.error) context.error(`could not run ${tool}: ${ran.error.message}`);
+    if (ran.status !== 0) context.error(ran.stderr.trim() || `${tool} could not read ${file}`);
+    return ran.stdout;
+  };
+  if (existsSync(file)) context.addWatchFile(file);
+  else {
+    const source = file.slice(0, -BAKED.length);
+    if (!existsSync(source)) context.error(`${file} is not there, nor is ${source} to bake it from`);
+    context.addWatchFile(source);
+    mkdirSync(directory, { recursive: true });
+    read = join(directory, `${createHash("sha1").update(file).digest("hex")}${BAKED}`);
+    run(["--glsl", "300 es", "-o", read, source]);
+  }
+  const shaders = new Map();
+  for (const part of run(["-d", read]).split(/^\*{8,}$/m)) {
+    const [, level, text] = part.match(/^Shader \d+: GLSL (\d+ es) \[Standard\]\nEntry point: \w+\nContents:\n([^]*)$/m) ?? [];
+    if (level) shaders.set(level, text.trim() + "\n");
+  }
+  const text = shaders.get("300 es") ?? shaders.get("100 es");
+  if (!text) context.error(`${file} has no shader for OpenGL ES in it`);
+  return `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`;
 }
 
 // What a `qmldir` says its module is made of: the QML files that are its
@@ -240,6 +275,8 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
         return `${VIRTUAL}${module}${chosen ? `?style=${styled(importer) ?? chosen.split(".").at(-1)}` : ""}`;
       }
       if (!importer || (!importer.split("?")[0].endsWith(".qml") && !isScript(importer))) return null;
+      // A baked shader is made here, whether or not the file is there.
+      if (source.endsWith(BAKED) && /^\.\.?\//.test(source)) return join(dirname(importer.split("?")[0]), source);
       // What compiled QML imports is the runtime's to find, wherever the QML
       // is: Qt's own is in no project.
       if (/^[\w@]/.test(source)) {
@@ -292,6 +329,10 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
         return { code: lines.join("\n") + "\n", map: null };
       }
       const [file] = id.split("?");
+      if (file.endsWith(BAKED)) {
+        const text = baked(this, join(found().bins || "", "qsb"), file, join(cache, "shaders"));
+        return { code: `export default ${JSON.stringify(text)};\n`, map: null };
+      }
       if (!file.endsWith(".qml") && !isScript(id)) return null;
       // A component is compiled with the files next to it: what they set on
       // its instances decides what it takes. A build that watches rebuilds
