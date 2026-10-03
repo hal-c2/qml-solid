@@ -18,11 +18,23 @@ export { StandardKey } from "./keycodes.js";
 export { ListView } from "./ListView.js";
 export { Loader } from "./Loader.js";
 export { ListElement, ListModel, ObjectModel } from "./model.js";
+export {
+  FunctionFilter,
+  FunctionSorter,
+  RoleSorter,
+  SortFilterProxyModel,
+  StringSorter,
+  ValueFilter,
+} from "./proxy.js";
+export { ItemSelectionModel } from "./selection.js";
 export { MouseArea } from "./MouseArea.js";
 export { Column, Flow, Grid, Positioner, Row } from "./positioners.js";
 export { ColorGroup, Palette, SystemPalette } from "./Palette.js";
+import "./palettes.js";
+export { SafeArea } from "./SafeArea.js";
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
 export { Repeater } from "./Repeater.js";
+export { Sprite } from "./Sprite.js";
 export { Text } from "./Text.js";
 export { TextEdit, TextInput } from "./TextInput.js";
 export { FontMetrics, TextMetrics } from "./TextMetrics.js";

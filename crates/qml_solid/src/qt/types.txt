@@ -5979,6 +5979,108 @@ module QtQuick.Controls.Fusion
 		prototype QQuickVerticalHeaderView
 	type QtQuick/Controls/Fusion/VerticalHeaderViewDelegate.qml VerticalHeaderViewDelegate
 		prototype QQuickHeaderViewDelegate
+module QtQuick.Controls.Fusion.impl
+	BusyIndicatorImpl QQuickFusionBusyIndicator
+	ButtonPanel QtQuick/Controls/Fusion/impl/ButtonPanel.qml
+	CheckIndicator QtQuick/Controls/Fusion/impl/CheckIndicator.qml
+	CopyAction QtQuick/Controls/Fusion/impl/CopyAction.qml
+	CutAction QtQuick/Controls/Fusion/impl/CutAction.qml
+	DeleteAction QtQuick/Controls/Fusion/impl/DeleteAction.qml
+	DialImpl QQuickFusionDial
+	KnobImpl QQuickFusionKnob
+	PasteAction QtQuick/Controls/Fusion/impl/PasteAction.qml
+	RadioIndicator QtQuick/Controls/Fusion/impl/RadioIndicator.qml
+	RedoAction QtQuick/Controls/Fusion/impl/RedoAction.qml
+	SelectAllAction QtQuick/Controls/Fusion/impl/SelectAllAction.qml
+	SliderGroove QtQuick/Controls/Fusion/impl/SliderGroove.qml
+	SliderHandle QtQuick/Controls/Fusion/impl/SliderHandle.qml
+	SwitchIndicator QtQuick/Controls/Fusion/impl/SwitchIndicator.qml
+	TextEditingContextMenu QtQuick/Controls/Fusion/impl/TextEditingContextMenu.qml
+	TextFieldBackground QtQuick/Controls/Fusion/impl/TextFieldBackground.qml
+	UndoAction QtQuick/Controls/Fusion/impl/UndoAction.qml
+	type QQuickFusionBusyIndicator BusyIndicatorImpl
+		prototype QQuickPaintedItem
+		prop color QColor
+		prop running bool
+	type QQuickFusionDial DialImpl
+		prototype QQuickPaintedItem
+		prop highlight bool
+	type QQuickFusionKnob KnobImpl
+		prototype QQuickPaintedItem
+	type QtQuick/Controls/Fusion/impl/ButtonPanel.qml ButtonPanel
+		prototype QQuickRectangle
+		prop control QQuickItem
+		prop highlighted bool
+		signal controlChanged
+		signal highlightedChanged
+	type QtQuick/Controls/Fusion/impl/CheckIndicator.qml CheckIndicator
+		prototype QQuickRectangle
+		prop control QQuickItem
+		prop baseLightness double
+		prop pressedColor QColor readonly
+		prop checkMarkColor QColor readonly
+		signal controlChanged
+		signal baseLightnessChanged
+		signal pressedColorChanged
+		signal checkMarkColorChanged
+	type QtQuick/Controls/Fusion/impl/CopyAction.qml CopyAction
+		prototype QtQuick/Controls/impl/CopyAction.qml
+	type QtQuick/Controls/Fusion/impl/CutAction.qml CutAction
+		prototype QtQuick/Controls/impl/CutAction.qml
+	type QtQuick/Controls/Fusion/impl/DeleteAction.qml DeleteAction
+		prototype QtQuick/Controls/impl/DeleteAction.qml
+	type QtQuick/Controls/Fusion/impl/PasteAction.qml PasteAction
+		prototype QtQuick/Controls/impl/PasteAction.qml
+	type QtQuick/Controls/Fusion/impl/RadioIndicator.qml RadioIndicator
+		prototype QQuickRectangle
+		prop control QQuickItem
+		prop pressedColor QColor readonly
+		prop checkMarkColor QColor readonly
+		signal controlChanged
+		signal pressedColorChanged
+		signal checkMarkColorChanged
+	type QtQuick/Controls/Fusion/impl/RedoAction.qml RedoAction
+		prototype QtQuick/Controls/impl/RedoAction.qml
+	type QtQuick/Controls/Fusion/impl/SelectAllAction.qml SelectAllAction
+		prototype QtQuick/Controls/impl/SelectAllAction.qml
+	type QtQuick/Controls/Fusion/impl/SliderGroove.qml SliderGroove
+		prototype QQuickRectangle
+		prop control QQuickItem
+		prop offset double
+		prop progress double
+		prop visualProgress double
+		signal controlChanged
+		signal offsetChanged
+		signal progressChanged
+		signal visualProgressChanged
+	type QtQuick/Controls/Fusion/impl/SliderHandle.qml SliderHandle
+		prototype QQuickRectangle
+		prop pressed bool
+		prop hovered bool
+		prop vertical bool
+		prop visualFocus bool
+		signal pressedChanged
+		signal hoveredChanged
+		signal verticalChanged
+		signal visualFocusChanged
+	type QtQuick/Controls/Fusion/impl/SwitchIndicator.qml SwitchIndicator
+		prototype QQuickRectangle
+		prop control QQuickAbstractButton
+		prop pressedColor QColor readonly
+		prop checkMarkColor QColor readonly
+		signal controlChanged
+		signal pressedColorChanged
+		signal checkMarkColorChanged
+	type QtQuick/Controls/Fusion/impl/TextEditingContextMenu.qml TextEditingContextMenu
+		prototype QtQuick/Controls/Fusion/Menu.qml
+		prop editor QQuickItem required
+		signal editorChanged
+	type QtQuick/Controls/Fusion/impl/TextFieldBackground.qml TextFieldBackground
+		prototype QQuickRectangle
+		prop control QQuickItem required
+		signal controlChanged
+	type QtQuick/Controls/Fusion/impl/UndoAction.qml UndoAction
+		prototype QtQuick/Controls/impl/UndoAction.qml
 module QtQuick.Controls.Material
 	import QtQuick.Controls.Basic
 	ApplicationWindow QtQuick/Controls/Material/ApplicationWindow.qml
@@ -6269,6 +6371,173 @@ module QtQuick.Controls.Material
 		prototype QQuickVerticalHeaderView
 	type QtQuick/Controls/Material/VerticalHeaderViewDelegate.qml VerticalHeaderViewDelegate
 		prototype QQuickHeaderViewDelegate
+module QtQuick.Controls.Material.impl
+	BoxShadow QtQuick/Controls/Material/impl/BoxShadow.qml
+	BusyIndicatorImpl QQuickMaterialBusyIndicator
+	CheckIndicator QtQuick/Controls/Material/impl/CheckIndicator.qml
+	CursorDelegate QtQuick/Controls/Material/impl/CursorDelegate.qml
+	ElevationEffect QtQuick/Controls/Material/impl/ElevationEffect.qml
+	FloatingPlaceholderText QQuickMaterialPlaceholderText
+	MaterialTextContainer QQuickMaterialTextContainer
+	ProgressBarImpl QQuickMaterialProgressBar
+	RadioIndicator QtQuick/Controls/Material/impl/RadioIndicator.qml
+	RectangularGlow QtQuick/Controls/Material/impl/RectangularGlow.qml
+	Ripple QQuickMaterialRipple
+	RoundedElevationEffect QtQuick/Controls/Material/impl/RoundedElevationEffect.qml
+	SliderHandle QtQuick/Controls/Material/impl/SliderHandle.qml
+	SwitchIndicator QtQuick/Controls/Material/impl/SwitchIndicator.qml
+	TextEditingContextMenu QtQuick/Controls/Material/impl/TextEditingContextMenu.qml
+	type QQuickMaterialBusyIndicator BusyIndicatorImpl
+		prototype QQuickItem
+		default data
+		prop color QColor
+		prop running bool
+	type QQuickMaterialPlaceholderText FloatingPlaceholderText
+		prototype QQuickPlaceholderText
+		prop filled bool
+		prop controlHasActiveFocus bool
+		prop controlHasText bool
+		prop largestHeight int readonly
+		prop verticalPadding double
+		prop controlImplicitBackgroundHeight double
+		prop controlHeight double
+		prop leftPadding int
+		prop floatingLeftPadding int
+		signal filledChanged
+		signal largestHeightChanged
+		signal controlHasActiveFocusChanged
+		signal controlHasTextChanged
+		signal controlImplicitBackgroundHeightChanged
+		signal verticalPaddingChanged
+		method adjustTransformOrigin
+	type QQuickMaterialProgressBar ProgressBarImpl
+		prototype QQuickItem
+		default data
+		prop color QColor
+		prop progress double
+		prop indeterminate bool
+	type QQuickMaterialRipple Ripple
+		prototype QQuickItem
+		default data
+		enum Trigger Press Release
+		prop color QColor
+		prop clipRadius double
+		prop pressed bool
+		prop active bool
+		prop anchor QQuickItem pointer
+		prop trigger Trigger
+	type QQuickMaterialTextContainer MaterialTextContainer
+		prototype QQuickPaintedItem
+		enum PlaceHolderHAlignment AlignLeft AlignRight AlignHCenter AlignJustify
+		prop filled bool
+		prop controlHasActiveFocus bool
+		prop fillColor QColor
+		prop outlineColor QColor
+		prop focusedOutlineColor QColor
+		prop focusAnimationProgress double
+		prop placeholderTextWidth double
+		prop placeholderTextHAlign PlaceHolderHAlignment
+		prop controlHasText bool
+		prop placeholderHasText bool
+		prop horizontalPadding int
+		signal animateChanged
+		signal controlHasActiveFocusChanged
+		signal controlHasTextChanged
+		signal placeholderHasTextChanged
+		signal horizontalPaddingChanged
+	type QtQuick/Controls/Material/impl/BoxShadow.qml BoxShadow
+		prototype QtQuick/Controls/Material/impl/RectangularGlow.qml
+		prop offsetX int
+		prop offsetY int
+		prop blurRadius int
+		prop spreadRadius int
+		prop strength double
+		prop source QQuickItem
+		prop fullWidth bool
+		prop fullHeight bool
+		prop sourceRadius double readonly
+		signal offsetXChanged
+		signal offsetYChanged
+		signal blurRadiusChanged
+		signal spreadRadiusChanged
+		signal strengthChanged
+		signal sourceChanged
+		signal fullWidthChanged
+		signal fullHeightChanged
+		signal sourceRadiusChanged
+	type QtQuick/Controls/Material/impl/CheckIndicator.qml CheckIndicator
+		prototype QQuickRectangle
+		prop control QQuickItem
+		prop checkState int
+		signal controlChanged
+		signal checkStateChanged
+	type QtQuick/Controls/Material/impl/CursorDelegate.qml CursorDelegate
+		prototype QQuickRectangle
+	type QtQuick/Controls/Material/impl/ElevationEffect.qml ElevationEffect
+		prototype QQuickItem
+		prop source QVariant
+		prop elevation int
+		prop fullWidth bool
+		prop fullHeight bool
+		prop sourceItem QQuickItem readonly
+		prop _shadows QVariant
+		prop _defaultShadows QVariant readonly
+		prop _shadow QVariant readonly
+		signal sourceChanged
+		signal elevationChanged
+		signal fullWidthChanged
+		signal fullHeightChanged
+		signal sourceItemChanged
+		signal _shadowsChanged
+		signal _defaultShadowsChanged
+		signal _shadowChanged
+	type QtQuick/Controls/Material/impl/RadioIndicator.qml RadioIndicator
+		prototype QQuickRectangle
+		prop targetColor QColor readonly
+		prop control QQuickAbstractButton
+		signal targetColorChanged
+		signal controlChanged
+	type QtQuick/Controls/Material/impl/RectangularGlow.qml RectangularGlow
+		prototype QQuickItem
+		prop glowRadius double
+		prop spread double
+		prop color QColor
+		prop cornerRadius double
+		prop cached bool
+		signal glowRadiusChanged
+		signal spreadChanged
+		signal colorChanged
+		signal cornerRadiusChanged
+		signal cachedChanged
+	type QtQuick/Controls/Material/impl/RoundedElevationEffect.qml RoundedElevationEffect
+		prototype QtQuick/Controls/Material/impl/ElevationEffect.qml
+		prop roundedScale int required
+		signal roundedScaleChanged
+		method roundedShadows
+	type QtQuick/Controls/Material/impl/SliderHandle.qml SliderHandle
+		prototype QQuickItem
+		prop value double
+		prop handleHasFocus bool
+		prop handlePressed bool
+		prop handleHovered bool
+		prop initialSize int readonly
+		prop control QVariant readonly
+		signal valueChanged
+		signal handleHasFocusChanged
+		signal handlePressedChanged
+		signal handleHoveredChanged
+		signal initialSizeChanged
+		signal controlChanged
+	type QtQuick/Controls/Material/impl/SwitchIndicator.qml SwitchIndicator
+		prototype QQuickRectangle
+		prop control QQuickAbstractButton
+		prop handle alias
+		signal controlChanged
+		signal handleChanged
+	type QtQuick/Controls/Material/impl/TextEditingContextMenu.qml TextEditingContextMenu
+		prototype QtQuick/Controls/Material/Menu.qml
+		prop editor QQuickItem required
+		signal editorChanged
 module QtQuick.Controls.Universal
 	import QtQuick.Controls.Basic
 	ApplicationWindow QtQuick/Controls/Universal/ApplicationWindow.qml
@@ -6499,6 +6768,66 @@ module QtQuick.Controls.Universal
 		prototype QQuickVerticalHeaderView
 	type QtQuick/Controls/Universal/VerticalHeaderViewDelegate.qml VerticalHeaderViewDelegate
 		prototype QQuickHeaderViewDelegate
+module QtQuick.Controls.Universal.impl
+	BusyIndicatorImpl QQuickUniversalBusyIndicator
+	CheckIndicator QtQuick/Controls/Universal/impl/CheckIndicator.qml
+	CopyAction QtQuick/Controls/Universal/impl/CopyAction.qml
+	CutAction QtQuick/Controls/Universal/impl/CutAction.qml
+	DeleteAction QtQuick/Controls/Universal/impl/DeleteAction.qml
+	FocusRectangle QQuickUniversalFocusRectangle
+	PasteAction QtQuick/Controls/Universal/impl/PasteAction.qml
+	ProgressBarImpl QQuickUniversalProgressBar
+	RadioIndicator QtQuick/Controls/Universal/impl/RadioIndicator.qml
+	RedoAction QtQuick/Controls/Universal/impl/RedoAction.qml
+	SelectAllAction QtQuick/Controls/Universal/impl/SelectAllAction.qml
+	SwitchIndicator QtQuick/Controls/Universal/impl/SwitchIndicator.qml
+	TextEditingContextMenu QtQuick/Controls/Universal/impl/TextEditingContextMenu.qml
+	UndoAction QtQuick/Controls/Universal/impl/UndoAction.qml
+	type QQuickUniversalBusyIndicator BusyIndicatorImpl
+		prototype QQuickItem
+		default data
+		prop count int
+		prop color QColor
+	type QQuickUniversalFocusRectangle FocusRectangle
+		prototype QQuickPaintedItem
+	type QQuickUniversalProgressBar ProgressBarImpl
+		prototype QQuickItem
+		default data
+		prop color QColor
+		prop progress double
+		prop indeterminate bool
+	type QtQuick/Controls/Universal/impl/CheckIndicator.qml CheckIndicator
+		prototype QQuickRectangle
+		prop control QQuickItem
+		prop partiallyChecked bool readonly
+		signal controlChanged
+		signal partiallyCheckedChanged
+	type QtQuick/Controls/Universal/impl/CopyAction.qml CopyAction
+		prototype QtQuick/Controls/impl/CopyAction.qml
+	type QtQuick/Controls/Universal/impl/CutAction.qml CutAction
+		prototype QtQuick/Controls/impl/CutAction.qml
+	type QtQuick/Controls/Universal/impl/DeleteAction.qml DeleteAction
+		prototype QtQuick/Controls/impl/DeleteAction.qml
+	type QtQuick/Controls/Universal/impl/PasteAction.qml PasteAction
+		prototype QtQuick/Controls/impl/PasteAction.qml
+	type QtQuick/Controls/Universal/impl/RadioIndicator.qml RadioIndicator
+		prototype QQuickRectangle
+		prop control QVariant
+		signal controlChanged
+	type QtQuick/Controls/Universal/impl/RedoAction.qml RedoAction
+		prototype QtQuick/Controls/impl/RedoAction.qml
+	type QtQuick/Controls/Universal/impl/SelectAllAction.qml SelectAllAction
+		prototype QtQuick/Controls/impl/SelectAllAction.qml
+	type QtQuick/Controls/Universal/impl/SwitchIndicator.qml SwitchIndicator
+		prototype QQuickItem
+		prop control QQuickAbstractButton
+		signal controlChanged
+	type QtQuick/Controls/Universal/impl/TextEditingContextMenu.qml TextEditingContextMenu
+		prototype QtQuick/Controls/Universal/Menu.qml
+		prop editor QQuickItem required
+		signal editorChanged
+	type QtQuick/Controls/Universal/impl/UndoAction.qml UndoAction
+		prototype QtQuick/Controls/impl/UndoAction.qml
 module QtQuick.Controls.impl
 	AnimatedImageSelector QQuickAnimatedImageSelector
 	CheckLabel QQuickCheckLabel

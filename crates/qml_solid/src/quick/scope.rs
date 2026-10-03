@@ -280,6 +280,7 @@ impl<'a> Analysis<'a, '_, '_> {
                     let template = self
                         .tree
                         .property(self.types, owner, &path)
+                        .or_else(|| self.attached(&path))
                         .is_some_and(|property| property.is_component);
                     self.values(&binding.value, context, template);
                 }
@@ -295,6 +296,13 @@ impl<'a> Analysis<'a, '_, '_> {
                 _ => {}
             }
         }
+    }
+
+    /// What `TableView.editDelegate` is: a property of what a type attaches.
+    fn attached(&self, path: &[&str]) -> Option<Property> {
+        let (name, of) = path.split_last()?;
+        let attaching = self.types.base(&self.types.find(of)?.kind)?.attached()?;
+        Some(types::qt_property(attaching.property(name)?))
     }
 
     fn values(&mut self, value: &QmlBindingValue<'a>, context: usize, template: bool) {

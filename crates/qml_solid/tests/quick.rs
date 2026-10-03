@@ -187,6 +187,11 @@ Item {
     assert_contains(&code, r#"text={$data1.index + ("name" in $data1 ? $data1.name : $data.name)}"#);
     assert_contains(&code, "<ListView delegate={dot} highlight={$component(($data) => {");
     assert_contains(&code, "<Loader sourceComponent={dot}>");
+
+    // A component a type attaches is one too: what a view edits a cell with.
+    let code = lowered("import QtQuick\nItem {\n    TableView.editDelegate: Text { text: column }\n}");
+    assert_contains(&code, "TableView$editDelegate={$component(($data) => {");
+    assert_contains(&code, "text={$data.column}");
 }
 
 #[test]
@@ -545,6 +550,39 @@ Item {
 }
 
 #[test]
+fn a_component_has_what_the_type_of_its_root_has() {
+    let files = [
+        (
+            "Sample",
+            r#"import QtQuick
+Item {
+    component Chip: Caption { }
+    Caption { elide: Caption.ElideRight }
+}"#,
+        ),
+        ("Caption", "import QtQuick\nText { }"),
+    ];
+    // `Caption.ElideRight` is a key of Text, which the runtime has and we do
+    // not: the component is read for it as Text would be.
+    let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "elide={Caption.ElideRight}");
+    assert_contains(&code, "Object.setPrototypeOf(Sample, Item);");
+    assert_contains(&code, "Object.setPrototypeOf(Chip, Caption);");
+
+    let code = lowered_in(&files, "Caption").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "Object.setPrototypeOf(Caption, Text);");
+
+    // A type of a namespace is the root of Qt's own controls.
+    let code = lowered("import QtQuick as Q\nQ.Item { }");
+    assert_contains(&code, "Object.setPrototypeOf(Sample, Q.Item);");
+
+    // A singleton is an object and not a type of anything.
+    let files = [("Theme", "pragma Singleton\nimport QtQuick\nQtObject { }")];
+    let code = lowered_in(&files, "Theme").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_lacks(&code, "setPrototypeOf");
+}
+
+#[test]
 fn a_singleton_is_one_object_reached_through_its_name() {
     let files = [
         (
@@ -679,4 +717,21 @@ Item {
     assert_contains(&code, "const $scope = $context($props.$context, list, () => ({ list }));");
     assert_contains(&code, "row={$file($file1, $scope)}");
     assert_contains(&code, "<Loader source={$file($file1, $scope)}");
+}
+
+#[test]
+fn a_file_of_a_module_of_qt_has_the_types_of_that_module() {
+    // A style of Qt Quick Controls is QML in a module of Qt's: what the
+    // module has that is not a file, the file has without an import.
+    let source = "import QtQuick\nItem { visible: parent === Overlay.overlay }";
+    let mut project = Project::new();
+    project.add("Dialog", source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    project.add_type("QtQuick.Controls.Basic", "Dialog", "Dialog");
+    let options = Options { name: "Dialog".to_string(), project: Some(project), ..Options::default() };
+    let code = lowered_source(source, &options).unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, r#"import { Overlay } from "qml-solid/QtQuick/Controls/Basic";"#);
+
+    // A file of no module has to import it.
+    let errors = errors(source);
+    assert!(errors.iter().any(|error| error.contains("`Overlay` is not defined")), "{errors:?}");
 }

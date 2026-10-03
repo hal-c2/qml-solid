@@ -4,7 +4,7 @@
 // What became of the example is on `window.gallery` (`status` is "loading",
 // then "rendered" or "failed", with the `error`) for whoever drives the page.
 import "qml-solid/runtime.css";
-import { createComponent, render } from "@solidjs/web";
+import { mount } from "qml-solid/object";
 import examples from "virtual:examples";
 
 const stage = document.getElementById("stage");
@@ -57,7 +57,7 @@ async function show(example) {
   try {
     const module = await example.load();
     if (typeof module.default !== "function") throw new Error(`${example.entry} did not compile to a component`);
-    render(() => createComponent(module.default, {}), stage);
+    mount(module.default, stage);
     if (state.status === "loading") state.status = "rendered";
   } catch (error) {
     fail(error);

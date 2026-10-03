@@ -84,9 +84,17 @@ function state() {
   return document.hasFocus() ? ApplicationState.ApplicationActive : ApplicationState.ApplicationInactive;
 }
 
+const ACCESSIBILITY = Object.freeze({
+  contrastPreference: matchMedia("(prefers-contrast: more)").matches
+    ? enums.ContrastPreference.HighContrast
+    : enums.ContrastPreference.NoPreference,
+});
+
 // Its numbers are Qt's own defaults: no browser says how far a drag starts.
 const StyleHints = defineType("StyleHints", QtObject, {
   properties: {
+    // What a style draws stronger edges for: the browser knows.
+    accessibility: derived(() => ACCESSIBILITY),
     colorScheme: ColorScheme.Light,
     cursorFlashTime: 1000,
     fontSmoothingGamma: 1.7,

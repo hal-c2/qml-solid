@@ -29,6 +29,7 @@ use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
 
 pub use project::Project;
+pub use qt::native_types;
 pub use solidjs_compiler::CompileOptions as SolidOptions;
 
 use crate::{build::B, lower::Lower, registry::Types, scope::Scopes};

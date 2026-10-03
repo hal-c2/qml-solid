@@ -48,6 +48,21 @@ pub(crate) fn module(uri: &str) -> Option<&'static Module> {
     table().modules.get(uri)
 }
 
+/// The types of the module `uri` that Qt has in C++ and not as QML files:
+/// what a runtime has to have of it. None when the table has no such module.
+pub fn native_types(uri: &str) -> Option<Vec<&'static str>> {
+    let module = module(uri)?;
+    let types = &table().types;
+    let mut names: Vec<&'static str> = module
+        .exports
+        .iter()
+        .filter(|(name, index)| name.starts_with(|c: char| c.is_ascii_uppercase()) && types[**index].qml_file.is_none())
+        .map(|(name, _)| *name)
+        .collect();
+    names.sort_unstable();
+    Some(names)
+}
+
 pub(crate) struct Module {
     pub uri: &'static str,
     /// The modules its qmldir imports, in the order it does.

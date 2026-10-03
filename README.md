@@ -46,6 +46,7 @@ cargo run --bin qmlc -- --emit lowered File.qml   # the tree given to Solid, pri
 cargo run --bin qmlc -- --out-dir out *.qml
 cargo run --bin qmlc -- --root DIR File.qml       # where the project's modules are looked for
 cargo run --bin qmlc -- --alone File.qml          # without the files next to it
+cargo run --bin qmlc -- --types QtQuick.Layouts   # the types Qt has of a module in C++
 ```
 
 Everything else is a [mise](https://mise.jdx.dev) task, a script in
@@ -80,6 +81,23 @@ import { mount } from "qml-solid/object";
 import Main from "./Main.qml";
 mount(Main, document.getElementById("app"));
 ```
+
+Much of Qt is QML itself: a style of Qt Quick Controls is a directory of QML
+files over the types of `QtQuick.Templates`. Those are not rewritten here. The
+plugin puts a module of Qt's together from what the runtime has of it (the
+types Qt has in C++) and the QML files of the Qt that is installed, which it
+compiles as it does the project's. `qt` is where that Qt keeps its QML modules,
+when not where `qtpaths6 --query QT_INSTALL_QML` says; `style` is what
+`import QtQuick.Controls` is (`"Material"`, `"Fusion"`), or a function of the
+importing file that says. The pictures a style names by `qrc:/` are inside
+its plugin; Qt's own `qml` tool reads them out, once, into Vite's cache. Qt's
+QML and pictures are read from the installation and are not part of this
+repository: what is built from them carries Qt's licence.
+
+A type Qt has in C++ and the runtime does not have yet is in its module all the
+same (`qmlc --types` says which those are): a style names every control, and a
+program that uses three of them needs those three. Using one that is not there
+is an error that names it, `QtQuick.Templates: Dial is not in qml-solid yet`.
 
 ## Components
 

@@ -115,10 +115,14 @@ class Slot {
     const descriptor = Object.getOwnPropertyDescriptor(props, key);
     // A binding: evaluated when first read and again when what it read
     // changes, however many readers there are. An item it makes
-    // (`background: Rectangle {}`) is made as a child of this one.
+    // (`background: Rectangle {}`) is made as a child of this one, or of
+    // the content item of a window.
     this.bound = descriptor?.get
       ? runWithOwner(self.$owner, () =>
-          createMemo(() => complete(() => inside(self.$node ? self : null, () => props[key])), SYNC),
+          createMemo(
+            () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key])),
+            SYNC,
+          ),
         )
       : null;
     this.given = descriptor && !descriptor.get ? descriptor.value : undefined;
@@ -711,6 +715,35 @@ export function $url(value, base) {
   } catch {
     return value;
   }
+}
+
+// A type of Qt's that this runtime does not have yet. It is there to be
+// named, since a style of Qt's names every control there is, and says what
+// it is when something is made of it or read off it.
+export function absent(module, name) {
+  const fail = () => {
+    throw new Error(`${module}: ${name} is not in qml-solid yet`);
+  };
+  return new Proxy(fail, {
+    // What is asked of any function, and what the runtime asks of any value
+    // to learn what it is, is answered as a function answers.
+    get: (target, key) =>
+      typeof key === "symbol" || key in Function.prototype || key === "then" || key[0] === "$" ? Reflect.get(target, key) : fail(),
+  });
+}
+
+// Which of the modules a module of Qt's can be the build chose: for
+// `QtQuick.Controls` the style, `QtQuick.Controls.Material`. The build says.
+export const chosen = new Map();
+
+// `qrc:/…`: a file Qt keeps inside a program or one of its plugins, as the
+// pictures of a style of Qt Quick Controls are. A build says which there are
+// and where the browser has them; `located` is what a type loads a source by.
+export const resources = new Map();
+
+export function located(url) {
+  if (!/^(qrc)?:\//.test(url)) return url;
+  return resources.get(url.replace(/^(qrc)?:\/+/, "qrc:/")) ?? url;
 }
 
 // Creates a component's object apart from the tree that asked for it: a

@@ -4,7 +4,7 @@
 // Qt computes it: the size it would have been loaded at, which is the item's
 // implicit size, and the rectangle it is painted in.
 import { createSignal, flush } from "solid-js";
-import { defineType, derived, effect, group } from "../object.js";
+import { defineType, derived, effect, group, located } from "../object.js";
 import { given, lazy, rules, sized } from "./compute.js";
 import { Item } from "./Item.js";
 
@@ -113,7 +113,7 @@ export const ImageBase = defineType("ImageBase", Item, {
     self.$pictures = pictures;
     self.$image = {
       record: lazy(self, () => {
-        const url = String(self.source ?? "");
+        const url = located(String(self.source ?? ""));
         if (!url) return null;
         // `cache: false`: a load of its own, whatever the others have.
         return self.cache ? shared(self.$pictures, url, self.$load) : self.$load(url);
