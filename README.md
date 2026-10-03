@@ -14,13 +14,20 @@ so binding values, handlers and functions are ordinary Oxc nodes. The lowering
 builds the nodes Solid's JSX transform takes as input directly in the arena (no
 JSX text is ever printed or parsed), and Solid's transform runs on them
 unchanged. Names are resolved at compile time, so nothing interprets QML at run
-time: `packages/runtime` is three unit helpers, `$model` and `Qt.callLater`.
+time: `packages/runtime` is three unit helpers, `$model`, `Qt.callLater` and
+`qsTr`.
+
+The compiler knows the QML language, not a set of types. What `Item` or `Text`
+is comes from the modules a file imports, each a table in
+`crates/qml_solid/src/dialects` that says what its types and properties mean on
+the DOM. A type no imported module has is a component: another `.qml` file, or
+an inline `component` of the same file.
 
 ## Layout
 
 - `crates/qml_solid`: the compiler (`qml_solid::compile`) and the `qmlc` binary.
 - `packages/runtime`: what compiled output imports as `qml-solid/runtime`, and the Vite plugin.
-- `examples/web`: hal-c2 TUI bricks rendered in the browser.
+- `examples/web`: QML rendered in the browser: hal-c2 TUI bricks, and components using each other.
 - `vendor/`: patched upstream crates, see below.
 
 ## Use
@@ -29,6 +36,8 @@ time: `packages/runtime` is three unit helpers, `$model` and `Qt.callLater`.
 cargo run --bin qmlc -- File.qml                  # JavaScript on stdout
 cargo run --bin qmlc -- --emit lowered File.qml   # the tree given to Solid, printed
 cargo run --bin qmlc -- --out-dir out *.qml
+
+cargo run --bin qmlc -- --alone File.qml          # without the files next to it
 
 cargo test                                        # parser, compiler, fixture snapshots
 
@@ -39,17 +48,42 @@ pnpm --filter qml-solid-example-web test          # Playwright, against the buil
 
 `qml-solid/vite` is a Vite plugin that runs `qmlc` on `.qml` imports.
 
-Compiled modules import the dialect's singletons (`Shell`, `Theme`, ...) from
+Compiled modules import the host's singletons (`Shell`, `Theme`, ...) from
 `qml-solid/host` and sibling components from `./Name.qml`; `--host`,
 `--runtime` and `--component-extension` change those.
 
+## Components
+
+QML lets an instance set any property of a component's root object, handle its
+signals and give it children. A component is therefore compiled with the files
+next to it (`qml_solid::Project`; `qmlc` and the Vite plugin read the file's
+directory): it takes exactly what some instance sets, and everything else stays
+as static as it was written. `Badge { color: "red" }` makes `Badge.qml` read
+`props.color`; with no such instance its colour is a literal in the template.
+For the same reason a name no component has is a compile error where it is
+set. `qmlc --alone` compiles a file by itself: it takes only what it declares
+and unknown types are taken to be components.
+
 ## What is supported
 
-The `import OpenTUI` dialect, on the DOM: `Item`, `Rectangle`, `Text`, `Span`,
-`Bold`, `Repeater`, component instances with bindings, `property`
-declarations, ids, handlers. A cell is `1ch` wide and `1lh` tall. Anything else
-is a compile error that names what is missing. 10 of hal-c2's 30 TUI bricks
-compile; they are the fixtures in `crates/qml_solid/tests/fixtures/tui`.
+Of the language: `property` declarations (constants, getters, lazy memos and
+signals, chosen by how the property is used), ids, bindings and handlers,
+functions, `signal` declarations and their handlers (with the signal's argument
+names), `onXChanged` for declared properties, `Component.onCompleted` and
+`Component.onDestruction`, `property alias` of `id.property`, `default property
+alias` as the place for an instance's children, inline components, component
+instances with bindings, handlers and children, and components whose root is a
+component.
+
+Not yet: objects as property values (`background: Rectangle {}`, `Component`,
+`Loader`), reading built-in properties (`parent.width`, `label.text`),
+`Connections`, value sources (`X on y`), object aliases, qualified type names.
+Anything unsupported is a compile error that names what is missing.
+
+Of types: the `import OpenTUI` dialect on the DOM (`Item`, `Rectangle`, `Text`,
+`Span`, `Bold`, `Repeater`; a cell is `1ch` wide and `1lh` tall), which is what
+the fixtures in `crates/qml_solid/tests/fixtures/tui` (hal-c2 TUI bricks) use.
+There is no QtQuick dialect yet.
 
 ## Vendored crates
 
