@@ -230,6 +230,11 @@ function walk(item, all) {
 
 const stop = (item) => item.activeFocusOnTab && item.visible && item.enabled;
 
+function around(scope, item) {
+  for (let parent = item && parentOf(item); parent; parent = parentOf(parent)) if (parent === scope) return true;
+  return false;
+}
+
 // The next tab stop after `item` (before it, backwards) in the order the
 // items were declared in, around the whole window; `item` itself if there
 // is no other. From no item it is the first, or the last.
@@ -241,6 +246,9 @@ export function nextInChain(window, item, forward = true) {
   for (let step = 1; step <= count; step++) {
     const candidate = all[(((from + (forward ? step : -step)) % count) + count) % count];
     if (candidate === item) break;
+    // Backwards, a scope that has active focus around the item is passed
+    // over, as Qt does: Tab stops at what is in it.
+    if (!forward && candidate.$focusScope && candidate.$active && around(candidate, item)) continue;
     if (stop(candidate)) return candidate;
   }
   return item;
