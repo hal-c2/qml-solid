@@ -274,6 +274,12 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
           }
         }
         for (const [uri, names] of brought) lines.push(`export { ${names.join(", ")} } from "qml-solid/${uri}";`);
+        // A style is told to what it is the style of: what is not QML in it
+        // (the colours and fonts of a control) goes by which was chosen.
+        if (query && brought.length > 0) {
+          const uri = (module) => JSON.stringify(module.replaceAll("/", "."));
+          lines.push(`import { chosen as $chosen } from ${kernel};`, `$chosen.set(${uri(module)}, ${uri(brought[0][0])});`);
+        }
         // What Qt has of it and the runtime does not, yet.
         if (missing.length > 0) {
           const uri = JSON.stringify(module.replaceAll("/", "."));

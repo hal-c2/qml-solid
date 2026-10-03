@@ -732,6 +732,10 @@ export function absent(module, name) {
   });
 }
 
+// Which of the modules a module of Qt's can be the build chose: for
+// `QtQuick.Controls` the style, `QtQuick.Controls.Material`. The build says.
+export const chosen = new Map();
+
 // `qrc:/…`: a file Qt keeps inside a program or one of its plugins, as the
 // pictures of a style of Qt Quick Controls are. A build says which there are
 // and where the browser has them; `located` is what a type loads a source by.

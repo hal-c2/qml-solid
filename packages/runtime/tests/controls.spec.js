@@ -50,3 +50,34 @@ test("QtQuick.Templates lays a control out, and hands down its font and colours,
     ["#bebebe", "#000000", "#000000"],
   ]);
 });
+
+// What the same window answers in Qt with each of its styles.
+const COMMON = [
+  ["#9a9b9b", "#bf0040", "#030406", "#ff0000"],
+  ["#7f308cc6", "#7f308cc6", "#ff0000", "#00ff0000"],
+  [true],
+];
+const OWN = [
+  ["#efefef", "#efefef", "#efefef", "#000000"],
+  ["#bebebe", "#000000", "#919191"],
+  ["#010203", "#010203", "#000000"],
+];
+const STYLES = {
+  Basic: [
+    [12, 400, 12, 400],
+    [21, 400, 21, 400, 21, 400, 21, 400],
+    ["#e0e0e0", "#efefef", "#e0e0e0", "#353637"],
+    ["#7f353637", "#353637", "#919191"],
+    ["#010203", "#010203", "#26282a"],
+  ],
+  Fusion: [[12, 400, 12, 400], [21, 400, 21, 400, 21, 400, 21, 400], ...OWN],
+  Material: [[14, 400, 14, 400], [21, 500, 21, 400, 21, 400, 21, 500], ...OWN],
+  Universal: [[15, 400, 15, 400], [21, 400, 21, 600, 21, 400, 21, 300], ...OWN],
+};
+
+for (const [style, expected] of Object.entries(STYLES)) {
+  test(`with the ${style} style, controls have its fonts and its colours`, async ({ page }) => {
+    await open(page, `themes&style=${style}`);
+    expect(await page.evaluate(() => window.objects.answers())).toEqual([...expected, ...COMMON]);
+  });
+}
