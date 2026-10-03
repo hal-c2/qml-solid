@@ -459,3 +459,13 @@ test("a rectangular shadow is painted as Qt paints it", async ({ page }) => {
   const across = [-16, -8, -4, 0, 3, 7, 11, 15].map((offset) => [40 + offset, 200]);
   shaded(await darkness(page, across), [0.024, 0.157, 0.286, 0.451, 0.588, 0.765, 0.914, 0.992], 0.1);
 });
+
+test("the effects of the examples are what the compiler's output makes", async ({ page }) => {
+  await open(page, "effectcard");
+  await page.waitForFunction(() => window.scene.mask.status === 1);
+  expect(await page.evaluate(() => window.scene.card.$node.style.filter)).toBe(
+    "drop-shadow(rgba(0, 0, 0, 0.5) 0px 0px 6.6257px)",
+  );
+  shaded(await darkness(page, [[80, 40], [84, 40]]), [0.224, 0.102], 0.04);
+  near(await colours(page, [[50, 40], [140, 40], [220, 40], [202, 22]]), [WHITE, [44, 222, 133], BLUE, WHITE]);
+});
