@@ -24,6 +24,11 @@
     "width": 1000,
     "height": 600
   },
+  "hangman": {
+    "capturedAt": 1791062338850,
+    "width": 320,
+    "height": 480
+  },
   "maroon": {
     "capturedAt": 1791022010857,
     "width": 320,

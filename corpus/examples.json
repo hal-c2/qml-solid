@@ -409,9 +409,12 @@
         "examples.Hangman: Hangman (the game), Store, Product, Transaction (in-app purchasing)"
       ],
       "qt": {
-        "runnable": false,
-        "reason": "The game is the C++ type Hangman, which every view binds to; the store types are C++ too."
-      }
+        "runnable": true,
+        "env": {
+          "QML_XHR_ALLOW_FILE_READ": "1"
+        }
+      },
+      "notes": "The game and the store are C++ types: corpus/standins/hangman stands in for them, for Qt's picture too. The word is one of dict.txt at random; the dash under each of its letters is what is left of the letter's height below a line of Helvetica, which here is nothing, so the picture is the same for any word."
     },
     {
       "id": "lightningviewer",
