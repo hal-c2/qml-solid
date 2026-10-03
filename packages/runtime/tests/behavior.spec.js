@@ -72,16 +72,16 @@ test("a colour moves through the colours between", async ({ page }) => {
   await open(page, "behavior");
   const first = await page.evaluate(() => {
     window.objects.box.color = "blue";
-    return window.objects.box.color;
+    return String(window.objects.box.color);
   });
   expect(first).toBe("#ff0000");
   await advance(page, 48);
-  expect(await page.evaluate(() => window.objects.box.color)).toBe("#85007a");
+  expect(await page.evaluate(() => String(window.objects.box.color))).toBe("#85007a");
   expect(await page.evaluate(() => getComputedStyle(window.objects.box.$node).backgroundColor)).toBe(
     "rgb(133, 0, 122)",
   );
   await advance(page, 52);
-  expect(await page.evaluate(() => window.objects.box.color)).toBe("blue");
+  expect(await page.evaluate(() => String(window.objects.box.color))).toBe("#0000ff");
 });
 
 test("a spring keeps its velocity when it is given somewhere else to go", async ({ page }) => {

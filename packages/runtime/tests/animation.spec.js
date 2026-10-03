@@ -135,12 +135,12 @@ test("a parallel group runs its animations side by side", async ({ page }) => {
   await advance(page, 50);
   expect(await rect(page, "box")).toEqual({ x: 100, y: 37.5, width: 50, height: 50 });
   // A colour is animated through the colours between.
-  expect(await page.evaluate(() => window.objects.box.color)).toBe("#800080");
+  expect(await page.evaluate(() => String(window.objects.box.color))).toBe("#800080");
   expect(await colour()).toBe("rgb(128, 0, 128)");
   await advance(page, 50);
-  expect(await page.evaluate(() => [window.objects.together.running, window.objects.box.color])).toEqual([
+  expect(await page.evaluate(() => [window.objects.together.running, String(window.objects.box.color)])).toEqual([
     false,
-    "blue",
+    "#0000ff",
   ]);
 });
 

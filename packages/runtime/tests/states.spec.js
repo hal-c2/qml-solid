@@ -10,7 +10,7 @@ test("a state changes properties, and what they had comes back after it", async 
   // As Qt prints it: the state it starts in is entered before
   // `Component.onCompleted`, and the handler hears of it first.
   expect(await log(page)).toEqual([
-    "state start 50 0 red",
+    "state start 50 0 #ff0000",
     "script start 10",
     "completed start 10",
     "onCompleted start 10",
@@ -19,12 +19,12 @@ test("a state changes properties, and what they had comes back after it", async 
   const entered = await page.evaluate(() => {
     const { root, box, move, grow } = window.objects;
     root.state = "wide";
-    return [box.width, box.x, box.color, move.running, grow.running];
+    return [box.width, box.x, String(box.color), move.running, grow.running];
   });
   // What the transition animates still reads as it did; the colour, which it
   // does not, is the state's already. Its animation is not said to run.
-  expect(entered).toEqual([50, 10, "blue", true, false]);
-  expect(await log(page)).toEqual(["state wide 50 10 red", "move true 50", "script wide 50 10 blue"]);
+  expect(entered).toEqual([50, 10, "#0000ff", true, false]);
+  expect(await log(page)).toEqual(["state wide 50 10 #ff0000", "move true 50", "script wide 50 10 #0000ff"]);
   await advance(page, 48);
   const midway = await rect(page, "box");
   expect(midway.x).toBeCloseTo(5.2, 5);
@@ -46,17 +46,17 @@ test("a state whose `when` holds is the state", async ({ page }) => {
   await set(page, "flag", true);
   const during = await page.evaluate(() => {
     const { root, box } = window.objects;
-    return [root.state, box.width, box.x, box.y, box.color];
+    return [root.state, box.width, box.x, box.y, String(box.color)];
   });
-  expect(during).toEqual(["auto", 50, 0, 100, "red"]);
-  expect(await log(page)).toEqual(["state auto 200 0 blue", "completed auto 100"]);
+  expect(during).toEqual(["auto", 50, 0, 100, "#ff0000"]);
+  expect(await log(page)).toEqual(["state auto 200 0 #0000ff", "completed auto 100"]);
   await set(page, "flag", false);
   const after = await page.evaluate(() => {
     const { root, box } = window.objects;
     return [root.state, box.y];
   });
   expect(after).toEqual(["", 0]);
-  expect(await log(page)).toEqual(["state  50 0 red"]);
+  expect(await log(page)).toEqual(["state  50 0 #ff0000"]);
 });
 
 const shown = (page) =>
