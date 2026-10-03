@@ -1,5 +1,6 @@
 // `import QtQuick`.
 export { QtObject } from "../object.js";
+export { Flickable } from "./Flickable.js";
 export { Instantiator } from "./Instantiator.js";
 export { Item } from "./Item.js";
 export { ListElement, ListModel, ObjectModel } from "./model.js";
