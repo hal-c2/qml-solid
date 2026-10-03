@@ -162,6 +162,13 @@ class Slot {
     return this.shown ? this.shown() : this.target();
   }
 
+  // What the property was given, before its type has its say.
+  asked() {
+    if (this.version) this.version();
+    else this.self.$track();
+    return this.own();
+  }
+
   // The value the property has, whatever is animating towards it.
   target() {
     return this.resolve ? this.resolve(this.self, this.given$) : this.own();

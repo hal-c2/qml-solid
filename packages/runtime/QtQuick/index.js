@@ -70,6 +70,7 @@ export { FontMetrics, TextMetrics } from "./TextMetrics.js";
 export { Rotation, Scale, Translate } from "./transforms.js";
 export { DoubleValidator, IntValidator, RegularExpressionValidator } from "./validators.js";
 export { Screen, Window } from "./Window.js";
+export { WindowContainer } from "./WindowContainer.js";
 export { Binding } from "./Binding.js";
 export { Connections } from "./Connections.js";
 export {
