@@ -607,11 +607,28 @@ const silent = Object.assign(() => {}, { connect() {}, disconnect() {} });
 // A QML file as a `Component`: what `Qt.createComponent("Block.qml")` and
 // `source: "Block.qml"` are, the compiler having imported the file. `File` is
 // what the file's module exports.
+// What it makes finds names in `context`, the one of the object that named
+// the file, when the compiler gives one.
 const files = new WeakMap();
-export function $file(File) {
-  let component = files.get(File);
-  if (!component) files.set(File, (component = $component((properties) => File(properties))));
+const nowhere = {};
+export function $file(File, context) {
+  let made = files.get(File);
+  if (!made) files.set(File, (made = new WeakMap()));
+  let component = made.get(context ?? nowhere);
+  if (!component) {
+    const make = context ? (properties) => File(within(properties, context)) : (properties) => File(properties);
+    made.set(context ?? nowhere, (component = $component(make)));
+  }
   return component;
+}
+
+// What a component is given, and the context it is made in.
+function within(properties, context) {
+  const props = { $context: context };
+  for (const key of Object.keys(properties ?? {})) {
+    if (key !== "$context") Object.defineProperty(props, key, Object.getOwnPropertyDescriptor(properties, key));
+  }
+  return props;
 }
 
 // A path that is only known when the program runs, looked up among the files
@@ -619,15 +636,15 @@ export function $file(File) {
 // directory of the module at `base`, a function that gives what the file
 // exports. The result is `find(path, required)`: the file's component, and
 // for a path that names none of them the path as it is, or with `required`
-// (`Qt.createComponent`) a component that says so.
+// (`Qt.createComponent`) a component that says so. `context` as for `$file`.
 export function $files(table, base) {
   const directory = new URL(".", base).href;
-  return (path, required) => {
+  return (path, required, context) => {
     // A component already: a path the compiler knew.
     if (typeof path !== "string") return path;
     let key = path.startsWith(directory) ? path.slice(directory.length) : path;
     while (key.startsWith("./")) key = key.slice(2);
-    if (Object.hasOwn(table, key)) return $file(table[key]());
+    if (Object.hasOwn(table, key)) return $file(table[key](), context);
     return required ? missing($url(path, base)) : path;
   };
 }

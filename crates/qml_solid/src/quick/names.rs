@@ -286,8 +286,16 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
             *expression = inner;
         }
 
-        let Uses { paths, kernel, .. } = &mut *self.uses;
-        paths.rewrite(self.b, kernel, expression);
+        // What a file named by its path makes finds names where the path is
+        // written, if the project finds any as it runs.
+        let scope = (!self.dynamic.is_empty() && !expression.span().is_empty())
+            .then(|| self.tree.scope_of(self.tree.object_at(expression.span().start)));
+        let Uses { paths, kernel, handles, .. } = &mut *self.uses;
+        if paths.rewrite(self.b, kernel, expression, scope.as_deref())
+            && let Some(scope) = scope
+        {
+            handles.insert(scope);
+        }
         if self.type_member(expression) {
             return;
         }

@@ -7,6 +7,7 @@ Item {
     property var block: Qt.createComponent("paths/Block.qml")
     property url picture: Qt.resolvedUrl("paths/picture.png")
     property string page: "Ball"
+    property string shelf: "top"
     property var shown: null
     property alias loader: loader
     property alias fixed: fixed
@@ -26,6 +27,9 @@ Item {
     }
     function show() {
         shown = "paths/" + page + ".qml"
+    }
+    function tag() {
+        return Qt.createComponent("Tag.qml").createObject(root)
     }
     function load() {
         loader.source = "paths/" + page + ".qml"

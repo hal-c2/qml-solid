@@ -19,6 +19,11 @@
 //! const $files1 = $files({ "towers/Melee.qml": () => $file2, ... }, import.meta.url);
 //! $files1("towers/" + name + ".qml", true)
 //! ```
+//!
+//! What such a component makes finds names where the path was written, as
+//! what Qt makes from a path does: in a project that looks names up as it
+//! runs, the component is given the context of the object that named it
+//! (`$file($file1, $scope)`).
 
 use std::collections::BTreeSet;
 
@@ -57,11 +62,17 @@ impl Paths {
         format!("$file{}", index + 1)
     }
 
-    /// `$file($file1)`: the file at `path` as a component.
-    fn component<'a>(&mut self, b: B<'a>, kernel: &mut BTreeSet<&'static str>, path: &str) -> Expression<'a> {
+    /// `$file($file1)`: the file at `path` as a component, made in `scope`.
+    fn component<'a>(
+        &mut self,
+        b: B<'a>,
+        kernel: &mut BTreeSet<&'static str>,
+        path: &str,
+        scope: Option<&str>,
+    ) -> Expression<'a> {
         kernel.insert("$file");
         let name = self.import(path);
-        b.call(b.id("$file"), [b.id(&name)])
+        b.call(b.id("$file"), std::iter::once(b.id(&name)).chain(scope.map(|scope| b.id(scope))))
     }
 
     /// The files that start with `prefix` and end with `suffix`.
@@ -81,48 +92,57 @@ impl Paths {
         format!("$files{}", index + 1)
     }
 
-    /// A URL written as a literal, when it is that of a QML file.
+    /// A URL written as a literal, when it is that of a QML file. `scope`
+    /// is the context of the object it is written in, when what the
+    /// component makes may look for names there.
     pub(crate) fn literal<'a>(
         &mut self,
         b: B<'a>,
         kernel: &mut BTreeSet<&'static str>,
         value: &str,
+        scope: Option<&str>,
     ) -> Option<Expression<'a>> {
         let path = relative(value)?;
         // Outside the directory nobody looked.
         (path.starts_with("../") || self.known.is_none() || self.exists(path))
-            .then(|| self.component(b, kernel, path))
+            .then(|| self.component(b, kernel, path, scope))
     }
 
     /// What `expression` is, when it names a QML file or asks Qt for one.
-    /// What it is made of is still as it was written.
+    /// What it is made of is still as it was written. True when it became
+    /// a component, which is then made in `scope`.
     pub(crate) fn rewrite<'a>(
         &mut self,
         b: B<'a>,
         kernel: &mut BTreeSet<&'static str>,
         expression: &mut Expression<'a>,
-    ) {
+        scope: Option<&str>,
+    ) -> bool {
+        let context = || scope.map(|scope| b.id(scope));
+        let mut made = true;
         let replacement = match expression {
             // Only what was written: a path the compiler built is not one.
             Expression::StringLiteral(literal) if !literal.span.is_empty() => {
-                let Some(path) = relative(literal.value.as_str()) else { return };
+                let Some(path) = relative(literal.value.as_str()) else { return false };
                 if !self.exists(path) {
-                    return;
+                    return false;
                 }
-                self.component(b, kernel, path)
+                self.component(b, kernel, path, scope)
             }
             Expression::CallExpression(call) => {
-                let Some(method) = qt_method(call) else { return };
+                let Some(method) = qt_method(call) else { return false };
                 let first = call.arguments.first().and_then(Argument::as_expression);
                 match (method, first) {
                     ("createComponent", Some(first)) => {
                         // `Qt.createComponent("QtQuick", "Rectangle")`: a
                         // type of a module, which is not a file.
                         if let Some(Argument::StringLiteral(_)) = call.arguments.get(1) {
-                            return;
+                            return false;
                         }
                         let literal = match first {
-                            Expression::StringLiteral(literal) => self.literal(b, kernel, literal.value.as_str()),
+                            Expression::StringLiteral(literal) => {
+                                self.literal(b, kernel, literal.value.as_str(), scope)
+                            }
                             _ => None,
                         };
                         match literal {
@@ -134,7 +154,7 @@ impl Paths {
                                 claim(&mut path);
                                 // Whatever it turns out to be, a component:
                                 // one that says the file is not there.
-                                b.call(b.id(&table), [path, b.boolean(true)])
+                                b.call(b.id(&table), [path, b.boolean(true)].into_iter().chain(context()))
                             }
                         }
                     }
@@ -143,9 +163,10 @@ impl Paths {
                             Expression::StringLiteral(literal) => {
                                 let value = literal.value.as_str();
                                 if value.is_empty() || is_absolute(value) {
-                                    return;
+                                    return false;
                                 }
-                                Some(self.literal(b, kernel, value).unwrap_or_else(|| {
+                                Some(self.literal(b, kernel, value, scope).unwrap_or_else(|| {
+                                    made = false;
                                     b.member(b.new_(b.id("URL"), [b.string(value), b.import_meta_url()]), "href")
                                 }))
                             }
@@ -154,13 +175,14 @@ impl Paths {
                         match literal {
                             Some(url) => url,
                             None => {
+                                made = false;
                                 kernel.insert("$url");
                                 let path = call.arguments.remove(0).into_expression();
                                 b.call(b.id("$url"), [path, b.import_meta_url()])
                             }
                         }
                     }
-                    _ => return,
+                    _ => return false,
                 }
             }
             // `view + ".qml"`: the component, if there is such a file, and
@@ -168,20 +190,24 @@ impl Paths {
             Expression::BinaryExpression(_) | Expression::TemplateLiteral(_) if !expression.span().is_empty() => {
                 let (prefix, suffix) = ends(expression);
                 if !suffix.ends_with(".qml") {
-                    return;
+                    return false;
                 }
                 let among = self.among(&prefix, &suffix);
                 if among.is_empty() {
-                    return;
+                    return false;
                 }
                 let table = self.table(kernel, among);
                 let mut path = std::mem::replace(expression, b.null());
                 claim(&mut path);
-                b.call(b.id(&table), [path])
+                match context() {
+                    Some(context) => b.call(b.id(&table), [path, b.boolean(false), context]),
+                    None => b.call(b.id(&table), [path]),
+                }
             }
-            _ => return,
+            _ => return false,
         };
         *expression = replacement;
+        made
     }
 
     /// What the module imports and declares for the paths it names: the

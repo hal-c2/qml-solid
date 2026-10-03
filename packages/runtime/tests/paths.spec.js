@@ -16,10 +16,11 @@ test("a path of a QML file is a component that is ready", async ({ page }) => {
   await open(page, "paths");
   const read = await page.evaluate(() => {
     const { block } = window.scene;
-    return [block.status, block.progress, block.errorString(), block === window.scene.own()];
+    const own = window.scene.own();
+    return [block.status, block.progress, block.errorString(), block === window.scene.block, own.status, own.createObject(null).kind];
   });
   // The script names the same file from its own directory.
-  expect(read).toEqual([1, 1, "", true]);
+  expect(read).toEqual([1, 1, "", true, 1, "block"]);
 });
 
 test("a component of a file makes its objects where it is told", async ({ page }) => {
@@ -54,10 +55,22 @@ test("a path put together is looked up among the files it could be", async ({ pa
     const ball = scene.shown;
     scene.page = "Nothing";
     scene.show();
-    return [ball === scene.component("Ball"), ball.createObject(null).kind, scene.shown];
+    return [ball.status, ball.createObject(null).kind, scene.shown];
   });
   // What names no file stays the path it was.
-  expect(read).toEqual([true, "ball", "paths/Nothing.qml"]);
+  expect(read).toEqual([1, "ball", "paths/Nothing.qml"]);
+});
+
+test("what a file's component makes finds names where the path was written", async ({ page }) => {
+  await open(page, "paths");
+  const read = await page.evaluate(() => {
+    const { scene } = window;
+    const tag = scene.tag();
+    const before = tag.from;
+    scene.shelf = "bottom";
+    return [before, tag.from];
+  });
+  expect(read).toEqual(["top", "bottom"]);
 });
 
 test("a Loader's source is the file's component, there when it is set", async ({ page }) => {

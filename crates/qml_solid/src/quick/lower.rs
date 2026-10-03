@@ -690,9 +690,13 @@ impl<'a, 's> Lower<'a, 's> {
         if value.is_empty() || is_absolute(value) {
             return expression;
         }
-        // A QML file is the component it was compiled to.
-        let Uses { paths, kernel, .. } = &mut self.uses;
-        if let Some(component) = paths.literal(b, kernel, value) {
+        // A QML file is the component it was compiled to, and what that
+        // makes finds names where the path is written.
+        let scope =
+            (!self.dynamic.is_empty()).then(|| self.tree.scope_of(self.tree.object_at(literal.span.start)));
+        let Uses { paths, kernel, handles, .. } = &mut self.uses;
+        if let Some(component) = paths.literal(b, kernel, value, scope.as_deref()) {
+            handles.extend(scope);
             return component;
         }
         if let Some(index) = self.urls.iter().position(|url| url == value) {

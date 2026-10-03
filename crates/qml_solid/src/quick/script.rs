@@ -204,7 +204,7 @@ struct Script<'a, 's> {
 
 impl<'a> VisitMut<'a> for Script<'a, '_> {
     fn visit_expression(&mut self, expression: &mut Expression<'a>) {
-        self.paths.rewrite(self.b, self.kernel, expression);
+        self.paths.rewrite(self.b, self.kernel, expression, None);
         walk_mut::walk_expression(self, expression);
     }
 

@@ -648,3 +648,35 @@ fn a_string_goes_on_over_the_end_of_a_line() {
     let unended = Project::new().add("Sample", "import QtQuick\nText { text: \"one\ntwo }").unwrap_err();
     assert_eq!(unended[0].message, "Unterminated string");
 }
+
+#[test]
+fn a_file_named_by_its_path_is_made_where_the_path_is_written() {
+    // `Row.qml` looks `list` up as it runs, so what `Home.qml` makes from a
+    // path is given the context it is written in.
+    let files = [
+        (
+            "Home",
+            r#"import QtQuick
+Item {
+    id: list
+    property var row: Qt.createComponent("Row.qml")
+    Loader { source: "Row.qml" }
+}"#,
+        ),
+        ("Row", "import QtQuick\nItem { width: list.width }"),
+    ];
+    let mut project = Project::new();
+    for (file, source) in files {
+        project.add(file, source).unwrap_or_else(|errors| panic!("{file}: {errors:?}"));
+    }
+    let options = Options {
+        name: "Home".to_string(),
+        project: Some(project),
+        files: Some(vec!["Home.qml".to_string(), "Row.qml".to_string()]),
+        ..Options::default()
+    };
+    let code = lowered_source(files[0].1, &options).unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "const $scope = $context($props.$context, list, () => ({ list }));");
+    assert_contains(&code, "row={$file($file1, $scope)}");
+    assert_contains(&code, "<Loader source={$file($file1, $scope)}");
+}
