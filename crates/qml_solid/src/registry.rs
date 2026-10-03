@@ -1,9 +1,13 @@
 //! What the QML types and properties of a dialect mean on a render target.
 //!
-//! This is the web registry for the `import OpenTUI` dialect: flexbox items
-//! measured in terminal cells. A cell is `1ch` wide and `1lh` tall, so the same
-//! QML lays out on a monospace grid in the browser. Another target (or another
-//! look for the same app) is another table, not another compiler.
+//! The compiler knows the QML language, not a set of types. The types a file
+//! may use come from the modules it imports, and each such module is a table
+//! here: a dialect. Another target (or another look for the same app) is
+//! another table, not another compiler.
+
+use oxc_parser::qml::ast::{QmlImport, QmlImportSource};
+
+use crate::dialects;
 
 /// How a number is turned into a CSS length.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -28,13 +32,14 @@ impl Unit {
     }
 }
 
-type Declarations = &'static [(&'static str, &'static str)];
+pub(crate) type Declarations = &'static [(&'static str, &'static str)];
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Prop {
     /// The value becomes one or more CSS properties.
     Style { css: &'static [&'static str], unit: Unit },
-    /// A boolean that switches CSS declarations on or off.
+    /// A boolean that switches CSS declarations on or off. The property is
+    /// on by default when being on declares nothing.
     Toggle { on: Declarations, off: Declarations },
     /// A string enumeration, each value standing for CSS declarations.
     Keyword(&'static [(&'static str, Declarations)]),
@@ -49,7 +54,13 @@ pub(crate) enum Prop {
 pub(crate) struct Element {
     pub tag: &'static str,
     pub class: Option<&'static str>,
-    props: fn(&str) -> Option<Prop>,
+    pub props: fn(&str) -> Option<Prop>,
+}
+
+impl std::fmt::Debug for Element {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "<{}>", self.tag)
+    }
 }
 
 impl Element {
@@ -64,150 +75,46 @@ pub(crate) enum Type {
     Repeater,
 }
 
-pub(crate) fn lookup(name: &str) -> Option<Type> {
-    Some(match name {
-        "Item" => Type::Element(&ITEM),
-        "Rectangle" => Type::Element(&RECTANGLE),
-        "Text" => Type::Element(&TEXT),
-        "Span" => Type::Element(&SPAN),
-        "Bold" => Type::Element(&BOLD),
-        "Repeater" => Type::Repeater,
-        _ => return None,
-    })
+/// The types of one importable module.
+pub(crate) struct Dialect {
+    /// The module URI that brings the types in (`import OpenTUI`).
+    pub module: &'static str,
+    pub lookup: fn(&str) -> Option<Type>,
+    /// Types the dialect has that this target does not render yet. Naming
+    /// them gives a precise diagnostic instead of a missing component.
+    pub is_known_unsupported: fn(&str) -> bool,
 }
 
-/// Types the dialect has that this target does not render yet. Naming them
-/// gives a precise diagnostic instead of an import of a file that is not there.
-pub(crate) fn is_known_unsupported(name: &str) -> bool {
-    matches!(
-        name,
-        "Keymap"
-            | "TextInput"
-            | "TextArea"
-            | "Loader"
-            | "Slot"
-            | "ScrollView"
-            | "Image"
-            | "Timer"
-            | "Row"
-            | "Column"
-            | "Component"
-            | "Window"
-            | "Link"
-            | "Diff"
-            | "Code"
-    )
+static DIALECTS: &[&Dialect] = &[&dialects::opentui::DIALECT];
+
+/// The types a file's imports bring into scope.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Types {
+    dialect: Option<&'static Dialect>,
 }
 
-static ITEM: Element = Element { tag: "div", class: Some("q-item"), props: item };
-static RECTANGLE: Element = Element { tag: "div", class: Some("q-item"), props: rectangle };
-static TEXT: Element = Element { tag: "span", class: Some("q-text"), props: text };
-static SPAN: Element = Element { tag: "span", class: None, props: span };
-static BOLD: Element = Element { tag: "b", class: None, props: span };
-
-fn style(css: &'static [&'static str], unit: Unit) -> Option<Prop> {
-    Some(Prop::Style { css, unit })
-}
-
-fn item(name: &str) -> Option<Prop> {
-    match name {
-        "objectName" => Some(Prop::Attribute("data-object-name")),
-        "visible" => Some(Prop::Toggle { on: &[], off: &[("display", "none")] }),
-
-        "flexDirection" => style(&["flex-direction"], Unit::None),
-        "flexGrow" => style(&["flex-grow"], Unit::None),
-        "flexShrink" => style(&["flex-shrink"], Unit::None),
-        "flexBasis" => style(&["flex-basis"], Unit::Ch),
-        "flexWrap" => style(&["flex-wrap"], Unit::None),
-        "justifyContent" => style(&["justify-content"], Unit::None),
-        "alignItems" => style(&["align-items"], Unit::None),
-        "alignSelf" => style(&["align-self"], Unit::None),
-        "overflow" => style(&["overflow"], Unit::None),
-        "position" => style(&["position"], Unit::None),
-        "opacity" => style(&["opacity"], Unit::None),
-        "z" => style(&["z-index"], Unit::None),
-
-        "width" => style(&["width"], Unit::Ch),
-        "minWidth" => style(&["min-width"], Unit::Ch),
-        "maxWidth" => style(&["max-width"], Unit::Ch),
-        "left" => style(&["left"], Unit::Ch),
-        "right" => style(&["right"], Unit::Ch),
-        "marginLeft" => style(&["margin-left"], Unit::Ch),
-        "marginRight" => style(&["margin-right"], Unit::Ch),
-        "marginX" => style(&["margin-left", "margin-right"], Unit::Ch),
-        "paddingLeft" => style(&["padding-left"], Unit::Ch),
-        "paddingRight" => style(&["padding-right"], Unit::Ch),
-        "paddingX" => style(&["padding-left", "padding-right"], Unit::Ch),
-
-        "height" => style(&["height"], Unit::Lh),
-        "minHeight" => style(&["min-height"], Unit::Lh),
-        "maxHeight" => style(&["max-height"], Unit::Lh),
-        "top" => style(&["top"], Unit::Lh),
-        "bottom" => style(&["bottom"], Unit::Lh),
-        "marginTop" => style(&["margin-top"], Unit::Lh),
-        "marginBottom" => style(&["margin-bottom"], Unit::Lh),
-        "marginY" => style(&["margin-top", "margin-bottom"], Unit::Lh),
-        "paddingTop" => style(&["padding-top"], Unit::Lh),
-        "paddingBottom" => style(&["padding-bottom"], Unit::Lh),
-        "paddingY" => style(&["padding-top", "padding-bottom"], Unit::Lh),
-
-        "backgroundColor" => style(&["background-color"], Unit::None),
-        "border.width" => style(&["border-width"], Unit::Px),
-        "border.color" => style(&["border-color"], Unit::None),
-        "border.style" => Some(Prop::Keyword(&[
-            ("single", &[("border-style", "solid")]),
-            ("rounded", &[("border-style", "solid"), ("border-radius", "0.5ch")]),
-            ("double", &[("border-style", "double")]),
-            ("heavy", &[("border-style", "solid")]),
-        ])),
-
-        "onMouseDown" => Some(Prop::Event("onMouseDown")),
-        "onMouseUp" => Some(Prop::Event("onMouseUp")),
-        "onMouseMove" => Some(Prop::Event("onMouseMove")),
-        "onMouseOver" => Some(Prop::Event("onMouseOver")),
-        "onMouseOut" => Some(Prop::Event("onMouseOut")),
-        "onMouseScroll" => Some(Prop::Event("onWheel")),
-        _ => None,
+impl Types {
+    pub(crate) fn of(imports: &[QmlImport<'_>]) -> Self {
+        let dialect = imports.iter().find_map(|import| {
+            let QmlImportSource::Module(module) = &import.source else { return None };
+            let module = module.to_string();
+            DIALECTS.iter().copied().find(|dialect| dialect.module == module)
+        });
+        Self { dialect }
     }
-}
 
-fn rectangle(name: &str) -> Option<Prop> {
-    match name {
-        "color" => style(&["background-color"], Unit::None),
-        _ => item(name),
+    pub(crate) fn lookup(&self, name: &str) -> Option<Type> {
+        (self.dialect?.lookup)(name)
     }
-}
 
-fn span(name: &str) -> Option<Prop> {
-    match name {
-        "text" => Some(Prop::Text),
-        "color" => style(&["color"], Unit::None),
-        "font.bold" => Some(Prop::Toggle { on: &[("font-weight", "bold")], off: &[] }),
-        "font.italic" => Some(Prop::Toggle { on: &[("font-style", "italic")], off: &[] }),
-        "font.underline" => {
-            Some(Prop::Toggle { on: &[("text-decoration", "underline")], off: &[] })
+    pub(crate) fn element(&self, name: &str) -> Option<&'static Element> {
+        match self.lookup(name)? {
+            Type::Element(element) => Some(element),
+            Type::Repeater => None,
         }
-        _ => None,
     }
-}
 
-fn text(name: &str) -> Option<Prop> {
-    match name {
-        "wrapMode" => Some(Prop::Keyword(&[
-            ("none", &[("white-space", "pre")]),
-            ("word", &[("white-space", "pre-wrap")]),
-            ("char", &[("white-space", "pre-wrap"), ("word-break", "break-all")]),
-        ])),
-        "truncate" => Some(Prop::Toggle {
-            on: &[("overflow", "hidden"), ("text-overflow", "ellipsis"), ("white-space", "pre")],
-            off: &[],
-        }),
-        _ => span(name).or_else(|| item(name)),
+    pub(crate) fn is_known_unsupported(&self, name: &str) -> bool {
+        self.dialect.is_some_and(|dialect| (dialect.is_known_unsupported)(name))
     }
-}
-
-/// Names every item of the dialect has. Used to tell a property of a
-/// component's root item from one the component declares itself.
-pub(crate) fn is_item_prop(name: &str) -> bool {
-    text(name).is_some() || rectangle(name).is_some()
 }

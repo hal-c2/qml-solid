@@ -12,19 +12,23 @@
 //! and Solid's transform runs on them unchanged.
 
 mod build;
+mod dialects;
 mod lower;
+mod project;
 mod registry;
 mod resolve;
 mod scope;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
+use oxc_diagnostics::Diagnostics;
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
 
+pub use project::Project;
 pub use solidjs_compiler::CompileOptions as SolidOptions;
 
-use crate::{build::B, lower::Lower, scope::Scopes};
+use crate::{build::B, lower::Lower, registry::Types, scope::Scopes};
 
 #[derive(Debug, Clone)]
 pub struct Options {
@@ -36,6 +40,12 @@ pub struct Options {
     pub runtime_module: String,
     /// Extension put on the import of a sibling component (`./Name.qml`).
     pub component_extension: String,
+    /// The files the component is compiled with: what their instances of it
+    /// set decides what it takes from outside, and a type none of them is, is
+    /// an error. Without a project the file is compiled alone: it takes only
+    /// what it declares, and a type it does not know is taken to be a
+    /// component next to it.
+    pub project: Option<Project>,
     pub solid: SolidOptions,
 }
 
@@ -46,6 +56,7 @@ impl Default for Options {
             host_module: "qml-solid/host".to_string(),
             runtime_module: "qml-solid/runtime".to_string(),
             component_extension: ".qml".to_string(),
+            project: None,
             solid: SolidOptions::default(),
         }
     }
@@ -96,6 +107,19 @@ pub fn lowered_source(source: &str, options: &Options) -> Result<String, Vec<Err
     Ok(oxc_codegen::Codegen::new().build(&program).code)
 }
 
+pub(crate) fn parse_errors(diagnostics: Diagnostics) -> Vec<Error> {
+    diagnostics
+        .into_iter()
+        .map(|diagnostic| {
+            let span = diagnostic.labels.first().map_or_else(Span::default, |label| {
+                let start = label.offset() as u32;
+                Span::new(start, start + label.len() as u32)
+            });
+            Error::new(diagnostic.message.to_string(), span)
+        })
+        .collect()
+}
+
 fn lower<'a>(
     allocator: &'a Allocator,
     source: &'a str,
@@ -103,29 +127,30 @@ fn lower<'a>(
 ) -> Result<Program<'a>, Vec<Error>> {
     let parsed = Parser::new(allocator, source, SourceType::ts()).parse_qml();
     if !parsed.diagnostics.is_empty() {
-        return Err(parsed
-            .diagnostics
-            .into_iter()
-            .map(|diagnostic| {
-                let span = diagnostic.labels.first().map_or_else(Span::default, |label| {
-                    let start = label.offset() as u32;
-                    Span::new(start, start + label.len() as u32)
-                });
-                Error::new(diagnostic.message.to_string(), span)
-            })
-            .collect());
+        return Err(parse_errors(parsed.diagnostics));
     }
+
+    // The file is part of its own project: it may use itself, and its inline
+    // components are used nowhere else.
+    let open = options.project.is_none();
+    let mut project = options.project.clone().unwrap_or_default();
+    project.insert(&options.name, project::summarize(&parsed.document));
+    let usages = project.usages();
+    let types = Types::of(&parsed.document.imports);
 
     let b = B::new(allocator);
     let mut errors = Vec::new();
     let scopes = Scopes::analyze(&parsed.document, &mut errors);
-    let mut lower = Lower::new(b, &scopes);
+    let mut lower = Lower::new(b, &scopes, types, &project, &usages, &options.name, open);
     let component = lower.component(&options.name, parsed.document.root);
     errors.append(&mut lower.errors);
     let Some(component) = component else { return Err(errors) };
 
-    let mut program = b.program(source, b.vec1(component));
-    let resolved = resolve::resolve(b, &mut program, &scopes, &mut errors);
+    let mut body = b.vec();
+    body.extend(std::mem::take(&mut lower.inline));
+    body.push(component);
+    let mut program = b.program(source, body);
+    let resolved = resolve::resolve(b, &mut program, &scopes, types, &mut errors);
     if !errors.is_empty() {
         return Err(errors);
     }
@@ -135,9 +160,7 @@ fn lower<'a>(
         imports.push(b.import_named(lower.solid.iter().copied(), "solid-js"));
     }
     let mut runtime = lower.runtime.clone();
-    if resolved.qt {
-        runtime.insert("Qt");
-    }
+    runtime.extend(resolved.runtime);
     if !runtime.is_empty() {
         imports.push(b.import_named(runtime.iter().copied(), &options.runtime_module));
     }

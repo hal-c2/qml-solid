@@ -25,8 +25,15 @@ pub(crate) enum Member {
     Memo(String),
     /// A property something assigns to: `const [get, set] = createSignal(...)`.
     Signal { get: String, set: String },
+    /// A function, or a signal: the function that emits it.
     Function(String),
     Unsupported(&'static str),
+}
+
+impl Member {
+    fn is_property(&self) -> bool {
+        !matches!(self, Member::Function(_) | Member::Unsupported(_))
+    }
 }
 
 /// A name the enclosing delegate provides (`modelData`, `index`).
@@ -64,20 +71,90 @@ pub(crate) struct Object<'a> {
     pub span: Span,
     pub type_name: &'a str,
     pub members: HashMap<&'a str, Member>,
+    /// The parameter names of the signals declared here.
+    pub signals: HashMap<&'a str, Vec<&'a str>>,
     /// Set on the root object of a delegate.
     pub delegate: Option<Delegate>,
-    /// The root of the component this object belongs to: the file's root or
-    /// the nearest delegate root (possibly the object itself).
+    /// The root of the component this object belongs to: the root of the file
+    /// or inline component, or the nearest delegate root (possibly the object
+    /// itself).
     pub component_root: usize,
     /// The component root of the scope the component was created in.
     pub outer: Option<usize>,
+    /// The root of the file or inline component the object is written in.
+    /// Ids are unique within it and invisible outside it.
+    pub document: usize,
+}
+
+impl Object<'_> {
+    /// What `name` handles, if it is a handler of something declared here.
+    pub(crate) fn own(&self, name: &str) -> Option<Own> {
+        classify(
+            name,
+            |signal| self.signals.contains_key(signal),
+            |property| self.members.get(property).is_some_and(Member::is_property),
+        )
+    }
+}
+
+/// A handler that belongs to a declaration of the object it is written on.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Own {
+    /// `onPicked` for `signal picked`.
+    Signal(String),
+    /// `onTitleChanged` for `property string title`.
+    Changed(String),
+    /// `Component.onCompleted`.
+    Completed,
+    /// `Component.onDestruction`.
+    Destruction,
+}
+
+pub(crate) fn classify(
+    name: &str,
+    is_signal: impl Fn(&str) -> bool,
+    is_property: impl Fn(&str) -> bool,
+) -> Option<Own> {
+    match name {
+        "Component.onCompleted" => return Some(Own::Completed),
+        "Component.onDestruction" => return Some(Own::Destruction),
+        _ => {}
+    }
+    let handled = handled(name)?;
+    if is_signal(&handled) {
+        return Some(Own::Signal(handled));
+    }
+    let property = handled.strip_suffix("Changed")?;
+    is_property(property).then(|| Own::Changed(property.to_string()))
+}
+
+/// `onPicked` → `picked`: the signal a handler name stands for.
+pub(crate) fn handled(name: &str) -> Option<String> {
+    let rest = name.strip_prefix("on")?;
+    let first = rest.chars().next().filter(char::is_ascii_uppercase)?;
+    Some(format!("{}{}", first.to_ascii_lowercase(), &rest[1..]))
+}
+
+/// `property alias name: id.property`, when the target is a built-in property:
+/// the alias is the binding and the target reads it.
+#[derive(Debug)]
+pub(crate) struct Alias<'a> {
+    pub name: &'a str,
+    pub member: Member,
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct Scopes<'a> {
     pub objects: Vec<Object<'a>>,
-    pub ids: HashMap<&'a str, usize>,
+    ids: HashMap<(usize, &'a str), usize>,
     by_start: HashMap<u32, usize>,
+    /// Aliases of built-in properties, by target object and property.
+    pub aliases: HashMap<(usize, String), Alias<'a>>,
+    /// Declared properties a root alias stands for, and that alias's name.
+    pub aliased: HashMap<(usize, &'a str), &'a str>,
+    /// Where the children given to a component go when its default property
+    /// is an alias, by component root.
+    pub children: HashMap<usize, usize>,
 }
 
 impl<'a> Scopes<'a> {
@@ -85,8 +162,14 @@ impl<'a> Scopes<'a> {
         let mut assigned = Assigned::default();
         walk_leaves(&document.root, &mut assigned);
 
-        let mut analysis =
-            Analysis { scopes: Scopes::default(), assigned, taken: HashSet::new(), errors };
+        let mut analysis = Analysis {
+            scopes: Scopes::default(),
+            assigned,
+            taken: HashSet::new(),
+            document: 0,
+            pending: Vec::new(),
+            errors,
+        };
         collect_ids(&document.root, &mut analysis.taken);
         analysis.object(&document.root, None, None);
         analysis.scopes
@@ -109,6 +192,29 @@ impl<'a> Scopes<'a> {
     pub(crate) fn member(&self, object: usize, name: &str) -> Option<&Member> {
         self.objects[object].members.get(name)
     }
+
+    /// The object `id` names, as seen from `object`.
+    pub(crate) fn id(&self, object: usize, id: &str) -> Option<usize> {
+        self.ids.get(&(self.objects[object].document, id)).copied()
+    }
+
+    /// Whether the object is the root of a file or of an inline component:
+    /// what it declares is the component's interface.
+    pub(crate) fn is_interface(&self, object: usize) -> bool {
+        self.objects[object].document == object
+    }
+}
+
+/// An alias whose target is known once the ids of its component are.
+struct Pending<'a> {
+    owner: usize,
+    name: &'a str,
+    span: Span,
+    id: &'a str,
+    property: String,
+    is_default: bool,
+    js: String,
+    assigned: bool,
 }
 
 struct Analysis<'a, 'e> {
@@ -116,10 +222,15 @@ struct Analysis<'a, 'e> {
     assigned: Assigned<'a>,
     /// Prefixes already used for generated binding names.
     taken: HashSet<String>,
+    /// The root of the file or inline component being walked.
+    document: usize,
+    pending: Vec<Pending<'a>>,
     errors: &'e mut Vec<Error>,
 }
 
 impl<'a> Analysis<'a, '_> {
+    /// `component` is the root of the component the object is in, or `None`
+    /// when the object is the root of a file or of an inline component.
     fn object(
         &mut self,
         object: &QmlObject<'a>,
@@ -127,10 +238,15 @@ impl<'a> Analysis<'a, '_> {
         delegate: Option<Delegate>,
     ) {
         let index = self.scopes.objects.len();
-        let is_component_root = component.is_none() || delegate.is_some();
+        let is_interface = component.is_none();
+        let enclosing = self.document;
+        if is_interface {
+            self.document = index;
+        }
+        let is_component_root = is_interface || delegate.is_some();
         let id = object_id(object);
         if let Some(id) = id {
-            if self.scopes.ids.insert(id, index).is_some() {
+            if self.scopes.ids.insert((self.document, id), index).is_some() {
                 self.errors.push(Error::new(format!("id `{id}` is not unique"), object.span));
             }
         }
@@ -139,17 +255,20 @@ impl<'a> Analysis<'a, '_> {
             span: object.span,
             type_name: object.type_name.last(),
             members: HashMap::new(),
+            signals: HashMap::new(),
             delegate,
             component_root: if is_component_root { index } else { component.unwrap_or(index) },
             outer: if is_component_root { component } else { None },
+            document: self.document,
         });
 
-        let prefix = self.prefix(object, id, component.is_none());
+        let prefix = self.prefix(object, id, is_interface);
         let mut members = HashMap::new();
+        let mut signals = HashMap::new();
         for member in &object.members {
             match member {
                 QmlMember::Property(property) => {
-                    let kind = self.property(property, id, &prefix, component.is_none());
+                    let kind = self.property(property, index, id, &prefix, is_interface);
                     members.insert(property.name.name.as_str(), kind);
                 }
                 QmlMember::Function(function) => {
@@ -161,15 +280,18 @@ impl<'a> Analysis<'a, '_> {
                     }
                 }
                 QmlMember::Signal(signal) => {
-                    members.insert(
-                        signal.name.name.as_str(),
-                        Member::Unsupported("signal declarations"),
+                    let name = signal.name.name.as_str();
+                    members.insert(name, Member::Function(format!("{prefix}${name}")));
+                    signals.insert(
+                        name,
+                        signal.params.iter().map(|param| param.name.name.as_str()).collect(),
                     );
                 }
                 _ => {}
             }
         }
         self.scopes.objects[index].members = members;
+        self.scopes.objects[index].signals = signals;
 
         let component = self.scopes.objects[index].component_root;
         let is_repeater = object.type_name.as_simple() == Some("Repeater");
@@ -190,9 +312,15 @@ impl<'a> Analysis<'a, '_> {
                         self.value(value, component, None);
                     }
                 }
-                QmlMember::InlineComponent(inline) => self.object(&inline.object, Some(component), None),
+                // A component of its own: nothing around it is in its scope.
+                QmlMember::InlineComponent(inline) => self.object(&inline.object, None, None),
                 _ => {}
             }
+        }
+
+        if is_interface {
+            self.aliases(index);
+            self.document = enclosing;
         }
     }
 
@@ -213,10 +341,12 @@ impl<'a> Analysis<'a, '_> {
         if let Some(id) = id {
             return id.to_string();
         }
-        let has_members = object
-            .members
-            .iter()
-            .any(|member| matches!(member, QmlMember::Property(_) | QmlMember::Function(_)));
+        let has_members = object.members.iter().any(|member| {
+            matches!(
+                member,
+                QmlMember::Property(_) | QmlMember::Function(_) | QmlMember::Signal(_)
+            )
+        });
         if !has_members {
             return String::new();
         }
@@ -239,6 +369,7 @@ impl<'a> Analysis<'a, '_> {
     fn property(
         &mut self,
         property: &QmlPropertyDeclaration<'a>,
+        owner: usize,
         id: Option<&'a str>,
         prefix: &str,
         is_root: bool,
@@ -249,7 +380,24 @@ impl<'a> Analysis<'a, '_> {
             return Member::Unsupported("`required` on an inherited property");
         };
         if type_name.name.as_simple() == Some("alias") {
-            return Member::Unsupported("property aliases");
+            if !is_root {
+                return Member::Unsupported("aliases outside a component's root object");
+            }
+            let Some((target, target_property)) = alias_target(property) else {
+                return Member::Unsupported("aliases of anything but `id.property`");
+            };
+            self.pending.push(Pending {
+                owner,
+                name,
+                span: property.span,
+                id: target,
+                property: target_property,
+                is_default: property.is_default,
+                js,
+                assigned: self.is_assigned(name, id),
+            });
+            // Replaced once the component's ids are all known.
+            return Member::Unsupported("aliases of an unknown id");
         }
         let expression = match &property.value {
             None => None,
@@ -280,6 +428,11 @@ impl<'a> Analysis<'a, '_> {
         })
     }
 
+    fn is_assigned(&self, name: &'a str, id: Option<&'a str>) -> bool {
+        self.assigned.bare.contains(name)
+            || id.is_some_and(|id| self.assigned.members.contains(&(id, name)))
+    }
+
     fn writable_or(
         &self,
         property: &QmlPropertyDeclaration<'a>,
@@ -287,16 +440,86 @@ impl<'a> Analysis<'a, '_> {
         js: String,
         otherwise: impl FnOnce(String) -> Member,
     ) -> Member {
-        let name = property.name.name.as_str();
-        let assigned = self.assigned.bare.contains(name)
-            || id.is_some_and(|id| self.assigned.members.contains(&(id, name)));
-        if assigned && !property.is_readonly {
+        if self.is_assigned(property.name.name.as_str(), id) && !property.is_readonly {
             let set = format!("set${js}");
             Member::Signal { get: js, set }
         } else {
             otherwise(js)
         }
     }
+
+    /// Settles the aliases of the component rooted at `owner`, now that every
+    /// id in it is known.
+    fn aliases(&mut self, owner: usize) {
+        let (own, pending): (Vec<_>, Vec<_>) =
+            std::mem::take(&mut self.pending).into_iter().partition(|alias| alias.owner == owner);
+        self.pending = pending;
+        for alias in own {
+            let Some(&target) = self.scopes.ids.get(&(owner, alias.id)) else {
+                self.errors.push(Error::new(
+                    format!("`{}` is not an id in this component", alias.id),
+                    alias.span,
+                ));
+                // Reported here: the declaration has nothing more to say.
+                self.scopes.objects[owner].members.remove(alias.name);
+                continue;
+            };
+            let member = if alias.is_default {
+                self.scopes.children.insert(owner, target);
+                Member::Unsupported("reads of a default property alias")
+            } else {
+                self.alias(target, &alias)
+            };
+            self.scopes.objects[owner].members.insert(alias.name, member);
+        }
+    }
+
+    fn alias(&mut self, target: usize, alias: &Pending<'a>) -> Member {
+        let writable = |js: String| Member::Signal { set: format!("set${js}"), get: js };
+        let members = &mut self.scopes.objects[target].members;
+        let Some((&name, declared)) = members.get_key_value(alias.property.as_str()) else {
+            // A built-in property: the alias is the binding and the target
+            // reads it.
+            let js = alias.js.clone();
+            let member = if alias.assigned { writable(js) } else { Member::Getter(js) };
+            self.scopes
+                .aliases
+                .insert((target, alias.property.clone()), Alias { name: alias.name, member: member.clone() });
+            return member;
+        };
+        // A declared property: the alias is another name for its binding,
+        // which the outside can now set, so it is no longer a constant.
+        let member = match declared.clone() {
+            Member::Const(js) | Member::Getter(js) | Member::Memo(js) if alias.assigned => writable(js),
+            Member::Const(js) => Member::Getter(js),
+            Member::Function(_) => return Member::Unsupported("aliases of functions and signals"),
+            member => member,
+        };
+        if member.is_property() {
+            members.insert(name, member.clone());
+            self.scopes.aliased.insert((target, name), alias.name);
+        }
+        member
+    }
+}
+
+/// The `id` and property path of `property alias name: id.property`.
+pub(crate) fn alias_target<'a>(property: &QmlPropertyDeclaration<'a>) -> Option<(&'a str, String)> {
+    let Some(QmlBindingValue::Expression(expression)) = property.value.as_ref() else {
+        return None;
+    };
+    let mut expression = expression;
+    let mut path = Vec::new();
+    while let Expression::StaticMemberExpression(member) = expression {
+        path.push(member.property.name.as_str());
+        expression = &member.object;
+    }
+    let Expression::Identifier(id) = expression else { return None };
+    if path.is_empty() {
+        return None;
+    }
+    path.reverse();
+    Some((id.name.as_str(), path.join(".")))
 }
 
 fn collect_ids(object: &QmlObject<'_>, ids: &mut HashSet<String>) {

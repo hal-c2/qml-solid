@@ -1,0 +1,407 @@
+//! What the QML files of a directory say about each other.
+//!
+//! A component is compiled on its own, but what it has to accept is decided by
+//! the files that use it: QML lets an instance set any property of the
+//! component's root object, add children to it and handle its signals. Rather
+//! than have every component accept everything at run time, the instances are
+//! read first. A component then takes exactly the properties some instance
+//! sets, and everything else stays as static as it was written.
+
+use std::collections::{BTreeSet, HashMap, HashSet};
+
+use oxc_allocator::Allocator;
+use oxc_parser::{Parser, qml::ast::*};
+use oxc_span::SourceType;
+
+use crate::{
+    Error, parse_errors,
+    registry::{Element, Prop, Types},
+    scope::{Own, alias_target, classify, object_id},
+};
+
+/// The components a file can name: its own inline components and the files
+/// next to it.
+#[derive(Debug, Clone, Default)]
+pub struct Project {
+    files: HashMap<String, Summary>,
+}
+
+/// A file's component or one of its inline components.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct Key {
+    pub file: String,
+    pub inline: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Summary {
+    components: Vec<Interface>,
+    instances: Vec<Instance>,
+}
+
+/// What a component declares: the names an instance may set that are the
+/// component's own rather than its root object's.
+#[derive(Debug, Clone)]
+pub(crate) struct Interface {
+    inline: Option<String>,
+    root: Root,
+    properties: HashSet<String>,
+    signals: HashMap<String, Vec<String>>,
+    /// Children given to an instance go into the root object, not into the
+    /// target of a default property alias.
+    children_in_root: bool,
+}
+
+#[derive(Debug, Clone)]
+enum Root {
+    Element(&'static Element),
+    /// Another component, by the name the file knows it under.
+    Component(String),
+    Other,
+}
+
+/// One use of a type that is not a dialect's: a component instance.
+#[derive(Debug, Clone)]
+struct Instance {
+    /// The inline component the instance is written in, if any.
+    owner: Option<String>,
+    /// The instance is its component's root object, so whatever the component
+    /// does not declare itself is the instance's to take.
+    is_root: bool,
+    type_name: String,
+    names: BTreeSet<String>,
+    children: bool,
+}
+
+/// What the instances of a component ask of it.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Usage {
+    pub names: BTreeSet<String>,
+    pub children: bool,
+}
+
+pub(crate) enum Declared<'i> {
+    Property,
+    /// A handler of a declared signal, with the signal's parameter names.
+    Signal(&'i [String]),
+    /// A change handler of a declared property.
+    Changed(String),
+}
+
+/// What a name means on an instance of a component.
+pub(crate) enum Lookup {
+    Value,
+    /// A signal handler, with the names the signal gives its arguments.
+    Handler(Vec<String>),
+    /// A property of the root object whose value has to be known when the
+    /// component is compiled.
+    Fixed,
+    Missing,
+    /// The component, or the root type it ends in, is not in the project.
+    Unknown,
+}
+
+impl Interface {
+    pub(crate) fn declares(&self, name: &str) -> Option<Declared<'_>> {
+        if self.properties.contains(name) {
+            return Some(Declared::Property);
+        }
+        let own = classify(
+            name,
+            |signal| self.signals.contains_key(signal),
+            |property| self.properties.contains(property),
+        )?;
+        match own {
+            Own::Signal(signal) => Some(Declared::Signal(&self.signals[&signal])),
+            Own::Changed(property) => Some(Declared::Changed(property)),
+            Own::Completed | Own::Destruction => None,
+        }
+    }
+}
+
+impl Project {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds the file of the component `name`. A file that does not parse is
+    /// left out, and its errors returned.
+    pub fn add(&mut self, name: &str, source: &str) -> Result<(), Vec<Error>> {
+        let allocator = Allocator::default();
+        let parsed = Parser::new(&allocator, source, SourceType::ts()).parse_qml();
+        if !parsed.diagnostics.is_empty() {
+            return Err(parse_errors(parsed.diagnostics));
+        }
+        self.insert(name, summarize(&parsed.document));
+        Ok(())
+    }
+
+    pub(crate) fn insert(&mut self, name: &str, summary: Summary) {
+        self.files.insert(name.to_string(), summary);
+    }
+
+    /// The component a type name stands for in `file`.
+    pub(crate) fn resolve(&self, file: &str, type_name: &str) -> Option<Key> {
+        let inline = self.files.get(file).is_some_and(|summary| {
+            summary.components.iter().any(|component| component.inline.as_deref() == Some(type_name))
+        });
+        if inline {
+            Some(Key { file: file.to_string(), inline: Some(type_name.to_string()) })
+        } else if self.files.contains_key(type_name) {
+            Some(Key { file: type_name.to_string(), inline: None })
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn interface(&self, key: &Key) -> Option<&Interface> {
+        self.files.get(&key.file)?.components.iter().find(|component| component.inline == key.inline)
+    }
+
+    /// What `name` is on an instance of the component: something it declares,
+    /// or a property of its root object, however many components down that is.
+    pub(crate) fn lookup(&self, key: &Key, name: &str) -> Lookup {
+        let mut key = key.clone();
+        // A component whose root is itself, by whatever detour, has no root.
+        for _ in 0..64 {
+            let Some(interface) = self.interface(&key) else { return Lookup::Unknown };
+            match interface.declares(name) {
+                Some(Declared::Property) => return Lookup::Value,
+                Some(Declared::Signal(parameters)) => return Lookup::Handler(parameters.to_vec()),
+                Some(Declared::Changed(_)) => return Lookup::Handler(Vec::new()),
+                None => {}
+            }
+            match &interface.root {
+                Root::Element(element) => {
+                    return match element.prop(name) {
+                        Some(Prop::Event(_)) => Lookup::Handler(Vec::new()),
+                        Some(Prop::Keyword(_)) => Lookup::Fixed,
+                        Some(_) => Lookup::Value,
+                        None => Lookup::Missing,
+                    };
+                }
+                Root::Component(type_name) => match self.resolve(&key.file, type_name) {
+                    Some(root) => key = root,
+                    None => return Lookup::Unknown,
+                },
+                Root::Other => return Lookup::Missing,
+            }
+        }
+        Lookup::Missing
+    }
+
+    /// What the instances in the project ask of each component.
+    pub(crate) fn usages(&self) -> HashMap<Key, Usage> {
+        let mut usages: HashMap<Key, Usage> = HashMap::new();
+        for (file, summary) in &self.files {
+            for instance in &summary.instances {
+                let Some(key) = self.resolve(file, &instance.type_name) else { continue };
+                let usage = usages.entry(key).or_default();
+                usage.names.extend(instance.names.iter().cloned());
+                usage.children |= instance.children;
+            }
+        }
+        // What is asked of a component and is not its own is asked of its
+        // root, when that is a component too. Usages only grow, so this ends.
+        loop {
+            let mut changed = false;
+            for (file, summary) in &self.files {
+                for instance in summary.instances.iter().filter(|instance| instance.is_root) {
+                    let owner = Key { file: file.clone(), inline: instance.owner.clone() };
+                    let Some(root) = self.resolve(file, &instance.type_name) else { continue };
+                    let (Some(interface), Some(asked)) = (self.interface(&owner), usages.get(&owner))
+                    else {
+                        continue;
+                    };
+                    if root == owner {
+                        continue;
+                    }
+                    let names: Vec<String> = asked
+                        .names
+                        .iter()
+                        .filter(|name| interface.declares(name).is_none())
+                        .cloned()
+                        .collect();
+                    let children = asked.children && interface.children_in_root;
+                    let usage = usages.entry(root).or_default();
+                    for name in names {
+                        changed |= usage.names.insert(name);
+                    }
+                    if children && !usage.children {
+                        usage.children = true;
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                return usages;
+            }
+        }
+    }
+}
+
+pub(crate) fn summarize(document: &QmlDocument<'_>) -> Summary {
+    let mut summary = Summary::default();
+    let types = Types::of(&document.imports);
+    component(&mut summary, types, None, &document.root);
+    summary
+}
+
+/// The aliases of the component being walked: they make its interface reach
+/// the objects they name.
+struct Aliases<'a> {
+    inline: Option<&'a str>,
+    properties: Vec<(&'a str, String)>,
+    children: Option<&'a str>,
+}
+
+fn component<'a>(summary: &mut Summary, types: Types, inline: Option<&'a str>, root: &QmlObject<'a>) {
+    let mut interface = Interface {
+        inline: inline.map(str::to_string),
+        root: match root.type_name.as_simple() {
+            Some(name) => match types.element(name) {
+                Some(element) => Root::Element(element),
+                None if types.lookup(name).is_some() => Root::Other,
+                None => Root::Component(name.to_string()),
+            },
+            None => Root::Other,
+        },
+        properties: HashSet::new(),
+        signals: HashMap::new(),
+        children_in_root: true,
+    };
+    let mut aliases = Aliases { inline, properties: Vec::new(), children: None };
+    for member in &root.members {
+        match member {
+            QmlMember::Property(property) => {
+                interface.properties.insert(property.name.name.to_string());
+                let is_alias = property
+                    .type_name
+                    .as_ref()
+                    .is_some_and(|type_name| type_name.name.as_simple() == Some("alias"));
+                if let (true, Some((id, target))) = (is_alias, alias_target(property)) {
+                    if property.is_default {
+                        aliases.children = Some(id);
+                        interface.children_in_root = false;
+                    } else {
+                        aliases.properties.push((id, target));
+                    }
+                }
+            }
+            QmlMember::Signal(signal) => {
+                interface.signals.insert(
+                    signal.name.name.to_string(),
+                    signal.params.iter().map(|param| param.name.name.to_string()).collect(),
+                );
+            }
+            _ => {}
+        }
+    }
+    summary.components.push(interface);
+    object(summary, types, &aliases, root, true);
+}
+
+fn object<'a>(
+    summary: &mut Summary,
+    types: Types,
+    aliases: &Aliases<'a>,
+    object: &QmlObject<'a>,
+    is_root: bool,
+) {
+    if let Some(type_name) = object.type_name.as_simple()
+        && types.lookup(type_name).is_none()
+        && object.on.is_none()
+    {
+        summary.instances.push(instance(aliases, type_name, object, is_root));
+    }
+    for member in &object.members {
+        match member {
+            QmlMember::Object(child) if !is_group(child) => {
+                self::object(summary, types, aliases, child, false);
+            }
+            QmlMember::Binding(QmlBinding { value, .. })
+            | QmlMember::Property(QmlPropertyDeclaration { value: Some(value), .. }) => match value {
+                QmlBindingValue::Object(child) => self::object(summary, types, aliases, child, false),
+                QmlBindingValue::Objects(children) => {
+                    for child in children {
+                        self::object(summary, types, aliases, child, false);
+                    }
+                }
+                _ => {}
+            },
+            QmlMember::InlineComponent(inline) => {
+                component(summary, types, Some(inline.name.name.as_str()), &inline.object);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn instance<'a>(
+    aliases: &Aliases<'a>,
+    type_name: &str,
+    object: &QmlObject<'a>,
+    is_root: bool,
+) -> Instance {
+    // What the object declares itself is its own, not the component's.
+    let mut properties = HashSet::new();
+    let mut signals = HashSet::new();
+    for member in &object.members {
+        match member {
+            QmlMember::Property(property) => {
+                properties.insert(property.name.name.as_str());
+            }
+            QmlMember::Signal(signal) => {
+                signals.insert(signal.name.name.as_str());
+            }
+            _ => {}
+        }
+    }
+    let passed = |name: &str| {
+        name != "id"
+            && classify(name, |signal| signals.contains(signal), |property| properties.contains(property))
+                .is_none()
+    };
+
+    let mut names = BTreeSet::new();
+    let mut children = false;
+    for member in &object.members {
+        match member {
+            QmlMember::Binding(binding) => {
+                let name = binding.name.to_string();
+                if passed(&name) {
+                    names.insert(name);
+                }
+            }
+            QmlMember::Object(group) if is_group(group) => {
+                for member in &group.members {
+                    if let QmlMember::Binding(binding) = member {
+                        names.insert(format!("{}.{}", group.type_name, binding.name));
+                    }
+                }
+            }
+            QmlMember::Object(_) => children = true,
+            _ => {}
+        }
+    }
+    if let Some(id) = object_id(object) {
+        for (target, property) in &aliases.properties {
+            if *target == id && !properties.contains(property.as_str()) {
+                names.insert(property.clone());
+            }
+        }
+        children |= aliases.children == Some(id);
+    }
+    Instance {
+        owner: aliases.inline.map(str::to_string),
+        is_root,
+        type_name: type_name.to_string(),
+        names,
+        children,
+    }
+}
+
+/// `font { ... }`: an object whose "type" is a lowercase property name.
+pub(crate) fn is_group(object: &QmlObject<'_>) -> bool {
+    object.type_name.parts[0].starts_with(|c: char| c.is_ascii_lowercase())
+}

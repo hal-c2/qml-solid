@@ -89,6 +89,21 @@ impl<'a> B<'a> {
         Expression::new_call_expression(SPAN, callee, None, arguments, false, &self.ast())
     }
 
+    /// `callee?.(...rest)`
+    pub(crate) fn optional_call_spread(&self, callee: Expression<'a>, rest: &str) -> Expression<'a> {
+        let call = CallExpression::boxed(SPAN, callee, None, self.spread(rest), true, &self.ast());
+        Expression::new_chain_expression(SPAN, ChainElement::CallExpression(call), &self.ast())
+    }
+
+    /// `callee(...rest)`
+    pub(crate) fn call_spread(&self, callee: Expression<'a>, rest: &str) -> Expression<'a> {
+        Expression::new_call_expression(SPAN, callee, None, self.spread(rest), false, &self.ast())
+    }
+
+    fn spread(&self, rest: &str) -> ArenaVec<'a, Argument<'a>> {
+        self.vec1(Argument::new_spread_element(SPAN, self.id(rest), &self.ast()))
+    }
+
     pub(crate) fn binary(
         &self,
         left: Expression<'a>,
@@ -197,7 +212,45 @@ impl<'a> B<'a> {
         )
     }
 
+    /// `(...rest) => { statements }`
+    pub(crate) fn arrow_rest_block(
+        &self,
+        rest: &str,
+        statements: ArenaVec<'a, Statement<'a>>,
+    ) -> Expression<'a> {
+        let mut params = self.params(&[]);
+        params.rest = Some(FormalParameterRest::boxed(
+            SPAN,
+            self.vec(),
+            BindingRestElement::new(
+                SPAN,
+                BindingPattern::new_binding_identifier(SPAN, self.ident(rest), &self.ast()),
+                &self.ast(),
+            ),
+            None,
+            &self.ast(),
+        ));
+        Expression::new_arrow_function_expression(
+            SPAN,
+            false,
+            None,
+            params,
+            None,
+            ArrowFunctionBody::FunctionBody(FunctionBody::boxed(
+                SPAN,
+                self.vec(),
+                statements,
+                &self.ast(),
+            )),
+            &self.ast(),
+        )
+    }
+
     // Statements
+
+    pub(crate) fn statement(&self, expression: Expression<'a>) -> Statement<'a> {
+        Statement::new_expression_statement(SPAN, expression, &self.ast())
+    }
 
     pub(crate) fn return_(&self, argument: Expression<'a>) -> Statement<'a> {
         Statement::new_return_statement(SPAN, Some(argument), &self.ast())
@@ -238,16 +291,15 @@ impl<'a> B<'a> {
         self.const_pattern(BindingPattern::new_array_pattern(SPAN, elements, None, &self.ast()), init)
     }
 
-    /// `export default function name(props) { statements }`
-    pub(crate) fn export_default_function(
+    fn function(
         &self,
         name: &str,
         params: &[&str],
         statements: ArenaVec<'a, Statement<'a>>,
-    ) -> Statement<'a> {
+    ) -> ArenaBox<'a, Function<'a>> {
         let mut params = self.params(params);
         params.kind = FormalParameterKind::FormalParameter;
-        let function = Function::boxed(
+        Function::boxed(
             SPAN,
             FunctionType::FunctionDeclaration,
             Some(BindingIdentifier::new(SPAN, self.ident(name), &self.ast())),
@@ -260,10 +312,29 @@ impl<'a> B<'a> {
             None,
             Some(FunctionBody::boxed(SPAN, self.vec(), statements, &self.ast())),
             &self.ast(),
-        );
+        )
+    }
+
+    /// `function name(params) { statements }`
+    pub(crate) fn function_declaration(
+        &self,
+        name: &str,
+        params: &[&str],
+        statements: ArenaVec<'a, Statement<'a>>,
+    ) -> Statement<'a> {
+        Statement::FunctionDeclaration(self.function(name, params, statements))
+    }
+
+    /// `export default function name(params) { statements }`
+    pub(crate) fn export_default_function(
+        &self,
+        name: &str,
+        params: &[&str],
+        statements: ArenaVec<'a, Statement<'a>>,
+    ) -> Statement<'a> {
         Statement::ExportDefaultDeclaration(ExportDefaultDeclaration::boxed(
             SPAN,
-            ExportDefaultDeclarationKind::FunctionDeclaration(function),
+            ExportDefaultDeclarationKind::FunctionDeclaration(self.function(name, params, statements)),
             &self.ast(),
         ))
     }

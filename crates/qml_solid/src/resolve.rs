@@ -27,27 +27,29 @@ use oxc_syntax::scope::ScopeFlags;
 use crate::{
     Error,
     build::B,
-    registry,
+    registry::Types,
     scope::{Member, Provided, Scopes},
 };
 
 pub(crate) struct Resolved {
     /// Names to import from the host module.
     pub host: BTreeSet<String>,
-    /// Whether the `Qt` global is used.
-    pub qt: bool,
+    /// The QML globals used, which the runtime module exports.
+    pub runtime: BTreeSet<&'static str>,
 }
 
 pub(crate) fn resolve<'a>(
     b: B<'a>,
     program: &mut Program<'a>,
     scopes: &Scopes<'a>,
+    types: Types,
     errors: &mut Vec<Error>,
 ) -> Resolved {
     let free = free_references(program);
-    let mut resolver = Resolver { b, scopes, free, errors, host: BTreeSet::new(), qt: false };
+    let mut resolver =
+        Resolver { b, scopes, types, free, errors, host: BTreeSet::new(), runtime: BTreeSet::new() };
     resolver.visit_program(program);
-    Resolved { host: resolver.host, qt: resolver.qt }
+    Resolved { host: resolver.host, runtime: resolver.runtime }
 }
 
 /// The authored identifiers no JavaScript binding resolves, by span start.
@@ -81,10 +83,11 @@ enum Resolution {
 struct Resolver<'a, 's> {
     b: B<'a>,
     scopes: &'s Scopes<'a>,
+    types: Types,
     free: HashSet<u32>,
     errors: &'s mut Vec<Error>,
     host: BTreeSet<String>,
-    qt: bool,
+    runtime: BTreeSet<&'static str>,
 }
 
 impl<'a> Resolver<'a, '_> {
@@ -99,13 +102,13 @@ impl<'a> Resolver<'a, '_> {
 
     fn bare(&mut self, name: &str, span: Span) -> Resolution {
         let scopes = self.scopes;
-        if scopes.ids.contains_key(name) {
+        let object = scopes.object_at(span.start);
+        if scopes.id(object, name).is_some() {
             return self.fail(
                 format!("`{name}` is an object; passing objects around is not supported yet"),
                 span,
             );
         }
-        let object = scopes.object_at(span.start);
         if let Some(member) = scopes.member(object, name) {
             return Resolution::Member(member.clone());
         }
@@ -126,8 +129,8 @@ impl<'a> Resolver<'a, '_> {
             root = scopes.objects[index].outer;
         }
 
-        if name == "Qt" {
-            self.qt = true;
+        if let Some(global) = QML_GLOBALS.iter().find(|global| **global == name) {
+            self.runtime.insert(global);
             return Resolution::Global;
         }
         if JS_GLOBALS.contains(&name) {
@@ -138,10 +141,8 @@ impl<'a> Resolver<'a, '_> {
             return Resolution::Global;
         }
         let type_name = scopes.objects[object].type_name;
-        let built_in = match registry::lookup(type_name) {
-            Some(registry::Type::Element(element)) => element.prop(name).is_some(),
-            _ => false,
-        };
+        let built_in =
+            self.types.element(type_name).is_some_and(|element| element.prop(name).is_some());
         if built_in {
             self.fail(
                 format!("reading the built-in property `{name}` of `{type_name}` is not supported yet"),
@@ -153,7 +154,10 @@ impl<'a> Resolver<'a, '_> {
     }
 
     fn through_id(&mut self, id: &str, property: &str, span: Span) -> Resolution {
-        let object = self.scopes.ids[id];
+        let from = self.scopes.object_at(span.start);
+        let Some(object) = self.scopes.id(from, id) else {
+            return self.fail(format!("`{id}` is not defined"), span);
+        };
         match self.scopes.member(object, property) {
             Some(member) => Resolution::Member(member.clone()),
             None => self.fail(
@@ -198,7 +202,8 @@ impl<'a> Resolver<'a, '_> {
         member: &StaticMemberExpression<'a>,
     ) -> Option<(&'a str, &'a str, Span)> {
         let Expression::Identifier(object) = &member.object else { return None };
-        if !self.is_free(object) || !self.scopes.ids.contains_key(object.name.as_str()) {
+        let from = self.scopes.object_at(object.span.start);
+        if !self.is_free(object) || self.scopes.id(from, object.name.as_str()).is_none() {
             return None;
         }
         Some((object.name.as_str(), member.property.name.as_str(), member.span))
@@ -365,6 +370,9 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_> {
         walk_mut::walk_variable_declarator(self, declarator);
     }
 }
+
+/// What QML puts in every script's scope, whatever is imported.
+const QML_GLOBALS: &[&str] = &["Qt", "qsTr"];
 
 const JS_GLOBALS: &[&str] = &[
     "undefined",

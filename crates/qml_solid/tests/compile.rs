@@ -6,17 +6,22 @@ fn options() -> Options {
     Options { name: "Sample".to_string(), ..Options::default() }
 }
 
+/// The types of a file come from what it imports.
+fn tui(source: &str) -> String {
+    format!("import OpenTUI\n{source}")
+}
+
 /// The tree handed to Solid's compiler, printed.
 fn lowered(source: &str) -> String {
-    lowered_source(source, &options()).unwrap_or_else(|errors| panic!("{errors:?}"))
+    lowered_source(&tui(source), &options()).unwrap_or_else(|errors| panic!("{errors:?}"))
 }
 
 fn js(source: &str) -> String {
-    compile(source, &options()).unwrap_or_else(|errors| panic!("{errors:?}")).code
+    compile(&tui(source), &options()).unwrap_or_else(|errors| panic!("{errors:?}")).code
 }
 
 fn errors(source: &str) -> Vec<String> {
-    let errors = compile(source, &options()).expect_err("expected the compile to fail");
+    let errors = compile(&tui(source), &options()).expect_err("expected the compile to fail");
     errors.into_iter().map(|error| error.message).collect()
 }
 
@@ -83,10 +88,10 @@ fn property_kinds() {
     // Assigned somewhere: a signal that follows its binding until it is set.
     assert_contains(
         &code,
-        r#"const [panel$count, set$panel$count] = createSignal(() => "count" in props ? props.count : 0);"#,
+        "const [panel$count, set$panel$count] = createSignal(() => props.count !== undefined ? props.count : 0);",
     );
     // The root's properties are the component's props.
-    assert_contains(&code, r#"const panel$title = () => "title" in props ? props.title : "Untitled";"#);
+    assert_contains(&code, r#"const panel$title = () => props.title !== undefined ? props.title : "Untitled";"#);
     assert_contains(&code, "const panel$item = () => props.item;");
     assert_contains(&code, "onMouseDown={() => set$panel$count(() => panel$count() + 1)}");
     assert_contains(&code, "{panel$label() + panel$padding + panel$title() + panel$item().name}");
@@ -209,20 +214,16 @@ fn typescript_syntax_is_erased() {
 
 #[test]
 fn errors_are_reported_where_they_are() {
-    let source = "Item {\n    Text { text: missing }\n}";
+    let source = "import OpenTUI\nItem {\n    Text { text: missing }\n}";
     let errors = compile(source, &options()).unwrap_err();
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0].message, "`missing` is not defined");
-    assert_eq!(errors[0].position(source), (2, 18));
+    assert_eq!(errors[0].position(source), (3, 18));
 }
 
 #[test]
 fn unsupported_qml_is_an_error_not_a_guess() {
     assert_eq!(errors("Item { TextInput {} }"), ["`TextInput` is not supported by the web target yet"]);
     assert_eq!(errors("Item { nope: 1 }"), ["`Item` has no property `nope` on the web target yet"]);
-    assert_eq!(
-        errors("Item { Badge { visible: false } }"),
-        ["setting `visible` of a component's root item from outside is not supported yet"]
-    );
     assert!(!errors("Item { width: }").is_empty());
 }
