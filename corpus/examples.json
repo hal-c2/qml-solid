@@ -243,7 +243,7 @@
       ],
       "qt": {
         "runnable": false,
-        "reason": "Main.qml instantiates RestService and PaginatedResource, C++ types of the example's own module."
+        "reason": "The pictures are addressed in the program's resources (qrc:/qt/qml/ColorPalette/icons/...), which the plain tool has not got; and RestService, BasicLogin and PaginatedResource are C++ types of the example's own module, which its files do not import: corpus/standins/colorpaletteclient stands in for them on the web."
       }
     },
     {
