@@ -17,6 +17,22 @@ export { Loader } from "./Loader.js";
 export { ListElement, ListModel, ObjectModel } from "./model.js";
 export { Column, Flow, Grid, Positioner, Row } from "./positioners.js";
 export { ColorGroup, Palette, SystemPalette } from "./Palette.js";
+export {
+  Path,
+  PathAngleArc,
+  PathArc,
+  PathAttribute,
+  PathCubic,
+  PathCurve,
+  PathLine,
+  PathMove,
+  PathMultiline,
+  PathPercent,
+  PathPolyline,
+  PathQuad,
+  PathRectangle,
+  PathSvg,
+} from "./Path.js";
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
 export { Repeater } from "./Repeater.js";
 export { Text } from "./Text.js";
