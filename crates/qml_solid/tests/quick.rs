@@ -531,3 +531,12 @@ T.Control {
     assert_contains(&code, "ScrollIndicator$vertical={<T.ScrollIndicator");
     assert_contains(&code, "$attach={[T.ScrollIndicator]}");
 }
+
+#[test]
+fn a_string_goes_on_over_the_end_of_a_line() {
+    let code = lowered("import QtQuick\nText {\n    text: \"one \\\ntwo\nthree\" + 'a\\\\b\nc'\n}");
+    // The end of a line is in the string; one after a `\` is not.
+    assert_contains(&code, r#"text={"one two\nthree" + "a\\b\nc"}"#);
+    let unended = Project::new().add("Sample", "import QtQuick\nText { text: \"one\ntwo }").unwrap_err();
+    assert_eq!(unended[0].message, "Unterminated string");
+}

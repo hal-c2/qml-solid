@@ -8,6 +8,7 @@ use crate::{config::LexerConfig as Config, diagnostics};
 use super::{
     Kind, Lexer, Span, Token, cold_branch,
     search::{SafeByteMatchTable, byte_search, safe_byte_match_table},
+    source::SourcePosition,
 };
 
 /// Convert `char` to UTF-8 bytes array.
@@ -90,6 +91,10 @@ macro_rules! handle_string_literal {
                     after_opening_quote
                 )
             }),
+            // QML: a string goes on over the end of a line.
+            _ if $lexer.qml => {
+                cold_branch(|| $lexer.read_string_literal_over_lines($delimiter, after_opening_quote))
+            }
             _ => {
                 // Line break. This is impossible in valid JS, so cold path.
                 cold_branch(|| {
@@ -179,6 +184,11 @@ macro_rules! handle_string_literal_escape {
                             chunk_start = $lexer.source.position();
                         }
                     }
+                    // QML: a string goes on over the end of a line.
+                    b'\r' | b'\n' if $lexer.qml => {
+                        // SAFETY: A byte is available, as we just peeked it, and it's ASCII.
+                        $lexer.source.next_byte_unchecked();
+                    }
                     _ => {
                         // Line break. This is impossible in valid JS, so cold path.
                         return cold_branch(|| {
@@ -235,6 +245,39 @@ impl<'a, C: Config> Lexer<'a, C> {
                 SINGLE_QUOTE_ESCAPED_MATCH_TABLE
             )
         }
+    }
+
+    /// QML: the rest of a string literal that has a line break in it, which is part of the
+    /// string. `self.source` is at the line break.
+    fn read_string_literal_over_lines(
+        &mut self,
+        delimiter: u8,
+        after_opening_quote: SourcePosition<'a>,
+    ) -> Kind {
+        let so_far = self.source.str_from_pos_to_current(after_opening_quote);
+        let capacity = max(so_far.len() * 2, MIN_ESCAPED_STR_LEN);
+        let mut str = ArenaStringBuilder::with_capacity_in(capacity, self.allocator);
+        str.push_str(so_far);
+        while self.peek_char().is_some() {
+            let escape_start_offset = self.offset();
+            match self.consume_char() {
+                c if c == char::from(delimiter) => {
+                    self.save_string(true, str.into_str());
+                    return Kind::Str;
+                }
+                '\\' => {
+                    let mut is_valid_escape_sequence = true;
+                    self.read_string_escape_sequence(&mut str, false, &mut is_valid_escape_sequence);
+                    if !is_valid_escape_sequence {
+                        let range = Span::new(escape_start_offset, self.offset());
+                        self.error(diagnostics::invalid_escape_sequence(range));
+                    }
+                }
+                c => str.push(c),
+            }
+        }
+        self.error(diagnostics::unterminated_string(self.unterminated_range()));
+        Kind::Undetermined
     }
 
     /// Save the string if it is escaped
