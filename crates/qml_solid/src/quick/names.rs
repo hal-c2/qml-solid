@@ -260,6 +260,57 @@ impl<'a> Resolver<'a, '_, '_> {
     }
 }
 
+impl<'a> Resolver<'a, '_, '_> {
+    /// `object.Type.member`: a member of what the type attaches to that
+    /// object, and no property of it (`delegate.ListView.isCurrentItem`).
+    /// `Namespace.Type.member` is of what it attaches to the object the
+    /// expression is written in.
+    fn attached_member(&mut self, member: &mut StaticMemberExpression<'a>) -> bool {
+        let b = self.b;
+        let span = member.span;
+        let wanted = member.property.name.to_string();
+        let Expression::StaticMemberExpression(inner) = &mut member.object else { return false };
+        let name = inner.property.name.to_string();
+        if !name.starts_with(|c: char| c.is_ascii_uppercase()) {
+            return false;
+        }
+        let namespace = match &inner.object {
+            Expression::Identifier(object) if self.is_free(object) && object.name.starts_with(|c: char| c.is_ascii_uppercase()) => {
+                // `Qt.Window`, `Text.Text`: a member of a type or a global.
+                if self.types.namespace(object.name.as_str()).is_none() {
+                    return false;
+                }
+                Some(object.name.to_string())
+            }
+            _ => None,
+        };
+        let path: Vec<&str> = namespace.as_deref().into_iter().chain([name.as_str()]).collect();
+        let Some(found) = self.types.find(&path) else { return false };
+        let Some(ty) = self.types.base(&found.kind) else { return false };
+        let attaches = ty.attached().is_some_and(|attached| {
+            attached.property(&wanted).is_some() || attached.signal(&wanted).is_some() || attached.has_method(&wanted)
+        });
+        if !attaches || ty.is_singleton {
+            return false;
+        }
+        match namespace {
+            Some(namespace) => {
+                self.uses.namespaces.insert(namespace);
+                let attachee = self.handle(self.tree.object_at(span.start));
+                let ty = member.object.take_in(&b.allocator());
+                member.object = b.call(b.member(ty, "attached"), [attachee]);
+            }
+            None => {
+                self.uses.origin(&name, &found.origin);
+                let mut attachee = inner.object.take_in(&b.allocator());
+                self.visit_expression(&mut attachee);
+                member.object = b.call(b.member(b.id(&name), "attached"), [attachee]);
+            }
+        }
+        true
+    }
+}
+
 fn has_enum(ty: &'static qt::Type, name: &str) -> bool {
     let mut current = Some(ty);
     while let Some(ty) = current {
@@ -296,6 +347,11 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
         {
             handles.insert(scope);
         }
+        if let Expression::StaticMemberExpression(member) = expression
+            && self.attached_member(member)
+        {
+            return;
+        }
         if self.type_member(expression) {
             return;
         }
@@ -323,6 +379,11 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
                 Some(_) => self.errors.push(Error::new(format!("`{name}` cannot be assigned to"), span)),
                 None => {}
             }
+            return;
+        }
+        if let SimpleAssignmentTarget::StaticMemberExpression(member) = target
+            && self.attached_member(member)
+        {
             return;
         }
         walk_mut::walk_simple_assignment_target(self, target);
