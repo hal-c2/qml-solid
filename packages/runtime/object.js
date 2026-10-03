@@ -471,8 +471,15 @@ function derive(Type, declared) {
 function defineAlias(self, name, [target, ...path]) {
   const last = path.at(-1);
   const holder = () => path.slice(0, -1).reduce((object, member) => object?.[member], target);
+  // What the instance gives the alias is the target's once everything is
+  // made. A binding read before that reads what was given, as in Qt, where
+  // none is read until then.
+  const given = path.length > 0 && name in self.$props;
+  const [early, setEarly] = given ? createSignal(true, { ownedWrite: true }) : [];
   Object.defineProperty(self, name, {
-    get: path.length ? () => holder()?.[last] : () => (target.$type ? target : (target.$track(), null)),
+    get: path.length
+      ? () => (early?.() ? self.$props[name] : holder()?.[last])
+      : () => (target.$type ? target : (target.$track(), null)),
     set(value) {
       const object = holder();
       if (path.length && object) object[last] = value;
@@ -480,10 +487,11 @@ function defineAlias(self, name, [target, ...path]) {
     enumerable: true,
     configurable: true,
   });
-  if (!path.length || !(name in self.$props)) return;
+  if (!given) return;
   // What the instance binds to the alias is the target's binding.
   const key = path.join("$");
   whenComplete(() => {
+    setEarly(false);
     const aliased = target.$type && slot(target, key);
     if (aliased) return aliased.bind(self.$props, name);
     // An alias of an alias, or of an object made later: assigned instead.
