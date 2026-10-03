@@ -115,10 +115,14 @@ class Slot {
     const descriptor = Object.getOwnPropertyDescriptor(props, key);
     // A binding: evaluated when first read and again when what it read
     // changes, however many readers there are. An item it makes
-    // (`background: Rectangle {}`) is made as a child of this one.
+    // (`background: Rectangle {}`) is made as a child of this one, or of
+    // the content item of a window.
     this.bound = descriptor?.get
       ? runWithOwner(self.$owner, () =>
-          createMemo(() => complete(() => inside(self.$node ? self : null, () => props[key])), SYNC),
+          createMemo(
+            () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key])),
+            SYNC,
+          ),
         )
       : null;
     this.given = descriptor && !descriptor.get ? descriptor.value : undefined;

@@ -10,6 +10,7 @@
     "./QtQuick": "./QtQuick/index.js",
     "./QtQuick/Layouts": "./QtQuick/Layouts/index.js",
     "./QtQuick/Window": "./QtQuick/Window/index.js",
+    "./QtQuick/Templates": "./QtQuick/Templates/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtQml/Models": "./QtQml/Models/index.js",
     "./QtCore": "./QtCore/index.js",
