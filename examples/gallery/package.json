@@ -1,0 +1,21 @@
+{
+  "name": "qml-solid-example-gallery",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "report": "playwright test",
+    "selftest": "node tests/selftest/run.mjs"
+  },
+  "dependencies": {
+    "@solidjs/web": "2.0.0-rc.13",
+    "qml-solid": "workspace:*",
+    "solid-js": "2.0.0-rc.13"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
+    "vite": "^8.0.0"
+  }
+}

@@ -1,0 +1,29 @@
+// The examples the gallery shows and the report measures: the manifest
+// (`corpus/examples.json`, or the one GALLERY_MANIFEST names) with every path
+// made absolute. Read by the Vite config and by the tests, in Node.
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+export const manifestFile = resolve(process.env.GALLERY_MANIFEST ?? join(here, "../../corpus/examples.json"));
+
+export function readManifest() {
+  const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
+  const corpus = dirname(manifestFile);
+  const references = join(corpus, "reference");
+  const index = existsSync(join(references, "reference.json"))
+    ? JSON.parse(readFileSync(join(references, "reference.json"), "utf8"))
+    : {};
+  return manifest.examples.map((example) => {
+    const directory = join(corpus, manifest.root, example.dir);
+    const reference = join(references, `${example.id}.png`);
+    return {
+      ...example,
+      directory,
+      entryFile: join(directory, example.entry),
+      reference: existsSync(reference) ? reference : null,
+      capturedAt: index[example.id]?.capturedAt ?? null,
+    };
+  });
+}

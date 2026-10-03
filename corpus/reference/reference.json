@@ -1,0 +1,57 @@
+{
+  "alarms": {
+    "capturedAt": 1791022002480,
+    "width": 400,
+    "height": 500
+  },
+  "android": {
+    "capturedAt": 1791022004169,
+    "width": 360,
+    "height": 640
+  },
+  "calqlatr": {
+    "capturedAt": 1791022005869,
+    "width": 320,
+    "height": 480
+  },
+  "clocks": {
+    "capturedAt": 1791022007555,
+    "width": 640,
+    "height": 320
+  },
+  "coffee": {
+    "capturedAt": 1791022009147,
+    "width": 1000,
+    "height": 600
+  },
+  "maroon": {
+    "capturedAt": 1791022010857,
+    "width": 320,
+    "height": 480
+  },
+  "photosurface": {
+    "capturedAt": 1791022012558,
+    "width": 1024,
+    "height": 600
+  },
+  "rssnews": {
+    "capturedAt": 1791022014264,
+    "width": 800,
+    "height": 480
+  },
+  "samegame": {
+    "capturedAt": 1791022015853,
+    "width": 320,
+    "height": 480
+  },
+  "thermostat": {
+    "capturedAt": 1791022017488,
+    "width": 1440,
+    "height": 1080
+  },
+  "todolist": {
+    "capturedAt": 1791022019255,
+    "width": 360,
+    "height": 800
+  }
+}
