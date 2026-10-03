@@ -18,3 +18,7 @@ export const Qt = {
     queueMicrotask(() => fn(...args));
   },
 };
+
+// Translation is the host's business; until it says otherwise a string is
+// its own translation.
+export const qsTr = (text) => text;
