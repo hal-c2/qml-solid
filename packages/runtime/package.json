@@ -9,6 +9,7 @@
     "./object": "./object.js",
     "./QtQuick": "./QtQuick/index.js",
     "./QtQuick/Layouts": "./QtQuick/Layouts/index.js",
+    "./QtQuick/Shapes": "./QtQuick/Shapes/index.js",
     "./QtQuick/Window": "./QtQuick/Window/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtCore": "./QtCore/index.js",
