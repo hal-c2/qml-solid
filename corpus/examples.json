@@ -523,9 +523,29 @@
         "initial properties from main.cpp: source, nameFilters, selectedNameFilter"
       ],
       "qt": {
-        "runnable": false,
-        "reason": "MediaPlayer/PlaylistInfo.qml imports io.qt.filenameprovider, a C++ singleton, and Main.qml has required properties that main.cpp sets."
-      }
+        "runnable": true,
+        "properties": {
+          "source": "",
+          "nameFilters": [
+            "Advanced Audio Coding (AAC) (*.aac *.adts *.ass)",
+            "Audio Video Interleave (AVI) (*.avi *.avf *.divx)",
+            "Free Lossless Audio Codec (FLAC) (*.flac)",
+            "MP3 (*.mp3 *.mpga)",
+            "MPEG-4 Audio (*.m4a *.f4a)",
+            "MPEG-4 Video Container (*.mp4 *.m4v *.f4v *.lrv *.lrf)",
+            "Matroska Multimedia Container (*.mkv)",
+            "Ogg (*.ogv *.ogg)",
+            "QuickTime Container (*.qt *.mov *.moov *.qtvr)",
+            "Wave Audio File Format (WAVE) (*.wav)",
+            "WebM (*.webm)",
+            "Windows Media Audio (WMA) (*.wma)",
+            "Windows Media Video (WMV) (*.wmv)"
+          ],
+          "selectedNameFilter": 5
+        },
+        "offline": true
+      },
+      "notes": "FileNameProvider is a C++ singleton, stood in by corpus/standins/mediaplayer, for Qt's picture too. main.cpp gives Main.qml the name filters of the file formats the platform decodes: for the picture what Qt 6.11 with FFmpeg gives on Linux, on the web (main.js) what the browser says it plays. The playlist starts with a film on download.qt.io: the picture is taken without a network."
     },
     {
       "id": "osmbuildings",
