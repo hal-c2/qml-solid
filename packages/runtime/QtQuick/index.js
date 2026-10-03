@@ -5,6 +5,7 @@ export { Component } from "../QtQml/Component.js";
 export { Locale } from "../QtQml/locale.js";
 export { Application } from "../QtQml/application.js";
 export { Item } from "./Item.js";
+export { ColorGroup, Palette, SystemPalette } from "./Palette.js";
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
 export { Rotation, Scale, Translate } from "./transforms.js";
 export { Screen, Window } from "./Window.js";

@@ -129,3 +129,81 @@ test("an animation's colours are Qt's, channel by channel", async ({ page }) => 
   );
   expect(steps).toEqual(["#f2263340", "#df485058", "#d062676b", "#bf808080", "#9fb8b0a8", "#81eddecf"]);
 });
+
+const ROLES = ["alternateBase", "base", "brightText", "button", "buttonText", "dark", "highlight", "highlightedText", "light", "link", "linkVisited", "mid", "midlight", "shadow", "text", "toolTipBase", "toolTipText", "window", "windowText", "placeholderText", "accent"];
+const SYSTEM = ["window", "windowText", "base", "text", "alternateBase", "button", "buttonText", "light", "midlight", "dark", "mid", "shadow", "highlight", "highlightedText", "placeholderText", "accent"];
+
+const roles = (page, read, names) =>
+  page.evaluate(
+    ([source, names]) => {
+      const palette = new Function("objects", `with (objects) { return ${source}; }`)(window.objects);
+      return names.map((role) => `${role}:${palette[role]}`).join(" ");
+    },
+    [read, names],
+  );
+
+test("the system's palette is Qt's own light one", async ({ page }) => {
+  await open(page, "palette");
+  const active =
+    "window:#efefef windowText:#000000 base:#ffffff text:#000000 alternateBase:#f7f7f7 button:#efefef buttonText:#000000 light:#ffffff midlight:#cacaca dark:#9f9f9f mid:#b8b8b8 shadow:#767676 highlight:#308cc6 highlightedText:#ffffff placeholderText:#80000000 accent:#308cc6";
+  expect(await roles(page, "active", SYSTEM)).toBe(active);
+  expect(await roles(page, "disabled", SYSTEM)).toBe(
+    "window:#efefef windowText:#bebebe base:#efefef text:#bebebe alternateBase:#f7f7f7 button:#efefef buttonText:#bebebe light:#ffffff midlight:#cacaca dark:#bebebe mid:#b8b8b8 shadow:#b1b1b1 highlight:#919191 highlightedText:#ffffff placeholderText:#80000000 accent:#919191",
+  );
+  expect(
+    await page.evaluate(() => {
+      const { SystemPalette, active, disabled, painted } = window.objects;
+      const before = [active.colorGroup, disabled.colorGroup, SystemPalette.Active, SystemPalette.Inactive, SystemPalette.Disabled];
+      active.colorGroup = SystemPalette.Disabled;
+      const grey = [String(active.highlight), getComputedStyle(painted.$node).backgroundColor];
+      active.colorGroup = SystemPalette.Inactive;
+      return [...before, ...grey, String(active.highlight), active.highlight.r, getComputedStyle(painted.$node).backgroundColor];
+    }),
+  ).toEqual([0, 1, 0, 2, 1, "#919191", "rgb(145, 145, 145)", "#308cc6", 0.1882352977991104, "rgb(48, 140, 198)"]);
+});
+
+test("a palette has Qt's colours in three groups, and a role set on it is set in all", async ({ page }) => {
+  await open(page, "palette");
+  const active =
+    "alternateBase:#f7f7f7 base:#ffffff brightText:#ffffff button:#efefef buttonText:#000000 dark:#9f9f9f highlight:#308cc6 highlightedText:#ffffff light:#ffffff link:#0000ff linkVisited:#ff00ff mid:#b8b8b8 midlight:#cacaca shadow:#767676 text:#000000 toolTipBase:#ffffdc toolTipText:#000000 window:#efefef windowText:#000000 placeholderText:#80000000 accent:#308cc6";
+  const disabled =
+    "alternateBase:#f7f7f7 base:#efefef brightText:#ffffff button:#efefef buttonText:#bebebe dark:#bebebe highlight:#919191 highlightedText:#ffffff light:#ffffff link:#0000ff linkVisited:#ff00ff mid:#b8b8b8 midlight:#cacaca shadow:#b1b1b1 text:#bebebe toolTipBase:#ffffdc toolTipText:#000000 window:#efefef windowText:#bebebe placeholderText:#80000000 accent:#919191";
+  expect(await roles(page, "plain", ROLES)).toBe(active);
+  expect(await roles(page, "plain.active", ROLES)).toBe(active);
+  expect(await roles(page, "plain.inactive", ROLES)).toBe(active);
+  expect(await roles(page, "plain.disabled", ROLES)).toBe(disabled);
+  expect(
+    await page.evaluate(() => {
+      const { tinted, group } = window.objects;
+      const read = () =>
+        [tinted.button, tinted.active.button, tinted.inactive.button, tinted.disabled.button, tinted.disabled.text, tinted.text, tinted.active.text].join();
+      const before = read();
+      tinted.button = "#010203";
+      tinted.active.text = "white";
+      return [before, read(), String(group.window), String(group.base), tinted.button.b];
+    }),
+  ).toEqual([
+    "#ff0000,#ff0000,#ff0000,#ff0000,#0000ff,#000000,#000000",
+    "#010203,#010203,#010203,#010203,#0000ff,#ffffff,#ffffff",
+    "#123456",
+    "#ffffff",
+    0.0117647061124444,
+  ]);
+});
+
+test("a palette that follows another answers with its colours, for the group in use", async ({ page }) => {
+  await open(page, "palette");
+  const read = () =>
+    page.evaluate(() => {
+      const { follower } = window.objects;
+      return [follower.button, follower.disabled.text, follower.text, follower.active.text, follower.window, follower.disabled.window, follower.base].join();
+    });
+  // What Qt answers for an item inside one with `palette.button: "red"` and
+  // `palette.disabled.text: "blue"`, enabled and then not.
+  expect(await read()).toBe("#ff0000,#0000ff,#000000,#000000,#00ff00,#00ff00,#ffffff");
+  await page.evaluate(() => {
+    window.objects.setGroup("disabled");
+    window.flush();
+  });
+  expect(await read()).toBe("#ff0000,#0000ff,#0000ff,#000000,#00ff00,#00ff00,#efefef");
+});
