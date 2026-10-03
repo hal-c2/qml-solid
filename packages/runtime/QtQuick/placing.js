@@ -6,18 +6,23 @@ import { slot } from "../object.js";
 const SYNC = { sync: true };
 const WRITABLE = { ownedWrite: true };
 const next = (version) => version + 1;
+const whole = (result) => result;
 
 // What an object works out from its children, which one of them may ask for
 // while it is being worked out: `width: parent.width` in a Column that is as
 // wide as its children. Read through the memo, the two would wait for each
 // other. That reader gets the last result instead, and is run again once
 // there is a new one: Qt lays out again after a polish in the same way.
+//
+// `part` is what of the result an early reader sees, for a result that is
+// more than that: a layout's sizes, of everything it measured.
 export class Settling {
-  constructor(self, compute, initial) {
+  constructor(self, compute, initial, part = whole) {
     this.self = self;
     this.compute = compute;
+    this.part = part;
     this.last = initial;
-    this.told = initial;
+    this.told = part(initial);
     this.running = false;
     this.memo = null;
     this.readers = null;
@@ -57,9 +62,10 @@ export class Settling {
   // From an effect's apply, when the result was used: those who read it
   // early are told of a new one.
   settle() {
-    if (!this.bump || this.told === this.last) return;
-    this.told = this.last;
-    this.bump(next);
+    const result = this.part(this.last);
+    if (this.told === result) return;
+    this.told = result;
+    this.bump?.(next);
   }
 }
 
