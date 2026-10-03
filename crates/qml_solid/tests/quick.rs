@@ -680,3 +680,20 @@ Item {
     assert_contains(&code, "row={$file($file1, $scope)}");
     assert_contains(&code, "<Loader source={$file($file1, $scope)}");
 }
+
+#[test]
+fn a_file_of_a_module_of_qt_has_the_types_of_that_module() {
+    // A style of Qt Quick Controls is QML in a module of Qt's: what the
+    // module has that is not a file, the file has without an import.
+    let source = "import QtQuick\nItem { visible: parent === Overlay.overlay }";
+    let mut project = Project::new();
+    project.add("Dialog", source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    project.add_type("QtQuick.Controls.Basic", "Dialog", "Dialog");
+    let options = Options { name: "Dialog".to_string(), project: Some(project), ..Options::default() };
+    let code = lowered_source(source, &options).unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, r#"import { Overlay } from "qml-solid/QtQuick/Controls/Basic";"#);
+
+    // A file of no module has to import it.
+    let errors = errors(source);
+    assert!(errors.iter().any(|error| error.contains("`Overlay` is not defined")), "{errors:?}");
+}

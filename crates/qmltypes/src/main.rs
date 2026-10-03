@@ -33,8 +33,10 @@ use qmlfile::QmlFile;
 /// grep -rhoE '^import [A-Za-z0-9.]+' corpus/qtdoc/examples --include=*.qml | sort -u
 /// ```
 ///
-/// without the ones the examples define themselves. What these need comes
-/// along; one that is not installed is reported and left out.
+/// without the ones the examples define themselves, and with the ones the
+/// styles of Qt Quick Controls import: a style is QML too, compiled as an
+/// example is. What these need comes along; one that is not installed is
+/// reported and left out.
 const MODULES: &[&str] = &[
     "Qt.labs.assetdownloader",
     "Qt.labs.folderlistmodel",
@@ -53,8 +55,11 @@ const MODULES: &[&str] = &[
     "QtQuick.Controls.Basic",
     "QtQuick.Controls.Basic.impl",
     "QtQuick.Controls.Fusion",
+    "QtQuick.Controls.Fusion.impl",
     "QtQuick.Controls.Material",
+    "QtQuick.Controls.Material.impl",
     "QtQuick.Controls.Universal",
+    "QtQuick.Controls.Universal.impl",
     "QtQuick.Controls.impl",
     "QtQuick.Dialogs",
     "QtQuick.Effects",

@@ -147,6 +147,14 @@ impl<'p> Types<'p> {
                     });
                 }
             }
+            // A module of Qt's that is written in QML has types that are not:
+            // a style of Qt Quick Controls names `Overlay` and imports nothing
+            // for it.
+            for uri in self.project.modules_of(self.file) {
+                if let Some(ty) = qt::module(uri).and_then(|module| module.type_named(name)) {
+                    return Some(Found { kind: Kind::Qt(ty), origin: Origin::Module(uri.clone()) });
+                }
+            }
         }
         None
     }
