@@ -24,6 +24,23 @@ test("a module of Qt's is what the runtime has of it and the QML Qt has", async 
   expect(read.elide).toEqual([1, 1, 1]);
 });
 
+test("a type Qt has and the runtime does not is there to be named, and says so when it is used", async ({ page }) => {
+  await open(page, "modules");
+  const read = await page.evaluate(() => {
+    const { FlexboxLayout, make } = window.objects;
+    const said = (work) => {
+      try {
+        work();
+      } catch (error) {
+        return error.message;
+      }
+    };
+    return [typeof FlexboxLayout, said(() => make(FlexboxLayout)), said(() => FlexboxLayout.Wrap)];
+  });
+  const message = "QtQuick.Layouts: FlexboxLayout is not in qml-solid yet";
+  expect(read).toEqual(["function", message, message]);
+});
+
 test("a picture Qt keeps inside a module is one the build has", async ({ page }) => {
   await open(page, "modules");
   await page.waitForFunction(() => window.objects.shelf.knot.status === 1);

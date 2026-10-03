@@ -713,6 +713,21 @@ export function $url(value, base) {
   }
 }
 
+// A type of Qt's that this runtime does not have yet. It is there to be
+// named, since a style of Qt's names every control there is, and says what
+// it is when something is made of it or read off it.
+export function absent(module, name) {
+  const fail = () => {
+    throw new Error(`${module}: ${name} is not in qml-solid yet`);
+  };
+  return new Proxy(fail, {
+    // What is asked of any function, and what the runtime asks of any value
+    // to learn what it is, is answered as a function answers.
+    get: (target, key) =>
+      typeof key === "symbol" || key in Function.prototype || key === "then" || key[0] === "$" ? Reflect.get(target, key) : fail(),
+  });
+}
+
 // `qrc:/…`: a file Qt keeps inside a program or one of its plugins, as the
 // pictures of a style of Qt Quick Controls are. A build says which there are
 // and where the browser has them; `located` is what a type loads a source by.

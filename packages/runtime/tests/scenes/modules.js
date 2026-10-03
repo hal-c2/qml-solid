@@ -2,7 +2,7 @@
 // installed, and has a style or two of a module the runtime has nothing of.
 import { $object } from "qml-solid/object";
 import { Item, Text } from "qml-solid/QtQuick";
-import { Rack, RowLayout } from "qml-solid/QtQuick/Layouts";
+import { FlexboxLayout, Rack, RowLayout } from "qml-solid/QtQuick/Layouts";
 import * as Shelves from "qml-solid/QtShelf";
 import { make } from "../scene.js";
 
@@ -10,7 +10,7 @@ const { Shelf } = Shelves;
 const shelf = $object();
 const rack = $object();
 
-export const objects = { shelf, rack, Shelf, Text, RowLayout, names: Object.keys(Shelves) };
+export const objects = { shelf, rack, Shelf, Text, RowLayout, FlexboxLayout, make, names: Object.keys(Shelves) };
 
 export default () =>
   make(Item, { width: 400, height: 300 }, () => [

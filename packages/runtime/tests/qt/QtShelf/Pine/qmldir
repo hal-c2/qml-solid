@@ -1,3 +1,4 @@
 module QtShelf.Pine
+import QML 1.0
 import QtQuick.Layouts
 Shelf 1.0 Shelf.qml

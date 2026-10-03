@@ -5,7 +5,9 @@
 // QML files over the types of QtQuick.Templates. Those are not rewritten
 // here. A module of Qt's is put together from what the runtime has of it
 // (the types Qt has in C++) and the QML files of the Qt that is installed,
-// compiled as any other.
+// compiled as any other. A type Qt has in C++ and the runtime does not have
+// yet is there all the same, to say so when it is used: a style names every
+// control, and a program that uses three of them needs those three.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -95,22 +97,44 @@ function extract(tool, uri, folder, directory) {
 }
 
 // What a `qmldir` says its module is made of: the QML files that are its
-// types, and the modules that come with it.
+// types, and the modules that come with it. Of `optional import`s one comes,
+// the `default import` when the program chooses no other: a style.
 function described(directory) {
   const file = join(directory, "qmldir");
   if (!existsSync(file)) return null;
   const types = new Map();
   const imports = [];
-  let style = null;
+  const defaults = [];
+  let optional = false;
   for (const line of readFileSync(file, "utf8").split("\n")) {
     const words = line.split("#")[0].trim().split(/\s+/);
     if (words[0] === "singleton" || words[0] === "internal") words.shift();
     if (words[0] === "import" && words[1]) imports.push(words[1]);
-    // The style a program has when it chooses none.
-    else if (words[0] === "default" && words[1] === "import" && words[2]) style = words[2];
+    else if (words[0] === "optional" && words[1] === "import") optional = true;
+    else if (words[0] === "default" && words[1] === "import" && words[2]) defaults.push(words[2]);
     else if (/^[A-Z]/.test(words[0] ?? "") && words.at(-1).endsWith(".qml") && words.length <= 3) types.set(words[0], words.at(-1));
   }
-  return { file, types, imports, style };
+  // With nothing to choose from, a default is an import as any other.
+  if (!optional) imports.push(...defaults);
+  return { file, types, imports, style: optional ? (defaults[0] ?? null) : null };
+}
+
+// The names a module of the runtime's exports, its `export *` followed.
+function exported(context, file, names = new Set(), seen = new Set()) {
+  if (seen.has(file) || !existsSync(file)) return names;
+  seen.add(file);
+  context.addWatchFile(file);
+  for (const node of context.parse(readFileSync(file, "utf8")).body) {
+    if (node.type === "ExportAllDeclaration") {
+      if (node.exported) names.add(node.exported.name ?? node.exported.value);
+      else if (/^\.\.?\//.test(node.source.value)) exported(context, join(dirname(file), node.source.value), names, seen);
+    } else if (node.type === "ExportNamedDeclaration") {
+      for (const specifier of node.specifiers) names.add(specifier.exported.name ?? specifier.exported.value);
+      if (node.declaration?.id) names.add(node.declaration.id.name);
+      for (const declarator of node.declaration?.declarations ?? []) names.add(declarator.id.name);
+    }
+  }
+  return names;
 }
 
 // - `qmlc`, `args`: the compiler and what it is run with.
@@ -145,17 +169,53 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
       .filter((name) => !name.startsWith(".") && !name.includes("@"))
       .map((name) => [`${folder}/${name}`, join(directory, name)]);
   };
-  // A module that is put together here: one with QML files or a style, or
-  // one the runtime has nothing of that only brings others. What the runtime
-  // has whole (QtQuick) is left to it.
+  // The types Qt has of a module in C++, as the compiler's table has them:
+  // what the runtime is to have of it. None for a module the table lacks.
+  const tables = new Map();
+  const needed = (module) => {
+    if (!tables.has(module)) {
+      const asked = spawnSync(qmlc, ["--types", module.replaceAll("/", ".")], { encoding: "utf8" });
+      const names = asked.status === 0 ? asked.stdout.trim().split(" ").slice(1) : [];
+      tables.set(module, names.length > 0 ? names : null);
+    }
+    return tables.get(module);
+  };
+  // What Qt's installation says of a module, when it is worth reading: one
+  // with QML files or a style, or one that only brings others.
   const composed = (module, seen = []) => {
     const about = qt && !seen.includes(module) ? described(join(qt, module)) : null;
     if (!about) return null;
     if (about.types.size > 0 || about.style) return about;
-    const brings = about.imports.some((uri) => has(path(uri), [...seen, module]));
-    return !natives()[`./${module}`] && brings ? about : null;
+    return about.imports.some((uri) => has(path(uri), [...seen, module])) ? about : null;
   };
-  const has = (module, seen = []) => Boolean(natives()[`./${module}`] || composed(module, seen));
+  // `QML`, which QtQml's `qmldir` imports, is no module to import: what is
+  // in it the runtime has in QtQml.
+  const has = (module, seen = []) =>
+    /^Qt/.test(module) && Boolean(natives()[`./${module}`] || needed(module) || composed(module, seen));
+  // What a module is made of, in the order that decides whose a name is:
+  // what the runtime has of it and its QML files, then what it brings, each
+  // name from the first module to have it, and last what Qt has in C++ and
+  // nothing here does. Names and not `export *`: a name two modules have is
+  // one no file can import.
+  const made = (context, module, chosen, seen = []) => {
+    const about = composed(module);
+    const native = natives()[`./${module}`];
+    const names = new Set();
+    if (native) exported(context, join(runtime, native), names);
+    for (const name of about?.types.keys() ?? []) names.add(name);
+    const styles = about?.style?.split(".");
+    const imports = styles ? [[...styles.slice(0, -1), chosen ?? styles.at(-1)].join(".")] : (about?.imports ?? []);
+    const brought = [];
+    for (const uri of imports.map(path)) {
+      if (uri === module || seen.includes(uri) || !has(uri)) continue;
+      const theirs = [...made(context, uri, undefined, [...seen, module]).names].filter((name) => name !== "default" && !names.has(name));
+      for (const name of theirs) names.add(name);
+      if (theirs.length > 0) brought.push([uri, theirs]);
+    }
+    const missing = (needed(module) ?? []).filter((name) => !names.has(name));
+    for (const name of missing) names.add(name);
+    return { about, native, brought, missing, names };
+  };
   return {
     name: "qml-solid",
     // Before Vite's own: a script is told from any other `.js` file by who
@@ -172,8 +232,10 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
     },
     async resolveId(source, importer, options) {
       const module = source.match(MODULE)?.[1];
-      const about = module && composed(module);
-      if (about) return `${VIRTUAL}${module}${about.style ? `?style=${styled(importer) ?? about.style.split(".").at(-1)}` : ""}`;
+      if (module && has(module)) {
+        const chosen = composed(module)?.style;
+        return `${VIRTUAL}${module}${chosen ? `?style=${styled(importer) ?? chosen.split(".").at(-1)}` : ""}`;
+      }
       if (!importer || (!importer.split("?")[0].endsWith(".qml") && !isScript(importer))) return null;
       // What compiled QML imports is the runtime's to find, wherever the QML
       // is: Qt's own is in no project.
@@ -191,27 +253,32 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
     load(id) {
       if (id.startsWith(VIRTUAL)) {
         const [module, query] = id.slice(VIRTUAL.length).split("?");
-        const directory = join(qt, module);
-        const about = described(directory);
-        this.addWatchFile(about.file);
+        const { about, native, brought, missing } = made(this, module, new URLSearchParams(query).get("style") ?? undefined);
+        const kernel = JSON.stringify(join(runtime, natives()["./object"]));
         const lines = [];
         // What the runtime has of the module: the types Qt has in C++.
-        const native = natives()[`./${module}`];
         if (native) lines.push(`export * from ${JSON.stringify(join(runtime, native))};`);
-        // Its QML files, which come before a type of the same name in what
-        // it imports: a named export hides one that `export *` brings.
-        for (const [name, file] of about.types) {
-          lines.push(`export { default as ${name} } from ${JSON.stringify(join(directory, file))};`);
+        if (about) {
+          this.addWatchFile(about.file);
+          // Its QML files, which come before a type of the same name the
+          // runtime has: a named export hides one that `export *` brings.
+          for (const [name, file] of about.types) {
+            lines.push(`export { default as ${name} } from ${JSON.stringify(join(qt, module, file))};`);
+          }
+          const pictures = kept(module, about);
+          if (pictures.length > 0) {
+            lines.push(`import { resources as $resources } from ${kernel};`);
+            pictures.forEach(([url, file], index) => {
+              lines.push(`import $${index} from ${JSON.stringify(file)};`, `$resources.set(${JSON.stringify(url)}, $${index});`);
+            });
+          }
         }
-        const chosen = new URLSearchParams(query).get("style");
-        const brought = chosen ? [`${about.style.split(".").slice(0, -1).join(".")}.${chosen}`] : about.imports;
-        for (const uri of brought.map(path).filter((uri) => has(uri))) lines.push(`export * from "qml-solid/${uri}";`);
-        const pictures = kept(module, about);
-        if (pictures.length > 0) {
-          lines.push(`import { resources as $resources } from ${JSON.stringify(join(runtime, natives()["./object"]))};`);
-          pictures.forEach(([url, file], index) => {
-            lines.push(`import $${index} from ${JSON.stringify(file)};`, `$resources.set(${JSON.stringify(url)}, $${index});`);
-          });
+        for (const [uri, names] of brought) lines.push(`export { ${names.join(", ")} } from "qml-solid/${uri}";`);
+        // What Qt has of it and the runtime does not, yet.
+        if (missing.length > 0) {
+          const uri = JSON.stringify(module.replaceAll("/", "."));
+          lines.push(`import { absent as $absent } from ${kernel};`);
+          for (const name of missing) lines.push(`export const ${name} = /* @__PURE__ */ $absent(${uri}, ${JSON.stringify(name)});`);
         }
         return { code: lines.join("\n") + "\n", map: null };
       }
