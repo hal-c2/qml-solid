@@ -1,0 +1,941 @@
+{
+  "about": "Qt's own examples (the qtdoc submodule): where each starts, the window Qt gives it, what it needs, and whether the plain `qml` tool can run it here. corpus/reference.mjs and examples/gallery read this.",
+  "fields": {
+    "dir": "the example's directory, in `root`",
+    "entry": "the QML file it starts from, in `dir`",
+    "root": "what the entry's root object is: an Item (shown in a QQuickView) or a Window; `rootType` is the type as written",
+    "load": "how the example's main.cpp loads the entry",
+    "window": "the size of its window, and where that comes from; `imposed` when the example declares none and this is ours",
+    "importPaths": "QML import paths it needs, in `dir`",
+    "modules": "the example's own QML modules: URI to directory, in `dir`",
+    "imports": "every other module its QML files import",
+    "cpp": "what it needs from C++ of its own",
+    "volatile": "why its picture is not the same twice: time, animation, network",
+    "qt": "`runnable`: the `qml` tool of the Qt installed here renders it, or `reason` why not. For the run: `style` or `controlsConf` (the Controls style its main.cpp or resources choose), `env` (environment its main.cpp sets), `module` (the URI its files import it by), `properties` (initial properties main.cpp sets), `offline`, `settle` (ms before the picture, default 1500)"
+  },
+  "root": "qtdoc/examples",
+  "examples": [
+    {
+      "id": "alarms",
+      "dir": "tutorials/alarms",
+      "entry": "Main.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine::loadFromModule(\"AlarmsModule\", \"Main\")",
+      "window": {
+        "width": 400,
+        "height": 500,
+        "from": "ApplicationWindow in Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "AlarmsModule": "."
+      },
+      "imports": [
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Controls.Material",
+        "QtQuick.Layouts",
+        "QtQuick.Window"
+      ],
+      "cpp": [],
+      "qt": {
+        "runnable": true,
+        "controlsConf": "qtquickcontrols2.conf"
+      },
+      "notes": "The Material style, dark, from qtquickcontrols2.conf. The dates in the list are fixed (2018), so the picture does not change."
+    },
+    {
+      "id": "android",
+      "dir": "demos/android",
+      "entry": "splashscreen/manifest/Main.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::loadFromModule(\"qtsplashscreeninandroid\", \"Main\")",
+      "window": {
+        "width": 360,
+        "height": 640,
+        "from": "assumed: the Window declares no size and fills an Android screen",
+        "imposed": true
+      },
+      "importPaths": [],
+      "modules": {
+        "qtsplashscreeninandroid": "splashscreen/manifest",
+        "qmlsplashscreeninandroid": "splashscreen/quick",
+        "io.qt.fdmaploader": "feature-delivery/fdmaploader"
+      },
+      "imports": [
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Dialogs",
+        "QtQuick.Layouts"
+      ],
+      "cpp": [
+        "io.qt.fdmaploader: MapLoader (Play Feature Delivery, Android only)"
+      ],
+      "qt": {
+        "runnable": true
+      },
+      "notes": "Three Android apps in one directory. The entry is the one that is plain QML; splashscreen/quick/Splash.qml (a splash Window that loads its own Main.qml) and feature-delivery/fdmaploader/Main.qml (needs MapLoader from C++) are the other two."
+    },
+    {
+      "id": "calqlatr",
+      "dir": "demos/calqlatr",
+      "entry": "Main.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::loadFromModule(\"demos.calqlatr\", \"Main\")",
+      "window": {
+        "width": 320,
+        "height": 480,
+        "from": "Window in Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "demos.calqlatr": "."
+      },
+      "imports": [
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Layouts"
+      ],
+      "cpp": [],
+      "qt": {
+        "runnable": true,
+        "style": "Basic"
+      },
+      "notes": "main.cpp sets the Basic style. Components are in content/, named by the qmldir; the logic is content/calculator.js."
+    },
+    {
+      "id": "car-configurator",
+      "dir": "demos/car-configurator",
+      "entry": "content/App.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::load(\"qrc:/qt/qml/content/App.qml\")",
+      "window": {
+        "width": 1920,
+        "height": 1080,
+        "from": "Constants.width/height in imports/CarRendering/Constants.qml"
+      },
+      "importPaths": [
+        "imports",
+        "asset_imports",
+        "content"
+      ],
+      "modules": {
+        "content": "content",
+        "CarRendering": "imports/CarRendering",
+        "Quick3DAssets.*": "asset_imports/Quick3DAssets/*"
+      },
+      "imports": [
+        "Qt.labs.assetdownloader",
+        "Qt.labs.folderlistmodel",
+        "QtCore",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Studio.Components",
+        "QtQuick.Studio.DesignEffects",
+        "QtQuick.Timeline",
+        "QtQuick.Window",
+        "QtQuick3D",
+        "QtQuick3D.Effects",
+        "QtQuick3D.Helpers",
+        "QtQuick3D.Particles3D"
+      ],
+      "cpp": [
+        "Quick3DAssets.Snow: ShapeAffector3D"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "QtQuick3D is not installed; nor are QtQuick.Studio.Components, QtQuick.Studio.DesignEffects, QtQuick.Timeline and Qt.labs.assetdownloader. Its 3D assets are downloaded at start."
+      }
+    },
+    {
+      "id": "clocks",
+      "dir": "demos/clocks",
+      "entry": "Main.qml",
+      "root": "Item",
+      "rootType": "Rectangle",
+      "load": "QQuickView::loadFromModule(\"clocks\", \"Main\"), SizeRootObjectToView",
+      "window": {
+        "width": 640,
+        "height": 320,
+        "from": "root Rectangle in Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "clocks": "."
+      },
+      "imports": [
+        "QtQuick"
+      ],
+      "cpp": [],
+      "volatile": "time",
+      "qt": {
+        "runnable": true
+      },
+      "notes": "Shows the time of day in five cities (UTC plus a shift, so the time zone does not matter); the hands move. Compared at the moment the reference was taken."
+    },
+    {
+      "id": "coffee",
+      "dir": "demos/coffee",
+      "entry": "Main.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine::loadFromModule(\"demos.coffee\", \"Main\")",
+      "window": {
+        "width": 1000,
+        "height": 600,
+        "from": "ApplicationWindow in Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "demos.coffee": "."
+      },
+      "imports": [
+        "Qt.labs.synchronizer",
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Controls.Basic",
+        "QtQuick.Effects",
+        "QtQuick.Layouts"
+      ],
+      "cpp": [],
+      "qt": {
+        "runnable": true,
+        "controlsConf": "qtquickcontrols2.conf"
+      },
+      "notes": "Config and Colors are singletons named by the qmldir. Landscape or portrait by Screen (1920x1080 for the reference). The picture is the home page."
+    },
+    {
+      "id": "colorpaletteclient",
+      "dir": "demos/colorpaletteclient",
+      "entry": "ColorPalette/Main.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::loadFromModule(\"ColorPalette\", \"Main\")",
+      "window": {
+        "width": 500,
+        "height": 400,
+        "from": "Window in ColorPalette/Main.qml"
+      },
+      "importPaths": [
+        "."
+      ],
+      "modules": {
+        "ColorPalette": "ColorPalette",
+        "QtExampleStyle": "QtExampleStyle"
+      },
+      "imports": [
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Controls.impl",
+        "QtQuick.Dialogs",
+        "QtQuick.Effects",
+        "QtQuick.Layouts",
+        "QtQuick.Shapes",
+        "QtQuick.Templates"
+      ],
+      "cpp": [
+        "ColorPalette: RestService, BasicLogin, PaginatedResource (a REST client on QtNetwork)"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "Main.qml instantiates RestService and PaginatedResource, C++ types of the example's own module."
+      }
+    },
+    {
+      "id": "dice",
+      "dir": "demos/dice",
+      "entry": "Main.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine::loadFromModule(\"DiceModule\", \"Main\")",
+      "window": {
+        "width": 800,
+        "height": 600,
+        "from": "ApplicationWindow in Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "DiceModule": "."
+      },
+      "imports": [
+        "QtMultimedia",
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Controls.Material",
+        "QtQuick.Layouts",
+        "QtQuick.Window",
+        "QtQuick3D",
+        "QtQuick3D.Helpers",
+        "QtQuick3D.Physics",
+        "QtSensors"
+      ],
+      "cpp": [],
+      "qt": {
+        "runnable": false,
+        "reason": "QtQuick3D is not installed (nor QtQuick3D.Physics, QtSensors)."
+      }
+    },
+    {
+      "id": "documentviewer",
+      "dir": "demos/documentviewer",
+      "entry": "plugins/Q3DViewer/Viewer.qml",
+      "root": "Item",
+      "rootType": "Rectangle",
+      "load": "a QQuickWidget inside a Qt Widgets application",
+      "window": {
+        "width": 800,
+        "height": 600,
+        "from": "assumed: the QML fills a widget of the Widgets main window",
+        "imposed": true
+      },
+      "importPaths": [],
+      "modules": {
+        "Q3DViewer": "plugins/Q3DViewer"
+      },
+      "imports": [
+        "QtQuick",
+        "QtQuick3D",
+        "QtQuick3D.AssetUtils"
+      ],
+      "cpp": [
+        "the application itself: Qt Widgets, with viewers as plugins"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "A Qt Widgets application; its only QML is the 3D model viewer plugin, which needs QtQuick3D (not installed)."
+      }
+    },
+    {
+      "id": "FX_Material_Showroom",
+      "dir": "demos/FX_Material_Showroom",
+      "entry": "content/App.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::load(\"qrc:/qt/qml/Main/main.qml\"), which is `App {}`",
+      "window": {
+        "width": 1920,
+        "height": 1080,
+        "from": "Constants.width/height in imports/PocketDemo/Constants.qml"
+      },
+      "importPaths": [
+        "imports",
+        "."
+      ],
+      "modules": {
+        "content": "content",
+        "PocketDemo": "imports/PocketDemo",
+        "ComponentBundles.MaterialBundle": "imports/ComponentBundles/MaterialBundle",
+        "QtQuick.Studio.Components": "imports/QtQuick/Studio/Components",
+        "QtQuick.Studio.Application": "imports/QtQuick/Studio/Application"
+      },
+      "imports": [
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Shapes",
+        "QtQuick.Window",
+        "QtQuick3D",
+        "QtQuick3D.Effects",
+        "QtQuick3D.Helpers",
+        "QtQuick3D.Particles3D"
+      ],
+      "cpp": [
+        "QtQuick.Studio.Application: StudioApplication"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "QtQuick3D is not installed (nor QtQuick3D.Particles3D). Its 3D assets are downloaded at start."
+      }
+    },
+    {
+      "id": "graphs_csv",
+      "dir": "demos/graphs_csv",
+      "entry": "Main.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::loadFromModule(\"qtgraphscsv\", \"Main\")",
+      "window": {
+        "width": 1200,
+        "height": 720,
+        "from": "Window in Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "qtgraphscsv": "."
+      },
+      "imports": [
+        "QtGraphs",
+        "QtQml.Models",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Controls.Basic",
+        "QtQuick.Effects"
+      ],
+      "cpp": [
+        "qtgraphscsv: CsvDataModel (a QAbstractTableModel over a CSV file)"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "QtGraphs is not installed, and the model is the C++ type CsvDataModel."
+      }
+    },
+    {
+      "id": "hangman",
+      "dir": "demos/hangman",
+      "entry": "main.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine(\"qrc:/main.qml\")",
+      "window": {
+        "width": 320,
+        "height": 480,
+        "from": "ApplicationWindow in main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "examples.Hangman": "."
+      },
+      "imports": [
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Layouts"
+      ],
+      "cpp": [
+        "examples.Hangman: Hangman (the game), Store, Product, Transaction (in-app purchasing)"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "The game is the C++ type Hangman, which every view binds to; the store types are C++ too."
+      }
+    },
+    {
+      "id": "lightningviewer",
+      "dir": "demos/lightningviewer",
+      "entry": "LightningViewerModule/Main.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine::loadFromModule(\"LightningViewerModule\", \"Main\")",
+      "window": {
+        "width": 1050,
+        "height": 580,
+        "from": "LightningViewConfig.appWidth/appHeight (a singleton, computed from Screen) set in Component.onCompleted; this is its value on a 1920x1080 screen, not verified in Qt",
+        "imposed": true
+      },
+      "importPaths": [
+        "."
+      ],
+      "modules": {
+        "LightningViewerModule": "LightningViewerModule",
+        "LightningViewerStyle": "LightningViewerStyle"
+      },
+      "imports": [
+        "QtCore",
+        "QtLocation",
+        "QtPositioning",
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Controls.impl",
+        "QtQuick.Dialogs",
+        "QtQuick.Layouts",
+        "QtQuick.Templates"
+      ],
+      "cpp": [
+        "LightningViewerModule: LightningController (singleton; a WebSocket client)"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "QtLocation is not installed, and the data comes from the C++ singleton LightningController. main.cpp sets the example's own LightningViewerStyle as the Controls style."
+      }
+    },
+    {
+      "id": "maroon",
+      "dir": "demos/maroon",
+      "entry": "Main.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::loadFromModule(\"examples.Maroon\", \"Main\")",
+      "window": {
+        "width": 320,
+        "height": 480,
+        "from": "Window in Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "examples.Maroon": "."
+      },
+      "imports": [
+        "QtMultimedia",
+        "QtQuick",
+        "QtQuick.Particles",
+        "QtQuick.Window"
+      ],
+      "cpp": [],
+      "volatile": "animation",
+      "qt": {
+        "runnable": true,
+        "module": "examples.Maroon"
+      },
+      "notes": "A game: the picture is its start screen, 1.5 s in, with bubbles from a particle system (random) rising behind the logo. Sounds are QtMultimedia SoundEffect. content/mobs/MobBase.qml imports the example's own module by name."
+    },
+    {
+      "id": "mediaplayer",
+      "dir": "demos/mediaplayer",
+      "entry": "MediaPlayer/Main.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine::loadFromModule(\"MediaPlayer\", \"Main\") with setInitialProperties(source, nameFilters, selectedNameFilter)",
+      "window": {
+        "width": 1200,
+        "height": 780,
+        "from": "ApplicationWindow in MediaPlayer/Main.qml"
+      },
+      "importPaths": [
+        "."
+      ],
+      "modules": {
+        "MediaPlayer": "MediaPlayer",
+        "MediaControls": "MediaControls",
+        "Config": "Config",
+        "io.qt.filenameprovider": "."
+      },
+      "imports": [
+        "QtCore",
+        "QtMultimedia",
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Controls.Fusion",
+        "QtQuick.Dialogs",
+        "QtQuick.Effects",
+        "QtQuick.Layouts",
+        "QtQuick.Window"
+      ],
+      "cpp": [
+        "io.qt.filenameprovider: FileNameProvider (singleton)",
+        "initial properties from main.cpp: source, nameFilters, selectedNameFilter"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "MediaPlayer/PlaylistInfo.qml imports io.qt.filenameprovider, a C++ singleton, and Main.qml has required properties that main.cpp sets."
+      }
+    },
+    {
+      "id": "osmbuildings",
+      "dir": "demos/osmbuildings",
+      "entry": "Main.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine::load(\"qrc:/Main.qml\")",
+      "window": {
+        "width": 1024,
+        "height": 768,
+        "from": "ApplicationWindow in Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "Example": "."
+      },
+      "imports": [
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Window",
+        "QtQuick3D",
+        "QtQuick3D.Helpers"
+      ],
+      "cpp": [
+        "Example: OSMManager, OSMGeometry, CustomTextureData (map tiles and building geometry over the network)"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "QtQuick3D is not installed, and the map is built by the C++ types OSMManager and OSMGeometry."
+      }
+    },
+    {
+      "id": "photosurface",
+      "dir": "demos/photosurface",
+      "entry": "photosurface.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::load(\"qrc:/qt/qml/photosurface/photosurface.qml\"); main.cpp then sets imageNameFilters",
+      "window": {
+        "width": 1024,
+        "height": 600,
+        "from": "Window in photosurface.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "photosurface": "."
+      },
+      "imports": [
+        "Qt.labs.folderlistmodel",
+        "QtCore",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Dialogs"
+      ],
+      "cpp": [],
+      "qt": {
+        "runnable": true
+      },
+      "notes": "main.cpp is optional (it says so). The picture is the welcome slide show (resources/welcome.pdf through the PDF image plugin) over an empty surface; after it the example shows the pictures folder, which the reference run has none of."
+    },
+    {
+      "id": "qtjennydemo",
+      "dir": "demos/qtjennydemo",
+      "entry": "Main.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine::loadFromModule(\"qtjenny_consumer\", \"Main\")",
+      "window": {
+        "width": 360,
+        "height": 640,
+        "from": "assumed: the ApplicationWindow declares no size and fills an Android screen",
+        "imposed": true
+      },
+      "importPaths": [],
+      "modules": {
+        "qtjenny_consumer": "."
+      },
+      "imports": [
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Layouts"
+      ],
+      "cpp": [
+        "qtjenny_consumer: BackEnd (Android APIs through JNI)"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "Android only: Main.qml instantiates the C++ type BackEnd, which calls Android APIs."
+      }
+    },
+    {
+      "id": "robotarm",
+      "dir": "demos/robotarm",
+      "entry": "content/App.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine::loadFromModule(\"Main\", \"Main\"), which is `App {}`",
+      "window": {
+        "width": 1280,
+        "height": 720,
+        "from": "Constants.width/height in imports/RobotArm/Constants.qml"
+      },
+      "importPaths": [
+        "imports",
+        "backend_mock",
+        "."
+      ],
+      "modules": {
+        "content": "content",
+        "RobotArm": "imports/RobotArm",
+        "Backend": "backend_mock/Backend"
+      },
+      "imports": [
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Controls.Material",
+        "QtQuick.Layouts",
+        "QtQuick3D"
+      ],
+      "cpp": [
+        "Backend: Backend (backend_mock/Backend is a QML stand-in for it)"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "QtQuick3D is not installed. The C++ Backend has a QML mock, so nothing else is in the way."
+      }
+    },
+    {
+      "id": "rssnews",
+      "dir": "demos/rssnews",
+      "entry": "Main.qml",
+      "root": "Item",
+      "rootType": "Rectangle",
+      "load": "QQuickView::loadFromModule(\"RssNewsModule\", \"Main\"), SizeRootObjectToView",
+      "window": {
+        "width": 800,
+        "height": 480,
+        "from": "root Rectangle in Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "RssNewsModule": "."
+      },
+      "imports": [
+        "QtQml.XmlListModel",
+        "QtQuick",
+        "QtQuick.Window"
+      ],
+      "cpp": [],
+      "volatile": "network",
+      "qt": {
+        "runnable": true,
+        "offline": true
+      },
+      "notes": "Reads feeds from news.yahoo.com with XmlListModel. The reference is taken without a network (a browser may not read those feeds either: no CORS), so the picture is the list of categories and no news."
+    },
+    {
+      "id": "samegame",
+      "dir": "demos/samegame",
+      "entry": "Main.qml",
+      "root": "Item",
+      "rootType": "Rectangle",
+      "load": "QQuickView::loadFromModule(\"SameGameModule\", \"Main\"), SizeRootObjectToView",
+      "window": {
+        "width": 320,
+        "height": 480,
+        "from": "root Rectangle in Main.qml: Settings.screenWidth/screenHeight (content/Settings.qml, a singleton)"
+      },
+      "importPaths": [],
+      "modules": {
+        "SameGameModule": "."
+      },
+      "imports": [
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Particles"
+      ],
+      "cpp": [],
+      "volatile": "animation",
+      "qt": {
+        "runnable": true
+      },
+      "notes": "A game: the picture is its menu, 1.5 s in, while the logo animates and a particle system (random) runs. High scores are QtQuick.LocalStorage."
+    },
+    {
+      "id": "stocqt",
+      "dir": "demos/stocqt",
+      "entry": "Main.qml",
+      "root": "Item",
+      "rootType": "Rectangle",
+      "load": "QQuickView::setSource(\"qrc:/Main.qml\"), SizeRootObjectToView",
+      "window": {
+        "width": 360,
+        "height": 800,
+        "from": "root Rectangle in Main.qml"
+      },
+      "importPaths": [
+        "."
+      ],
+      "modules": {
+        "StocQt": ".",
+        "content": "content"
+      },
+      "imports": [
+        "QtGraphs",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Layouts",
+        "QtQuick.Shapes"
+      ],
+      "cpp": [
+        "StocQt: StockEngine (singleton; quotes from the network or from data/), TimeFormatter (a QtGraphs axis formatter)"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "QtGraphs is not installed, and the data comes from the C++ singleton StockEngine. The Imagine style, from qtquickcontrols2.conf."
+      }
+    },
+    {
+      "id": "thermostat",
+      "dir": "demos/thermostat",
+      "entry": "content/App.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::loadFromModule(\"Main\", \"Main\"), which is `App {}`",
+      "window": {
+        "width": 1440,
+        "height": 1080,
+        "from": "Window in content/App.qml"
+      },
+      "importPaths": [
+        "imports"
+      ],
+      "modules": {
+        "content": "content",
+        "Thermostat": "imports/Thermostat",
+        "ThermostatCustomControls": "imports/ThermostatCustomControls"
+      },
+      "imports": [
+        "QtCharts",
+        "QtCore",
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Controls.Basic",
+        "QtQuick.Effects",
+        "QtQuick.Layouts",
+        "QtQuick.LocalStorage",
+        "QtQuick.Shapes"
+      ],
+      "cpp": [],
+      "qt": {
+        "runnable": true,
+        "env": {
+          "QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT": "1"
+        }
+      },
+      "notes": "main.cpp sets QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT. QtCharts (not installed) is imported only by ThermostatCustomControls/StatisticsChart.qml, on the statistics page; the picture is the home page, which does not load it. Settings are QtCore Settings and QtQuick.LocalStorage."
+    },
+    {
+      "id": "todolist",
+      "dir": "demos/todolist",
+      "entry": "content/App.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::loadFromModule(\"Main\", \"Main\"), which is `App {}`, with setInitialProperties(builtInStyles)",
+      "window": {
+        "width": 360,
+        "height": 800,
+        "from": "Window in content/App.qml"
+      },
+      "importPaths": [
+        "imports",
+        ".",
+        "content"
+      ],
+      "modules": {
+        "content": "content",
+        "ToDoList": "imports/ToDoList",
+        "CustomControls": "imports/CustomControls",
+        "CustomStyle": "imports/CustomStyle"
+      },
+      "imports": [
+        "QtCore",
+        "QtQml",
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Controls.Fusion",
+        "QtQuick.Controls.Material",
+        "QtQuick.Controls.Universal",
+        "QtQuick.Controls.impl",
+        "QtQuick.Layouts",
+        "QtQuick.LocalStorage",
+        "QtQuick.Templates"
+      ],
+      "cpp": [
+        "initial property from main.cpp: builtInStyles (a list of style names)"
+      ],
+      "qt": {
+        "runnable": true,
+        "controlsConf": "qtquickcontrols2.conf",
+        "properties": {
+          "builtInStyles": [
+            "CustomStyle",
+            "Basic",
+            "Material",
+            "Universal"
+          ]
+        },
+        "env": {
+          "QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT": "1"
+        }
+      },
+      "notes": "The Material style from qtquickcontrols2.conf (what main.cpp ends up with on Linux); light or dark by the system's colour scheme, light for the reference. main.cpp sets QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT: an icon path is relative to the file that assigns it, not to the component that shows it. Tasks are QtQuick.LocalStorage, empty at first."
+    },
+    {
+      "id": "toycustomizer",
+      "dir": "demos/toycustomizer",
+      "entry": "qml/Main.qml",
+      "root": "Window",
+      "rootType": "ApplicationWindow",
+      "load": "QQmlApplicationEngine::loadFromModule(\"ToyCustomizer\", \"Main\")",
+      "window": {
+        "width": 1536,
+        "height": 946,
+        "from": "ApplicationWindow in qml/Main.qml"
+      },
+      "importPaths": [],
+      "modules": {
+        "ToyCustomizer": "qml"
+      },
+      "imports": [
+        "QtQuick",
+        "QtQuick.Controls",
+        "QtQuick.Controls.Basic.impl",
+        "QtQuick.Controls.impl",
+        "QtQuick.Layouts",
+        "QtQuick.Shapes",
+        "QtQuick.Templates",
+        "QtQuick.Timeline",
+        "QtQuick.VectorImage",
+        "QtQuick3D",
+        "QtQuick3D.Effects",
+        "QtQuick3D.Helpers"
+      ],
+      "cpp": [],
+      "qt": {
+        "runnable": false,
+        "reason": "QtQuick3D is not installed (nor QtQuick.Timeline). Its singletons are declared in CMakeLists.txt, not in a qmldir."
+      }
+    },
+    {
+      "id": "windowembedding",
+      "dir": "demos/windowembedding",
+      "entry": "Main.qml",
+      "root": "Window",
+      "rootType": "Window",
+      "load": "QQmlApplicationEngine::loadFromModule(\"windowembedding\", \"Main\") with setInitialProperties(calendarWindow)",
+      "window": {
+        "width": 240,
+        "height": 260,
+        "from": "assumed: the Window declares only a minimum size, that of the embedded calendar (200x220 with Qt Widgets) plus margins",
+        "imposed": true
+      },
+      "importPaths": [],
+      "modules": {
+        "windowembedding": "."
+      },
+      "imports": [
+        "QtQuick"
+      ],
+      "cpp": [
+        "initial property from main.cpp: calendarWindow, a native or Qt Widgets calendar as a QWindow"
+      ],
+      "qt": {
+        "runnable": false,
+        "reason": "The window it embeds (WindowContainer) is created in main.cpp from a native toolkit or Qt Widgets."
+      }
+    },
+    {
+      "id": "xr_physicsbase_teleportation",
+      "dir": "demos/xr_physicsbase_teleportation",
+      "entry": "Main.qml",
+      "root": "Item",
+      "rootType": "XrView",
+      "load": "QQmlApplicationEngine::load(\"qrc:/Main.qml\")",
+      "window": {
+        "width": 1280,
+        "height": 720,
+        "from": "assumed: the root is an XrView: a headset, not a window",
+        "imposed": true
+      },
+      "importPaths": [],
+      "modules": {
+        "EXAMPLE": "."
+      },
+      "imports": [
+        "QtMultimedia",
+        "QtQuick",
+        "QtQuick3D",
+        "QtQuick3D.Helpers",
+        "QtQuick3D.Particles3D",
+        "QtQuick3D.Physics",
+        "QtQuick3D.Xr"
+      ],
+      "cpp": [],
+      "qt": {
+        "runnable": false,
+        "reason": "QtQuick3D is not installed (nor QtQuick3D.Xr, QtQuick3D.Physics); it needs an XR headset."
+      }
+    }
+  ]
+}
