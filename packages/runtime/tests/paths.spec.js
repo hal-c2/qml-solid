@@ -35,9 +35,10 @@ test("a component of a file makes its objects where it is told", async ({ page }
       scene.children.length,
     ];
   });
-  expect(read).toEqual([["block", 30, 20, true], ["ball", 70, 10, true], 1, 2]);
+  // After the two loaders the scene has.
+  expect(read).toEqual([["block", 30, 20, true], ["ball", 70, 10, true], 1, 4]);
   const boxes = await page.evaluate(() =>
-    window.scene.children.map((child) => {
+    window.scene.children.slice(2).map((child) => {
       const { x, width } = child.$node.getBoundingClientRect();
       return [x, width];
     }),
@@ -57,6 +58,21 @@ test("a path put together is looked up among the files it could be", async ({ pa
   });
   // What names no file stays the path it was.
   expect(read).toEqual([true, "ball", "paths/Nothing.qml"]);
+});
+
+test("a Loader's source is the file's component, there when it is set", async ({ page }) => {
+  await open(page, "paths");
+  const read = await page.evaluate(() => {
+    const { scene } = window;
+    const { fixed, loader } = scene;
+    const before = [fixed.status, fixed.item.kind, fixed.width, loader.status, loader.item];
+    scene.load();
+    return [before, [loader.status, loader.item.kind, loader.width, loader.item.parent === loader]];
+  });
+  expect(read).toEqual([
+    [1, "block", 20, 0, null],
+    [1, "ball", 10, true],
+  ]);
 });
 
 // This warns, which the scenes' `test` takes for a failure.

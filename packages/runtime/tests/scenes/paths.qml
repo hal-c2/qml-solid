@@ -8,6 +8,8 @@ Item {
     property url picture: Qt.resolvedUrl("paths/picture.png")
     property string page: "Ball"
     property var shown: null
+    property alias loader: loader
+    property alias fixed: fixed
     width: 400; height: 300
 
     function make(kind, x) {
@@ -25,4 +27,10 @@ Item {
     function show() {
         shown = "paths/" + page + ".qml"
     }
+    function load() {
+        loader.source = "paths/" + page + ".qml"
+    }
+
+    Loader { id: fixed; source: "paths/Block.qml" }
+    Loader { id: loader; x: 100 }
 }

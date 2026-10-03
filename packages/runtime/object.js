@@ -78,6 +78,12 @@ function settled(work, ...args) {
   }
 }
 
+// What a type's method does once it has changed something, so that what
+// depends on the change is up to date when it returns, as it is in QML.
+export function settle() {
+  if (!settling) flush();
+}
+
 class Slot {
   constructor(self, key, initial, resolve, whole, member) {
     this.self = self;
