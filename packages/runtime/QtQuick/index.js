@@ -5,6 +5,7 @@ export { GridView } from "./GridView.js";
 export { Instantiator } from "./Instantiator.js";
 export { Item } from "./Item.js";
 export { ListView } from "./ListView.js";
+export { Loader } from "./Loader.js";
 export { ListElement, ListModel, ObjectModel } from "./model.js";
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
 export { Repeater } from "./Repeater.js";
