@@ -106,7 +106,8 @@ function forget(item) {
   item.$forgets = true;
   runWithOwner(item.$owner, () =>
     onCleanup(() => {
-      if (!item.$focus) return;
+      // One that was taken out of its parent first is in no scope by now.
+      if (!item.$focus || (!parentOf(item) && !item.$focusWindow)) return;
       const window = windowOf(item);
       const changed = [];
       take(window, scopeOf(item, window), item, changed);
@@ -144,6 +145,39 @@ export function setFocus(item, value) {
   const changed = [];
   if (value) give(window, scope, item, changed);
   else take(window, scope, item, changed);
+  tell(window, changed);
+}
+
+// What Qt's `setParentItem` does about focus. Before an item with focus
+// leaves its parent its scope lets go of it: the scope has no focus item
+// then, and the item's own `focus` is as it was.
+export function departing(item) {
+  if (!item.$focus) return;
+  const window = windowOf(item);
+  const scope = scopeOf(item, window);
+  if (scope.$subFocus !== item) return;
+  const had = scope === window || scope.$active;
+  const changed = [];
+  if (had) leave(window, scope, changed);
+  scope.$subFocus = null;
+  if (had && scope !== window) window.active = scope;
+  tell(window, changed);
+}
+
+// And with its new parent it is the focus item of the scope it is in now,
+// unless that has one: then it has focus no more.
+export function arrived(item) {
+  if (!item.$focus) return;
+  const window = windowOf(item);
+  const scope = scopeOf(item, window);
+  if (scope.$subFocus === item) return;
+  const changed = [];
+  if (scope.$subFocus) {
+    item.$focus = false;
+    changed.push(item, "focus");
+  } else {
+    give(window, scope, item, changed);
+  }
   tell(window, changed);
 }
 
