@@ -20,6 +20,7 @@ export {
   SmoothedAnimation,
   SpringAnimation,
 } from "./animation/PropertyAnimation.js";
+export { Behavior } from "./animation/Behavior.js";
 export { Easing } from "./animation/easing.js";
 export { FrameAnimation, Timer } from "./animation/Timer.js";
 // Not a QML type: what a test, or a page that draws its own frames, moves
