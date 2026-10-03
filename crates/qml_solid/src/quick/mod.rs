@@ -49,6 +49,7 @@ pub(crate) fn lower<'a>(
 
     let mut lower = Lower::new(b, &tree, types, stem);
     lower.uses.paths.known.clone_from(&options.files);
+    let root = document.root.type_name.to_string();
     let (component, enums) = lower.component(&name, document.root, !is_singleton);
     errors.append(&mut lower.errors);
 
@@ -59,8 +60,11 @@ pub(crate) fn lower<'a>(
         lower.uses.kernel.insert("$singleton");
         body.push(b.const_(stem, b.call(b.id("$singleton"), [b.id(&name), b.record(enums)])));
         body.push(b.export_default(b.id(stem)));
-    } else if !enums.is_empty() {
-        body.push(lower.keys(&name, enums));
+    } else {
+        body.push(lower.extends(&name, &root));
+        if !enums.is_empty() {
+            body.push(lower.keys(&name, enums));
+        }
     }
     let mut program = b.program(source, body);
     let mut uses = lower.uses;

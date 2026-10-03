@@ -206,6 +206,19 @@ impl<'a, 's> Lower<'a, 's> {
         b.statement(b.call(b.member(b.id("Object"), "assign"), [b.id(name), b.record(enums)]))
     }
 
+    /// `Object.setPrototypeOf(Name, Root)`: what is read off the type its
+    /// root is (`Label.ElideRight`, `StackView.view`) is read off the
+    /// component too, as a class has what the one it extends has.
+    pub(crate) fn extends(&self, name: &str, root: &str) -> Statement<'a> {
+        let b = self.b;
+        let mut parts = root.split('.');
+        let mut base = b.id(parts.next().unwrap_or(root));
+        for part in parts {
+            base = b.member(base, part);
+        }
+        b.statement(b.call(b.member(b.id("Object"), "setPrototypeOf"), [b.id(name), base]))
+    }
+
     fn frame(&mut self) -> &mut Vec<Statement<'a>> {
         self.frames.last_mut().expect("an object is lowered inside a component")
     }
@@ -341,8 +354,11 @@ impl<'a, 's> Lower<'a, 's> {
                 QmlMember::Function(function) => self.function(function, index, built),
                 QmlMember::InlineComponent(inline) => {
                     let name = inline.name.name.as_str();
+                    let root = inline.object.type_name.to_string();
                     let (component, enums) = self.component(name, inline.object, false);
                     self.module.push(component);
+                    let extends = self.extends(name, &root);
+                    self.module.push(extends);
                     if !enums.is_empty() {
                         let keys = self.keys(name, enums);
                         self.module.push(keys);
