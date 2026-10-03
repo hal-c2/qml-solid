@@ -1,4 +1,5 @@
 //! `qmlc [--emit js|lowered] [--out-dir DIR] [--root DIR] [--host MODULE] [--runtime MODULE] [--alone] FILE.qml...`
+//! `qmlc --types URI...`
 //!
 //! Compiles each QML file to a JavaScript module, and each `.js` file as the
 //! script a QML file imports. Without `--out-dir` the output goes to stdout. A file is compiled with the QML files next to it
@@ -9,6 +10,10 @@
 //! whose `CMakeLists.txt` starts a project. With
 //! `--alone` it is compiled by itself: it takes only what it declares, and a
 //! type it does not know is taken to be a component.
+//!
+//! `--types` prints, for each module of Qt's, the types Qt has of it in C++:
+//! a line of the URI and its names. That is what a runtime has to have of
+//! the module, the rest of which is QML.
 
 use std::{
     collections::HashSet,
@@ -16,7 +21,7 @@ use std::{
     process::ExitCode,
 };
 
-use qml_solid::{Options, Project, compile, compile_script, discover, lowered_source};
+use qml_solid::{Options, Project, compile, compile_script, discover, lowered_source, native_types};
 
 /// The directory the project `path` is in starts at.
 fn project_root(path: &Path) -> PathBuf {
@@ -161,6 +166,7 @@ fn main() -> ExitCode {
     let mut options = Options::default();
     let mut lowered = false;
     let mut alone = false;
+    let mut types = false;
     let mut out_dir = None;
     let mut root = None;
     let mut files = Vec::new();
@@ -174,9 +180,20 @@ fn main() -> ExitCode {
             "--host" => options.host_module = value("--host"),
             "--runtime" => options.runtime_module = value("--runtime"),
             "--alone" => alone = true,
+            "--types" => types = true,
             "--component-extension" => options.component_extension = value("--component-extension"),
             _ => files.push(arg),
         }
+    }
+
+    if types {
+        for uri in &files {
+            // A module the table does not have is one with no line.
+            if let Some(names) = native_types(uri) {
+                println!("{uri} {}", names.join(" "));
+            }
+        }
+        return ExitCode::SUCCESS;
     }
 
     let (mut compiled, mut failed) = (0, 0);
