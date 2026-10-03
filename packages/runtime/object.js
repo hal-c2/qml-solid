@@ -28,6 +28,8 @@ import {
 const WRITABLE = { ownedWrite: true };
 // A binding gives a value, never a promise of one.
 const SYNC = { sync: true };
+// What `Qt.binding(f)` marks its function with: assigning one binds.
+const BINDING = Symbol.for("qml-solid.binding");
 
 const hidden = (object, key, value) =>
   Object.defineProperty(object, key, { value, writable: true, configurable: true });
@@ -143,9 +145,21 @@ class Slot {
   // The same without settling what depends on it: for a type's own writes,
   // which an animation makes every frame.
   write(value) {
+    if (typeof value === "function" && value[BINDING]) return this.rebind(value);
     if (this.assigned && Object.is(this.value, value)) return false;
     this.assigned = true;
     this.value = value;
+    this.changed();
+    return true;
+  }
+
+  // `x = Qt.binding(f)`: bound again, by an assignment. `this` in `f` is
+  // the object.
+  rebind(compute) {
+    const self = this.self;
+    this.bound = runWithOwner(self.$owner, () => createMemo(() => compute.call(self), SYNC));
+    this.assigned = false;
+    this.value = undefined;
     this.changed();
     return true;
   }
@@ -485,8 +499,15 @@ export function $signal(initial) {
   };
   const set = (given) => {
     if (assigned && Object.is(value, given)) return given;
-    assigned = true;
-    value = given;
+    if (typeof given === "function" && given[BINDING]) {
+      // `count = Qt.binding(f)`: the binding is replaced, not the value.
+      bound = runWithOwner(owner, () => createMemo(() => given(), SYNC));
+      assigned = false;
+      value = undefined;
+    } else {
+      assigned = true;
+      value = given;
+    }
     bump(next);
     flush();
     return given;
