@@ -4,6 +4,14 @@
     "clocks": {
       "pixels": 0.95,
       "content": 0.9
+    },
+    "rssnews": {
+      "pixels": 0.98,
+      "content": 0.95
+    },
+    "samegame": {
+      "pixels": 0.9,
+      "content": 0.75
     }
   }
 }
