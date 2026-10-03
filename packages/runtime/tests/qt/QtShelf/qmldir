@@ -1,0 +1,3 @@
+module QtShelf
+optional import QtShelf.Oak auto
+default import QtShelf.Pine auto

@@ -81,6 +81,16 @@ import Main from "./Main.qml";
 mount(Main, document.getElementById("app"));
 ```
 
+Much of Qt is QML itself: a style of Qt Quick Controls is a directory of QML
+files over the types of `QtQuick.Templates`. Those are not rewritten here. The
+plugin puts a module of Qt's together from what the runtime has of it (the
+types Qt has in C++) and the QML files of the Qt that is installed, which it
+compiles as it does the project's. `qt` is where that Qt keeps its QML modules,
+when not where `qtpaths6 --query QT_INSTALL_QML` says; `style` is what
+`import QtQuick.Controls` is (`"Material"`, `"Fusion"`), or a function of the
+importing file that says. Qt's QML is read from the installation and is not
+part of this repository: what is built from it carries Qt's licence.
+
 ## Components
 
 QML lets an instance set any property of a component's root object, handle its
