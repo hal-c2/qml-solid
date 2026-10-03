@@ -1,3 +1,4 @@
+import { test as plain } from "@playwright/test";
 import { expect, open, rect, test } from "./open.js";
 
 test("a Flickable's children are in its content item, which is as big as the content", async ({ page }) => {
@@ -419,6 +420,27 @@ test("rows that come, go and move leave the other delegates as they are", async 
     return [...out, view.currentIndex, view.currentItem.name, view.contentHeight, view.highlightItem.y];
   });
   expect(unset).toEqual([0, -1, 50, null, 0, "n", 100, 10]);
+});
+
+// Not the scenes' `test`: until the kernel says when a flush is under way,
+// a method called by a handler asks for one and Solid warns that it did.
+plain("a view positioned by a handler of the change is laid out by then", async ({ page }) => {
+  await open(page, "listview");
+  const read = await page.evaluate(() => {
+    const { root, dynamic, names } = window.objects;
+    root.follow = true;
+    const out = [];
+    for (const name of ["x", "y", "z"]) {
+      names.append({ name });
+      out.push([dynamic.count, dynamic.contentY, dynamic.contentHeight, dynamic.atYEnd]);
+    }
+    return out;
+  });
+  expect(read).toEqual([
+    [5, 100, 200, true],
+    [6, 140, 240, true],
+    [7, 180, 280, true],
+  ]);
 });
 
 test("a view stays within its rows when some go, and snaps where it is told to", async ({ page }) => {

@@ -6,8 +6,9 @@
 // given for one (`index`, `modelData`, `model` and a property per role), and
 // what happened to them. A view is told of rows inserted, removed and moved,
 // never to start again: the delegate of a row lives as long as the row does.
-import { createSignal, flush, getObserver, runWithOwner, untrack } from "solid-js";
+import { createSignal, getObserver, runWithOwner, untrack } from "solid-js";
 import { contents, defineType, derived, inside, instantiate, QtObject, slot } from "../object.js";
+import { settle } from "./settle.js";
 
 const WRITABLE = { ownedWrite: true };
 const next = (version) => version + 1;
@@ -52,7 +53,7 @@ function defineRole(model, name, value) {
     },
     // `model.get(0).name = "x"` changes the model.
     set(given) {
-      if (store(model, this, name, given)) flush();
+      if (store(model, this, name, given)) settle();
     },
     enumerable: true,
     configurable: true,
@@ -107,7 +108,7 @@ export const ListModel = defineType("ListModel", QtObject, {
     },
     append(dict) {
       splice(this, this.$elements.length, dict);
-      flush();
+      settle();
     },
     insert(index, dict) {
       if (!(index >= 0 && index <= this.$elements.length)) {
@@ -115,7 +116,7 @@ export const ListModel = defineType("ListModel", QtObject, {
         return;
       }
       splice(this, index, dict);
-      flush();
+      settle();
     },
     remove(index, count = 1) {
       const elements = this.$elements;
@@ -127,7 +128,7 @@ export const ListModel = defineType("ListModel", QtObject, {
       elements.splice(index, count);
       counted(this, elements.length);
       for (const listener of this.$listeners) listener.removed(index, count);
-      flush();
+      settle();
     },
     // `count` elements from `from` on, so that the first is at `to`.
     move(from, to, count) {
@@ -139,7 +140,7 @@ export const ListModel = defineType("ListModel", QtObject, {
       if (!count || from === to) return;
       elements.splice(to, 0, ...elements.splice(from, count));
       for (const listener of this.$listeners) listener.moved(from, to, count);
-      flush();
+      settle();
     },
     set(index, dict) {
       const elements = this.$elements;
@@ -150,7 +151,7 @@ export const ListModel = defineType("ListModel", QtObject, {
       }
       const record = dict?.[RECORD] ?? dict ?? {};
       for (const name of Object.keys(record)) store(this, elements[index], name, record[name]);
-      flush();
+      settle();
     },
     setProperty(index, property, value) {
       const elements = this.$elements;
@@ -158,7 +159,7 @@ export const ListModel = defineType("ListModel", QtObject, {
         console.warn(`ListModel: setProperty: index ${index} out of range`);
         return;
       }
-      if (store(this, elements[index], property, value)) flush();
+      if (store(this, elements[index], property, value)) settle();
     },
     clear() {
       const length = this.$elements.length;
@@ -166,7 +167,7 @@ export const ListModel = defineType("ListModel", QtObject, {
       this.$elements.length = 0;
       counted(this, 0);
       for (const listener of this.$listeners) listener.removed(0, length);
-      flush();
+      settle();
     },
     // For a model changed from a WorkerScript: there is nothing to wait for.
     sync() {},
@@ -238,7 +239,7 @@ export const ObjectModel = defineType("ObjectModel", QtObject, {
       this.$objects.splice(index, 0, object);
       reordered(this);
       for (const listener of this.$listeners) listener.inserted(index, 1);
-      flush();
+      settle();
     },
     move(from, to, count = 1) {
       const objects = this.$objects;
@@ -247,7 +248,7 @@ export const ObjectModel = defineType("ObjectModel", QtObject, {
       objects.splice(to, 0, ...objects.splice(from, count));
       reordered(this);
       for (const listener of this.$listeners) listener.moved(from, to, count);
-      flush();
+      settle();
     },
     remove(index, count = 1) {
       const objects = this.$objects;
@@ -255,7 +256,7 @@ export const ObjectModel = defineType("ObjectModel", QtObject, {
       for (const object of objects.splice(index, count)) object.$objectModel = null;
       reordered(this);
       for (const listener of this.$listeners) listener.removed(index, count);
-      flush();
+      settle();
     },
     clear() {
       this.remove(0, this.$objects.length);

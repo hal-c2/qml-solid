@@ -6,10 +6,11 @@
 // runs the type's `$arrange`, which says which rows are needed and where
 // they go. A row keeps its delegate for as long as it is needed: scrolling
 // makes the rows that come into view and nothing else.
-import { createSignal, flush, onCleanup, untrack } from "solid-js";
+import { createSignal, onCleanup, untrack } from "solid-js";
 import { defineType, derived, effect, instantiate, slot } from "../object.js";
 import { Flickable } from "./Flickable.js";
 import { moved, Rows, size } from "./model.js";
+import { settle } from "./settle.js";
 
 const WRITABLE = { ownedWrite: true };
 const next = (version) => version + 1;
@@ -202,17 +203,27 @@ function refresh(self, state) {
     // what there is now.
     state.dirty = false;
     state.bump(next);
-  } else {
-    state.fix = false;
+    return true;
   }
+  state.fix = false;
+  return false;
+}
+
+// The layout now, for a method that goes on from it: a handler that calls
+// one is run while what changed is being settled, and the view's turn to be
+// laid out would come after the method returned.
+function layout(self, state) {
+  let turns = 3;
+  while (refresh(self, state) && --turns);
 }
 
 // Puts the row at `index` at the beginning, the middle or the end of the
 // view. `edge` takes the header (-1) or the footer (1) in with it.
 function position(self, index, mode, edge = 0) {
   const state = self.$v;
+  if (!state.laidOut) return;
   untrack(() => {
-    flush();
+    layout(self, state);
     const count = state.rows.ready ? state.rows.count : 0;
     if (!(index >= 0 && index < count)) return;
     const key = positionKey(state);
@@ -249,10 +260,10 @@ function position(self, index, mode, edge = 0) {
       }
       to = Math.max(Math.min(to, most(self, state)), least(self, state));
       if (to !== self[key]) slot(self, key).write(to);
-      state.bump(next);
-      flush();
+      layout(self, state);
     }
   });
+  settle();
 }
 
 function setCurrent(self, state, index) {
@@ -318,7 +329,9 @@ export const ItemView = defineType("ItemView", Flickable, {
       position(this, this.$v.rows.count - 1, End, 1);
     },
     forceLayout() {
-      flush();
+      const state = this.$v;
+      if (state.laidOut) untrack(() => layout(this, state));
+      settle();
     },
     // The current index, a step on: `wrapped` is where it goes from the end.
     $step(by, wrapped) {

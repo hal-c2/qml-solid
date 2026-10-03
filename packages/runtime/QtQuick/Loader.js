@@ -4,9 +4,10 @@
 // What the compiler makes of `source` is either a function that imports the
 // component's module (a QML file it compiled) or the URL it was given, for
 // which there is nothing to load: QML is not interpreted here.
-import { createEffect, createSignal, flush, runWithOwner, untrack } from "solid-js";
+import { createEffect, createSignal, runWithOwner, untrack } from "solid-js";
 import { defineType, derived, effect, instantiate, slot, whenComplete } from "../object.js";
 import { Item } from "./Item.js";
+import { settle } from "./settle.js";
 
 const Null = 0;
 const Ready = 1;
@@ -89,12 +90,12 @@ function load(self, state) {
       (value) => {
         if (state.turn !== turn) return;
         runWithOwner(self.$owner, () => untrack(() => make(self, state, pick(value), properties)));
-        flush();
+        settle();
       },
       (error) => {
         if (state.turn !== turn) return;
         fail(self, `cannot load ${error?.message ?? error}`);
-        flush();
+        settle();
       },
     );
   if (typeof component === "function") {
@@ -134,7 +135,7 @@ export const Loader = defineType("Loader", Item, {
       slot(this, "source").write(source);
       // The same source is loaded again, as Qt does.
       state.again(next);
-      flush();
+      settle();
     },
   },
   setup(self) {

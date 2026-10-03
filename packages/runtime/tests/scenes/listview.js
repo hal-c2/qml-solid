@@ -36,6 +36,7 @@
 //     ListView {
 //         id: dynamic; y: 200; width: 200; height: 100; model: names; currentIndex: 1
 //         onCurrentIndexChanged: log.push("cur " + currentIndex)
+//         onCountChanged: if (root.follow) positionViewAtEnd()
 //         delegate: Rectangle {
 //             required property string name
 //             width: 180; height: 40
@@ -72,6 +73,7 @@ export default function Lists() {
   const { root, letters, sections, long, across, ahead, names, dynamic, things, thing, other, shown, sizes, empty } = objects;
   const [rows, setRows] = $signal(1000);
   const [heights, setHeights] = $signal([]);
+  const [follow, setFollow] = $signal(false);
   const plain = (view, width, height) =>
     $component(($data) => {
       made[view]++;
@@ -160,6 +162,9 @@ export default function Lists() {
         return names;
       },
       onCurrentIndexChanged: () => log.push(`cur ${dynamic.currentIndex}`),
+      onCountChanged: () => {
+        if (root.follow) dynamic.positionViewAtEnd();
+      },
       delegate: $component(($data) => {
         made.dynamic++;
         return $define(
@@ -212,5 +217,5 @@ export default function Lists() {
     }),
     make(ListView, { $self: empty, width: 100, height: 100, delegate: $component(() => make(Item, {})) }),
   ]);
-  return $define(scene, { rows: [rows, setRows], heights: [heights, setHeights] });
+  return $define(scene, { rows: [rows, setRows], heights: [heights, setHeights], follow: [follow, setFollow] });
 }

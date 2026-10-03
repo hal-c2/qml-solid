@@ -5,9 +5,10 @@
 // here runs per frame but the scroll event. `contentX` and `contentY` are
 // what that element is scrolled to, measured as Qt measures them: from the
 // content's origin, which margins and a view's header put before zero.
-import { flush, onCleanup, runWithOwner, untrack } from "solid-js";
+import { onCleanup, runWithOwner, untrack } from "solid-js";
 import { contents, defineType, derived, effect, inside, QtObject, slot } from "../object.js";
 import { Item } from "./Item.js";
+import { settle } from "./settle.js";
 
 const sheet = new CSSStyleSheet();
 sheet.replaceSync(`
@@ -81,13 +82,13 @@ function show(self, [minX, minY, extentWidth, extentHeight, contentX, contentY, 
 const SCROLLEND = "onscrollend" in window;
 // Without `scrollend`, a movement is over when no scroll has come for a
 // while. One timer watches every Flickable that is moving.
-const settling = new Set();
+const watched = new Set();
 let timer = 0;
 
-function settle() {
+function poll() {
   const now = performance.now();
-  for (const self of settling) if (now - self.$scrolledAt >= 150) stopped(self);
-  if (!settling.size) timer = clearInterval(timer);
+  for (const self of watched) if (now - self.$scrolledAt >= 150) stopped(self);
+  if (!watched.size) timer = clearInterval(timer);
 }
 
 function write(self, name, value) {
@@ -124,7 +125,7 @@ function scrolled(event) {
     if (dx) write(self, "flickingHorizontally", true);
     if (dy) write(self, "flickingVertically", true);
   }
-  flush();
+  settle();
   if (started) self.movementStarted();
   if (dragged) self.dragStarted();
   self.$scrolledAt = performance.now();
@@ -132,8 +133,8 @@ function scrolled(event) {
 }
 
 function watch(self) {
-  settling.add(self);
-  timer ||= setInterval(settle, 100);
+  watched.add(self);
+  timer ||= setInterval(poll, 100);
 }
 
 // The browser says a scroll is over. It says so of the one that put the
@@ -154,20 +155,20 @@ function released(self) {
   self.$dragging = false;
   write(self, "draggingHorizontally", false);
   write(self, "draggingVertically", false);
-  flush();
+  settle();
   self.dragEnded();
 }
 
 function stopped(self) {
   if (self.$touching || !self.$moving) return;
   self.$thrown = null;
-  settling.delete(self);
+  watched.delete(self);
   const flicked = self.$flicking;
   self.$moving = self.$flicking = false;
   for (const name of ["movingHorizontally", "movingVertically", "flickingHorizontally", "flickingVertically"]) {
     write(self, name, false);
   }
-  flush();
+  settle();
   if (flicked) self.flickEnded();
   self.movementEnded();
 }
@@ -311,7 +312,7 @@ export const Flickable = defineType("Flickable", Item, {
         if (!this.$viewport.clientWidth && !this.$viewport.clientHeight) {
           write(this, "contentX", x);
           write(this, "contentY", y);
-          return flush();
+          return settle();
         }
         const started = !this.$moving;
         this.$moving = this.$flicking = true;
@@ -323,7 +324,7 @@ export const Flickable = defineType("Flickable", Item, {
           write(this, "movingVertically", true);
           write(this, "flickingVertically", true);
         }
-        flush();
+        settle();
         if (started) this.movementStarted();
         this.flickStarted();
         this.$thrown = { left: x - this.$minXShown, top: y - this.$minYShown };
@@ -344,7 +345,7 @@ export const Flickable = defineType("Flickable", Item, {
         write(this, "contentX", clamp(this.contentX, this.$minX(), this.$maxX()));
         write(this, "contentY", clamp(this.contentY, this.$minY(), this.$maxY()));
       });
-      flush();
+      settle();
     },
     // A new size for the content, with `center` (a point of it) staying
     // where it is in the Flickable.
@@ -358,7 +359,7 @@ export const Flickable = defineType("Flickable", Item, {
         write(this, "contentX", x);
         write(this, "contentY", y);
       });
-      flush();
+      settle();
     },
   },
   setup(self) {
@@ -402,7 +403,7 @@ export const Flickable = defineType("Flickable", Item, {
     shown.observe(viewport);
     onCleanup(() => {
       shown.unobserve(viewport);
-      settling.delete(self);
+      watched.delete(self);
     });
     effect(
       () => {
