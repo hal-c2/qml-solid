@@ -187,6 +187,11 @@ Item {
     assert_contains(&code, r#"text={$data1.index + ("name" in $data1 ? $data1.name : $data.name)}"#);
     assert_contains(&code, "<ListView delegate={dot} highlight={$component(($data) => {");
     assert_contains(&code, "<Loader sourceComponent={dot}>");
+
+    // A component a type attaches is one too: what a view edits a cell with.
+    let code = lowered("import QtQuick\nItem {\n    TableView.editDelegate: Text { text: column }\n}");
+    assert_contains(&code, "TableView$editDelegate={$component(($data) => {");
+    assert_contains(&code, "text={$data.column}");
 }
 
 #[test]
