@@ -26,6 +26,7 @@ use oxc_parser::qml::ast::*;
 use oxc_span::Span;
 
 use super::{
+    paths::{Paths, is_absolute, is_resolved},
     scope::{self, Tree},
     types::{self, Member, Origin, Property, Types},
 };
@@ -46,6 +47,8 @@ pub(crate) struct Uses {
     pub namespaces: BTreeSet<String>,
     /// The objects something names: the others need no binding.
     pub handles: HashSet<String>,
+    /// The QML files something names by their path.
+    pub paths: Paths,
 }
 
 impl Uses {
@@ -677,6 +680,9 @@ impl<'a, 's> Lower<'a, 's> {
     fn url(&mut self, expression: Expression<'a>) -> Expression<'a> {
         let b = self.b;
         let Expression::StringLiteral(literal) = &expression else {
+            if is_resolved(&expression) {
+                return expression;
+            }
             self.uses.kernel.insert("$url");
             return b.call(b.id("$url"), [expression, b.import_meta_url()]);
         };
@@ -684,14 +690,10 @@ impl<'a, 's> Lower<'a, 's> {
         if value.is_empty() || is_absolute(value) {
             return expression;
         }
-        // A QML file is a module, loaded when it is asked for.
-        if value.ends_with(".qml") {
-            let path = if value.starts_with("./") || value.starts_with("../") {
-                value.to_string()
-            } else {
-                format!("./{value}")
-            };
-            return b.arrow(&[], b.import_call(&path));
+        // A QML file is the component it was compiled to.
+        let Uses { paths, kernel, .. } = &mut self.uses;
+        if let Some(component) = paths.literal(b, kernel, value) {
+            return component;
         }
         if let Some(index) = self.urls.iter().position(|url| url == value) {
             return b.id(&format!("$url{}", index + 1));
@@ -702,16 +704,6 @@ impl<'a, 's> Lower<'a, 's> {
         self.module.push(b.const_(&name, b.member(url, "href")));
         b.id(&name)
     }
-}
-
-/// `scheme:...` or `/...`: a URL that is not relative to the file.
-fn is_absolute(url: &str) -> bool {
-    if url.starts_with('/') {
-        return true;
-    }
-    let Some((scheme, _)) = url.split_once(':') else { return false };
-    scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-        && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
 }
 
 fn qt_property(ty: &'static qt::Type, path: &[&str]) -> Option<Property> {

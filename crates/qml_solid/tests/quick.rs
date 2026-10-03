@@ -270,8 +270,116 @@ Item {
     assert_contains(&code, "<Image source={$url2}></Image><Image source={$url2}></Image>");
     assert_contains(&code, r#"<Image source={"https://example.org/a.png"}>"#);
     assert_contains(&code, "<Image source={$url($1.icon, import.meta.url)}>");
-    // A QML file is a module, loaded when it is asked for.
-    assert_contains(&code, r#"<Loader source={() => import("./Other.qml")}>"#);
+    // A QML file is the component it was compiled to.
+    assert_contains(&code, r#"import $file1 from "./Other.qml";"#);
+    assert_contains(&code, "<Loader source={$file($file1)}>");
+}
+
+/// The lowering of `source`, with `files` in its directory and under it.
+fn lowered_among(source: &str, files: &[&str]) -> String {
+    let mut project = Project::new();
+    project.add("Sample", source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    let options = Options {
+        name: "Sample".to_string(),
+        project: Some(project),
+        files: Some(files.iter().map(ToString::to_string).collect()),
+        ..Options::default()
+    };
+    compile(source, &options).unwrap_or_else(|errors| panic!("{errors:?}"));
+    lowered_source(source, &options).unwrap_or_else(|errors| panic!("{errors:?}"))
+}
+
+#[test]
+fn a_path_of_a_qml_file_is_the_component() {
+    let code = lowered_among(
+        r#"import QtQuick
+Item {
+    id: root
+    property string page: "Home"
+    property var made: Qt.createComponent("parts/Dial.qml")
+    property var other: Qt.createComponent("QtQuick", "Rectangle")
+    property url icon: Qt.resolvedUrl("icons/a.png")
+    property url where: Qt.resolvedUrl(page)
+    Loader { id: loader; source: "pages/" + root.page + ".qml" }
+    function open(name) {
+        loader.source = "pages/Home.qml"
+        loader.source = `pages/${name}.qml`
+        console.log("Nowhere.qml", name + ".txt", "themes/" + name + ".qml", { "pages/Home.qml": 1 })
+        return Qt.createComponent(name)
+    }
+}"#,
+        &["Sample.qml", "pages/About.qml", "pages/Home.qml", "parts/Dial.qml"],
+    );
+    assert_contains(&code, r#"import { $file, $files, $object, $url } from "qml-solid/object";"#);
+    // `Qt` is still what makes a type of a module.
+    assert_contains(&code, r#"import { Qt } from "qml-solid/QtQml";"#);
+    assert_contains(&code, r#"import $file1 from "./parts/Dial.qml";"#);
+    assert_contains(&code, r#"import $file2 from "./pages/Home.qml";"#);
+    assert_contains(&code, "$file($file1)");
+    assert_contains(&code, r#"Qt.createComponent("QtQuick", "Rectangle")"#);
+    assert_contains(&code, r#"icon={new URL("icons/a.png", import.meta.url).href}"#);
+    assert_contains(&code, "where={$url(root.page, import.meta.url)}");
+    // A path put together is one of the files it could be.
+    assert_contains(
+        &code,
+        r#"const $files1 = $files({
+	"pages/About.qml": () => $file3,
+	"pages/Home.qml": () => $file2
+}, import.meta.url);"#,
+    );
+    assert_contains(&code, r#"source={$url($files1("pages/" + root.page + ".qml"), import.meta.url)}"#);
+    assert_contains(&code, "loader.source = $file($file2);");
+    assert_contains(&code, "loader.source = $files1(`pages/${name}.qml`);");
+    // What names no file is what was written.
+    assert_contains(&code, r#"console.log("Nowhere.qml", name + ".txt", "themes/" + name + ".qml", { "pages/Home.qml": 1 });"#);
+    // Asked of Qt, it is a component whatever it names: all of them could be.
+    assert_contains(&code, "return $files2(name, true);");
+    assert_contains(&code, r#""Sample.qml": () => $file4"#);
+}
+
+#[test]
+fn a_script_is_the_module_its_import_is() {
+    let options = Options {
+        files: Some(vec!["Block.qml".to_string(), "towers/Melee.qml".to_string()]),
+        ..Options::default()
+    };
+    let code = qml_solid::compile_script(
+        r#".pragma library // Shared
+.import QtQuick as QQ
+.import "other.js" as Other
+var board = new Array(10);
+var board;
+let block = Qt.createComponent("Block.qml");
+function tower(name) {
+    var made = Qt.createComponent("towers/" + name + ".qml");
+    if (made.status == QQ.Component.Error) console.log(qsTr("no %1").arg(name), Other.why());
+    return made;
+}
+board[0] = tower("Melee");
+"#,
+        &options,
+    )
+    .unwrap_or_else(|errors| panic!("{errors:?}"))
+    .code;
+    assert_contains(&code, r#"import { $file, $files } from "qml-solid/object";"#);
+    // Only what is still named: `Qt` was only asked for components.
+    assert_contains(&code, r#"import { qsTr } from "qml-solid/QtQml";"#);
+    assert_contains(&code, r#"import * as QQ from "qml-solid/QtQuick";"#);
+    assert_contains(&code, r#"import * as Other from "./other.js";"#);
+    assert_contains(&code, r#"import $file1 from "./Block.qml";"#);
+    assert_contains(&code, "const $files1 = $files({ \"towers/Melee.qml\": () => $file2 }, import.meta.url);");
+    assert_contains(&code, "export var board = new Array(10);\nvar board;");
+    assert_contains(&code, "export let block = $file($file1);");
+    assert_contains(&code, "export function tower(name) {");
+    assert_contains(&code, r#"var made = $files1("towers/" + name + ".qml", true);"#);
+    assert_lacks(&code, ".pragma library\n");
+
+    let failed = |source: &str| {
+        qml_solid::compile_script(source, &Options::default()).unwrap_err().remove(0).message
+    };
+    assert_eq!(failed(".pragma library\nfunction area() { return width * height; }"), "`width` is not defined");
+    assert_contains(&failed("function area() { return width; }"), "a script that is not a library takes it from the object");
+    assert_contains(&failed(".pragma strict\n"), "the only pragma");
 }
 
 const CLOCK: &str = r#"import QtQuick

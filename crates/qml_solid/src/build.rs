@@ -148,11 +148,6 @@ impl<'a> B<'a> {
         self.member(meta, "url")
     }
 
-    /// `import(source)`
-    pub(crate) fn import_call(&self, source: &str) -> Expression<'a> {
-        Expression::new_import_expression(SPAN, self.string(source), None, None, &self.ast())
-    }
-
     /// `[elements]`
     pub(crate) fn array(&self, elements: impl IntoIterator<Item = Expression<'a>>) -> Expression<'a> {
         let elements = ArenaVec::from_iter_in(
@@ -409,6 +404,11 @@ impl<'a> B<'a> {
             ExportDefaultDeclarationKind::FunctionDeclaration(self.function(name, params, statements)),
             &self.ast(),
         ))
+    }
+
+    /// `export declaration`
+    pub(crate) fn export(&self, declaration: Declaration<'a>) -> Statement<'a> {
+        Statement::ExportDeclaration(ExportDeclaration::boxed(SPAN, declaration, &self.ast()))
     }
 
     /// `export default expression;`

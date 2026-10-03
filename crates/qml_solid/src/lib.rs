@@ -52,6 +52,10 @@ pub struct Options {
     /// what it declares, and a type it does not know is taken to be a
     /// component next to it.
     pub project: Option<Project>,
+    /// The QML files in the file's directory and under it, by their path
+    /// from it (`towers/Melee.qml`): what a path may name that is only put
+    /// together when the program runs. None when nobody looked.
+    pub files: Option<Vec<String>>,
     pub solid: SolidOptions,
 }
 
@@ -64,6 +68,7 @@ impl Default for Options {
             qt_module: "qml-solid".to_string(),
             component_extension: ".qml".to_string(),
             project: None,
+            files: None,
             solid: SolidOptions::default(),
         }
     }
@@ -116,6 +121,12 @@ pub fn compile(source: &str, options: &Options) -> Result<Output, Vec<Error>> {
     solidjs_compiler::compile_program(&allocator, program, source, &solid)
         .map(|output| Output { code: output.code, map: output.source_map })
         .map_err(|error| vec![Error::new(error.to_string(), Span::default())])
+}
+
+/// Compiles a script a QML file imports (`import "logic.js" as Logic`) to
+/// the module that import is: what the script declares, exported.
+pub fn compile_script(source: &str, options: &Options) -> Result<Output, Vec<Error>> {
+    quick::script::compile(source, options).map(|code| Output { code, map: None })
 }
 
 /// The tree handed to Solid's compiler, printed. Solid never sees this text;

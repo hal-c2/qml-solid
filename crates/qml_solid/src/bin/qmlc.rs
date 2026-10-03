@@ -1,7 +1,7 @@
 //! `qmlc [--emit js|lowered] [--out-dir DIR] [--root DIR] [--host MODULE] [--runtime MODULE] [--alone] FILE.qml...`
 //!
-//! Compiles each QML file to a JavaScript module. Without `--out-dir` the
-//! output goes to stdout. A file is compiled with the QML files next to it
+//! Compiles each QML file to a JavaScript module, and each `.js` file as the
+//! script a QML file imports. Without `--out-dir` the output goes to stdout. A file is compiled with the QML files next to it
 //! and in the directories they import, which is where the components it
 //! names are and where it is used, and with the modules of the project it
 //! is in: what the `qmldir` and `CMakeLists.txt` files under `--root` say
@@ -16,7 +16,7 @@ use std::{
     process::ExitCode,
 };
 
-use qml_solid::{Options, Project, compile, discover, lowered_source};
+use qml_solid::{Options, Project, compile, compile_script, discover, lowered_source};
 
 /// The directory the project `path` is in starts at.
 fn project_root(path: &Path) -> PathBuf {
@@ -39,12 +39,34 @@ fn descriptions(root: &Path, found: &mut Vec<PathBuf>) {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if path.is_dir() {
-            // What a build or a package manager put there is not the project.
-            if !name.starts_with('.') && !name.starts_with("build") && name != "node_modules" && name != "target" {
+            if is_source(&name) {
                 descriptions(&path, found);
             }
         } else if name == "qmldir" || name == "CMakeLists.txt" {
             found.push(path);
+        }
+    }
+}
+
+/// What a build or a package manager put there is not the project.
+fn is_source(name: &str) -> bool {
+    !name.starts_with('.') && !name.starts_with("build") && name != "node_modules" && name != "target"
+}
+
+/// The QML files in `directory` and under it, by their path from `base`:
+/// what a path put together when the program runs may name.
+fn qml_files(directory: &Path, base: &Path, found: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(directory) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if path.is_dir() {
+            if is_source(&name) {
+                qml_files(&path, base, found);
+            }
+        } else if name.ends_with(".qml") {
+            found.push(relative(base, &path));
         }
     }
 }
@@ -169,9 +191,22 @@ fn main() -> ExitCode {
             }
         };
         let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("Component");
+        let is_script = path.extension().is_some_and(|extension| extension == "js");
         options.name = stem.to_string();
-        options.project = (!alone).then(|| project(path, root.as_deref()));
-        let result = if lowered {
+        options.project = (!alone && !is_script).then(|| project(path, root.as_deref()));
+        options.files = (!alone).then(|| {
+            let directory = match path.parent() {
+                Some(parent) if !parent.as_os_str().is_empty() => parent,
+                _ => Path::new("."),
+            };
+            let mut files = Vec::new();
+            qml_files(directory, directory, &mut files);
+            files.sort();
+            files
+        });
+        let result = if is_script {
+            compile_script(&source, &options).map(|output| output.code)
+        } else if lowered {
             lowered_source(&source, &options)
         } else {
             compile(&source, &options).map(|output| output.code)
@@ -181,7 +216,8 @@ fn main() -> ExitCode {
                 compiled += 1;
                 match &out_dir {
                     Some(dir) => {
-                        let target = Path::new(dir).join(format!("{stem}.qml.js"));
+                        let name = if is_script { format!("{stem}.js") } else { format!("{stem}.qml.js") };
+                        let target = Path::new(dir).join(name);
                         std::fs::create_dir_all(dir).expect("output directory");
                         std::fs::write(&target, code).expect("writable output");
                     }

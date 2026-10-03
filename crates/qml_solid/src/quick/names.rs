@@ -286,6 +286,8 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
             *expression = inner;
         }
 
+        let Uses { paths, kernel, .. } = &mut *self.uses;
+        paths.rewrite(self.b, kernel, expression);
         if self.type_member(expression) {
             return;
         }
@@ -316,6 +318,13 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
             return;
         }
         walk_mut::walk_simple_assignment_target(self, target);
+    }
+
+    /// `{ "Page.qml": 1 }`: a key is a name, whatever it looks like.
+    fn visit_property_key(&mut self, key: &mut PropertyKey<'a>) {
+        if !matches!(key, PropertyKey::StringLiteral(_)) {
+            walk_mut::walk_property_key(self, key);
+        }
     }
 
     fn visit_object_property(&mut self, property: &mut ObjectProperty<'a>) {
@@ -396,7 +405,7 @@ impl<'a> VisitMut<'a> for Pruner<'_> {
 }
 
 /// What QML puts in every script's scope, whatever is imported.
-const QML_GLOBALS: &[&str] = &[
+pub(crate) const QML_GLOBALS: &[&str] = &[
     "Qt",
     "qsTr",
     "qsTrId",
@@ -411,7 +420,7 @@ const QML_GLOBALS: &[&str] = &[
     "gc",
 ];
 
-const JS_GLOBALS: &[&str] = &[
+pub(crate) const JS_GLOBALS: &[&str] = &[
     "undefined",
     "NaN",
     "Infinity",
