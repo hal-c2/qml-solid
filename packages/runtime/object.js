@@ -64,6 +64,18 @@ export const group = (properties) => ({ [GROUP]: properties });
 
 const next = (version) => version + 1;
 
+// An effect's callback runs while Solid settles what changed, and what it
+// assigns is settled by the same flush: it must not ask for another.
+let settling = 0;
+function settled(work, ...args) {
+  settling++;
+  try {
+    return work(...args);
+  } finally {
+    settling--;
+  }
+}
+
 class Slot {
   constructor(self, key, initial, resolve, whole, member) {
     this.self = self;
@@ -73,17 +85,9 @@ class Slot {
     // `bold` for `font.bold`, which `font: other.font` gives too.
     this.whole = whole;
     this.member = member;
-    const props = self.$props;
-    const descriptor = Object.getOwnPropertyDescriptor(props, key);
-    // A binding: evaluated when first read and again when what it read
-    // changes, however many readers there are. An item it makes
-    // (`background: Rectangle {}`) is made as a child of this one.
-    this.bound = descriptor?.get
-      ? runWithOwner(self.$owner, () =>
-          createMemo(() => complete(() => inside(self.$node ? self : null, () => props[key])), SYNC),
-        )
-      : null;
-    this.given = descriptor && !descriptor.get ? descriptor.value : undefined;
+    this.bound = null;
+    this.given = undefined;
+    this.take(self.$props, key);
     this.assigned = false;
     this.value = undefined;
     // Set by whatever lays the object out: a positioner, a layout, a view.
@@ -95,6 +99,30 @@ class Slot {
     this.version = null;
     this.bump = null;
     this.given$ = resolve ? () => this.own() : null;
+  }
+
+  // What the object's creator gave the property: `props[key]`.
+  take(props, key) {
+    const self = this.self;
+    const descriptor = Object.getOwnPropertyDescriptor(props, key);
+    // A binding: evaluated when first read and again when what it read
+    // changes, however many readers there are. An item it makes
+    // (`background: Rectangle {}`) is made as a child of this one.
+    this.bound = descriptor?.get
+      ? runWithOwner(self.$owner, () =>
+          createMemo(() => complete(() => inside(self.$node ? self : null, () => props[key])), SYNC),
+        )
+      : null;
+    this.given = descriptor && !descriptor.get ? descriptor.value : undefined;
+  }
+
+  // The same from somewhere else: what an instance binds to an alias is a
+  // binding of the property the alias names.
+  bind(props, key) {
+    this.take(props, key);
+    this.assigned = false;
+    this.value = undefined;
+    this.changed();
   }
 
   get() {
@@ -137,7 +165,7 @@ class Slot {
   // An assignment: it replaces the binding, as in QML, and what depends on
   // the property is up to date when it returns.
   set(value) {
-    if (this.write(value)) flush();
+    if (this.write(value) && !settling) flush();
   }
 
   // The same without settling what depends on it: for a type's own writes,
@@ -310,7 +338,7 @@ export function whenComplete(work) {
 // A render effect that waits likewise: `compute` reads properties, `apply`
 // writes what it returned to the DOM.
 export function effect(compute, apply) {
-  whenComplete(() => createRenderEffect(compute, apply));
+  whenComplete(() => createRenderEffect(compute, (...args) => settled(apply, ...args)));
 }
 
 function complete(make) {
@@ -339,7 +367,89 @@ export function inside(item, make) {
   }
 }
 
+// A component's root is two things at once: the object its file describes
+// and the instance somebody wrote (`Clock { city: "Oslo" }`). `own` is what
+// the file binds, `given` what the instance does, which wins; a handler both
+// have is run for both, the file's first.
+function inherit(own, given) {
+  if (given.$given) given = inherit(given, given.$given);
+  const props = {};
+  for (const key of Object.keys(own)) {
+    if (key !== "$given") Object.defineProperty(props, key, Object.getOwnPropertyDescriptor(own, key));
+  }
+  for (const key of Object.keys(given)) {
+    // Its children are put where the component says, and the object itself
+    // is the one the component made.
+    if (key === "children" || key === "$self" || key === "$given") continue;
+    const descriptor = Object.getOwnPropertyDescriptor(given, key);
+    if (!(key in own)) Object.defineProperty(props, key, descriptor);
+    else if (key === "$declare") props.$declare = [own.$declare, given.$declare].flat();
+    else if (key === "$attach") props.$attach = [...new Set([...own.$attach, ...given.$attach])];
+    else if (key === "$functions" || key === "$aliases") props[key] = { ...own[key], ...given[key] };
+    else if (HANDLER.test(key)) {
+      props[key] = (...args) => {
+        own[key]?.(...args);
+        return given[key]?.(...args);
+      };
+    } else Object.defineProperty(props, key, descriptor);
+  }
+  return props;
+}
+
+// `onClicked`, `Keys$onPressed`, `Component$onCompleted`.
+const HANDLER = /^(\w+\$)?on[A-Z_]/;
+
+// The type of an object that declares properties and signals of its own:
+// `Item { property int hours; signal ticked }`. One per declaration, however
+// many objects are made from it.
+const derivations = new WeakMap();
+function derive(Type, declared) {
+  if (Array.isArray(declared)) return declared.reduce(derive, Type);
+  let derivedTypes = derivations.get(Type);
+  if (!derivedTypes) derivations.set(Type, (derivedTypes = new WeakMap()));
+  let Derived = derivedTypes.get(declared);
+  if (!Derived) {
+    Derived = defineType(Type.typeName, Type, { properties: declared.properties, signals: declared.signals });
+    if (Type.attached) Derived.attached = Type.attached;
+    derivedTypes.set(declared, Derived);
+  }
+  return Derived;
+}
+
+// `property alias text: label.text`: the property is another object's.
+function defineAlias(self, name, [target, ...path]) {
+  const last = path.at(-1);
+  const holder = () => path.slice(0, -1).reduce((object, member) => object?.[member], target);
+  Object.defineProperty(self, name, {
+    get: path.length ? () => holder()?.[last] : () => (target.$type ? target : (target.$track(), null)),
+    set(value) {
+      const object = holder();
+      if (path.length && object) object[last] = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  if (!path.length || !(name in self.$props)) return;
+  // What the instance binds to the alias is the target's binding.
+  const key = path.join("$");
+  whenComplete(() => {
+    const aliased = target.$type && slot(target, key);
+    if (aliased) return aliased.bind(self.$props, name);
+    // An alias of an alias, or of an object made later: assigned instead.
+    createRenderEffect(
+      () => self.$props[name],
+      (value) =>
+        settled(() => {
+          const object = holder();
+          if (object) object[last] = value;
+        }),
+    );
+  });
+}
+
 function create(Type, props) {
+  if (props.$given) props = inherit(props, props.$given);
+  if (props.$declare) Type = derive(Type, props.$declare);
   const self = props.$self ?? $object();
   return complete(() => {
     Object.setPrototypeOf(self, Type.proto);
@@ -350,14 +460,28 @@ function create(Type, props) {
     hidden(self, "$slots", Object.create(null));
     hidden(self, "$groups", Object.create(null));
     hidden(self, "$signals", Object.create(null));
+    // `function tick() { }`: what the object's QML declares it can do.
+    if (props.$functions) {
+      for (const [name, declared] of Object.entries(props.$functions)) hidden(self, name, declared);
+    }
     for (const type of Type.chain) type.spec.setup?.(self, props);
+    if (props.$aliases) {
+      for (const [name, path] of Object.entries(props.$aliases)) defineAlias(self, name, path);
+    }
     if (Type.adopt && "children" in props) Type.adopt(self, props);
     for (const key of Object.keys(props)) {
       // `onWidthChanged`: a handler of a property's changes, not of a signal.
       const property = /^on([A-Z]\w*)Changed$/.exec(key)?.[1];
       if (!property) continue;
       const name = property[0].toLowerCase() + property.slice(1);
-      if (name in Type.slots) onChange(self, name, () => untrack(() => props[key])?.());
+      if (name in Type.slots || props.$aliases?.[name]) onChange(self, name, () => untrack(() => props[key])?.());
+    }
+    // `Keys.onPressed`, `Layout.fillWidth`: the attached object is what does
+    // something about them, so it has to exist.
+    if (props.$attach) {
+      whenComplete(() => {
+        for (const type of props.$attach) type.attached?.(self);
+      });
     }
     const completed = props.Component$onCompleted;
     if (completed) completions.push(() => untrack(completed));
@@ -372,19 +496,36 @@ function create(Type, props) {
 // The objects declared inside one, created now: its `children` prop,
 // flattened. With `item`, they are created as its children.
 export function contents(props, item) {
-  const made = untrack(() => (item ? inside(item, () => props.children) : props.children));
-  if (made == null) return [];
-  return Array.isArray(made) ? made.flat(Infinity).filter((child) => child != null) : [made];
+  const made = untrack(() => (item ? inside(item, () => flatten(props.children, [])) : flatten(props.children, [])));
+  return made;
+}
+
+// A component puts its instance's children among its own
+// (`{$props.children}`), which Solid hands over as a function.
+function flatten(made, into) {
+  if (made == null) return into;
+  if (Array.isArray(made)) for (const child of made) flatten(child, into);
+  else if (typeof made === "function" && !made.$component && !made.proto) flatten(made(), into);
+  else into.push(made);
+  return into;
 }
 
 // Runs `handler` when the property changes, not when it is first read.
 export function onChange(self, name, handler) {
+  let seen = false;
+  let last;
   whenComplete(() =>
     createEffect(
       () => self[name],
-      // A handler reads what it likes: it is run, not kept up to date.
-      () => void untrack(handler),
-      { defer: true },
+      (value) => {
+        // Reading it again is not a change: what it was computed from may
+        // have changed and left it as it was.
+        const changed = seen && !Object.is(value, last);
+        seen = true;
+        last = value;
+        // A handler reads what it likes: it is run, not kept up to date.
+        if (changed) settled(untrack, handler);
+      },
     ),
   );
 }
@@ -421,6 +562,7 @@ function attach(name, Attached, self) {
 // What a `Component` is at run time: a function from what its object is
 // given (a delegate's `index` and roles) to the object.
 export function $component(make) {
+  make.$component = true;
   make.createObject = (item, properties) => {
     const { object } = instantiate(make, properties ?? {}, item);
     for (const [name, value] of Object.entries(properties ?? {})) {
@@ -430,6 +572,17 @@ export function $component(make) {
     return object;
   };
   return make;
+}
+
+// `source: path`, where the path is not known until the program runs: taken
+// from the file it is written in, as a literal is when it is compiled.
+export function $url(value, base) {
+  if (typeof value !== "string" || value === "") return value;
+  try {
+    return new URL(value, base).href;
+  } catch {
+    return value;
+  }
 }
 
 // Creates a component's object apart from the tree that asked for it: a
@@ -488,7 +641,7 @@ export function $signal(initial) {
     assigned = true;
     value = given;
     bump(next);
-    flush();
+    if (!settling) flush();
     return given;
   };
   return [get, set];
