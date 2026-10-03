@@ -3,7 +3,7 @@
 // object has, its own or those of what it is in. The numbers are Qt's
 // (`qquickuniversalstyle.cpp`).
 import { createSignal } from "solid-js";
-import { defineType, derived, QtObject } from "../../../object.js";
+import { chosen, defineType, derived, QtObject } from "../../../object.js";
 import { color as colour } from "../../color.js";
 import { lazy } from "../../compute.js";
 import { themed } from "../../Templates/theme.js";
@@ -90,17 +90,6 @@ function argb(given) {
   return chose && (chose.custom ? chose.value : BY_NUMBER[chose.value]);
 }
 
-configured("Universal", (group) => {
-  const foreground = argb(group.Foreground);
-  const background = argb(group.Background);
-  configure({
-    theme: Theme[group.Theme] ?? OWN.theme,
-    accent: argb(group.Accent) ?? OWN.accent,
-    foreground: foreground == null ? OWN.foreground : { value: foreground, has: true },
-    background: background == null ? OWN.background : { value: background, has: true },
-  });
-});
-
 function state(self, object) {
   const up = lazy(self, () => around(Universal, object));
   const outer = (name) => (up() ? up().$style[name]() : settings()[name]);
@@ -161,3 +150,17 @@ export const Universal = defineType("Universal", QtObject, {
 });
 
 preferred("QtQuick.Controls.Universal");
+
+// Qt reads these only where this is the style of the application: Material
+// reads its own wherever it is imported.
+configured("Universal", (group) => {
+  if (chosen.get("QtQuick.Controls") !== "QtQuick.Controls.Universal") return;
+  const foreground = argb(group.Foreground);
+  const background = argb(group.Background);
+  configure({
+    theme: Theme[group.Theme] ?? OWN.theme,
+    accent: argb(group.Accent) ?? OWN.accent,
+    foreground: foreground == null ? OWN.foreground : { value: foreground, has: true },
+    background: background == null ? OWN.background : { value: background, has: true },
+  });
+});
