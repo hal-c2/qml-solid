@@ -5,6 +5,7 @@ export { Component } from "../QtQml/Component.js";
 export { Locale } from "../QtQml/locale.js";
 export { Application } from "../QtQml/application.js";
 export { AnimatedImage } from "./AnimatedImage.js";
+export { AnimatedSprite } from "./AnimatedSprite.js";
 export { Canvas } from "./Canvas.js";
 export { Flickable } from "./Flickable.js";
 export { Font } from "./font.js";
@@ -48,6 +49,7 @@ export {
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
 export { Repeater } from "./Repeater.js";
 export { Sprite } from "./Sprite.js";
+export { SpriteSequence } from "./SpriteSequence.js";
 export { Text } from "./Text.js";
 export { TextEdit, TextInput } from "./TextInput.js";
 export { FontMetrics, TextMetrics } from "./TextMetrics.js";
