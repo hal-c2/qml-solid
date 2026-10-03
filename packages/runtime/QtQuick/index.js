@@ -27,6 +27,7 @@ export { Instantiator } from "./Instantiator.js";
 export { Item } from "./Item.js";
 export { KeyNavigation, Keys, Shortcut } from "./Keys.js";
 export { StandardKey } from "./keycodes.js";
+export { LayoutMirroring } from "./LayoutMirroring.js";
 export { ListView } from "./ListView.js";
 export { Loader } from "./Loader.js";
 export { ListElement, ListModel, ObjectModel } from "./model.js";
