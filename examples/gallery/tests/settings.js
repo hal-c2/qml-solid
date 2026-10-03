@@ -10,6 +10,8 @@ const repository = resolve(here, "../../..");
 
 export const qmlc = resolve(process.env.QMLC ?? join(repository, "target/debug/qmlc"));
 export const port = Number(process.env.GALLERY_PORT ?? 4174);
+// What says which modules of Qt the runtime has.
+export const runtimePackage = join(repository, "packages/runtime/package.json");
 // Pictures and the report, for looking at: not checked in.
 export const reportDirectory = resolve(process.env.GALLERY_REPORT ?? join(here, "../report"));
 // The ratchet: examples that must keep rendering.
