@@ -15,6 +15,7 @@ mod build;
 mod dialects;
 mod lower;
 mod project;
+mod qt;
 mod registry;
 mod resolve;
 mod scope;

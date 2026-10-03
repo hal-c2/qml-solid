@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate the table of Qt's types from the Qt installed here (--qt DIRECTORY for another)"
+#MISE depends=["install"]
+set -euo pipefail
+exec cargo run --quiet -p qmltypes -- "$@"
