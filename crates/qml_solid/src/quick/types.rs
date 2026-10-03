@@ -1,0 +1,298 @@
+//! What a type name is in a file, and what an object of that type has.
+//!
+//! A name is looked up the way QML does: the file's inline components, then
+//! its imports from the last to the first, then the files next to it. What
+//! Qt's own types have comes from Qt's description of them ([`crate::qt`]);
+//! what a component has, from the file that declares it.
+
+pub(crate) use crate::project::{directory, join};
+use crate::{
+    project::{Key, Project, Shape, Source},
+    qt,
+};
+
+#[derive(Clone)]
+pub(crate) enum Kind {
+    Qt(&'static qt::Type),
+    /// A QML file, or an inline component of one.
+    Component(Key),
+}
+
+/// Where a type comes from, which is where the compiled module imports it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Origin {
+    /// A named export of a Qt module, by the URI the file imports.
+    Module(String),
+    /// The default export of a QML file, by its path from the file.
+    File(String),
+    /// A function of this module.
+    Inline,
+    /// A member of a namespace the file imports `as` something.
+    Namespace,
+}
+
+pub(crate) struct Found {
+    pub kind: Kind,
+    pub origin: Origin,
+}
+
+pub(crate) enum Member {
+    Property(Property),
+    Signal,
+    Method,
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Property {
+    /// What is written there is a template, not an object: a `delegate`.
+    pub is_component: bool,
+    /// A path is taken from the file it is written in.
+    pub is_url: bool,
+    /// An object written there is a list of one.
+    pub is_list: bool,
+    /// The type of the value, for the properties under it: `font.bold`.
+    pub value: Option<&'static qt::Type>,
+}
+
+/// The path to import `target` by from the module of `file`, both keys.
+pub(crate) fn relative(file: &str, target: &str) -> String {
+    if target.starts_with('/') {
+        return target.to_string();
+    }
+    let from: Vec<&str> = directory(file).split('/').filter(|part| !part.is_empty()).collect();
+    let to: Vec<&str> = target.split('/').collect();
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let mut parts: Vec<&str> = vec![".."; from.len() - common];
+    parts.extend(&to[common..]);
+    let path = parts.join("/");
+    if path.starts_with("../") { path } else { format!("./{path}") }
+}
+
+/// The types of one file.
+#[derive(Clone, Copy)]
+pub(crate) struct Types<'p> {
+    pub project: &'p Project,
+    /// The file's key in the project.
+    pub file: &'p str,
+}
+
+impl<'p> Types<'p> {
+    /// What the dotted name `parts` is as a type: `Item`, `C.Button`.
+    pub(crate) fn find(&self, parts: &[&str]) -> Option<Found> {
+        let summary = self.project.summary(self.file)?;
+        let (qualifier, name) = match parts {
+            [name] => (None, *name),
+            [qualifier, name] => (Some(*qualifier), *name),
+            _ => return None,
+        };
+        if qualifier.is_none() {
+            let key = Key { file: self.file.to_string(), inline: Some(name.to_string()) };
+            if self.project.shape(&key).is_some() {
+                return Some(Found { kind: Kind::Component(key), origin: Origin::Inline });
+            }
+        }
+        for import in summary.imports.iter().rev() {
+            if import.alias.as_deref() != qualifier {
+                continue;
+            }
+            match &import.source {
+                Source::Module(uri) => {
+                    if let Some(ty) = qt::module(uri).and_then(|module| module.type_named(name)) {
+                        let origin = match qualifier {
+                            Some(_) => Origin::Namespace,
+                            None => Origin::Module(uri.clone()),
+                        };
+                        return Some(Found { kind: Kind::Qt(ty), origin });
+                    }
+                }
+                Source::Path(path) if !path.ends_with(".js") && !path.ends_with(".mjs") => {
+                    let file = join(&join(directory(self.file), path), name);
+                    if self.project.summary(&file).is_some() {
+                        let origin = match qualifier {
+                            Some(_) => Origin::Namespace,
+                            None => Origin::File(file.clone()),
+                        };
+                        return Some(Found { kind: Kind::Component(Key { file, inline: None }), origin });
+                    }
+                }
+                Source::Path(_) => {}
+            }
+        }
+        if qualifier.is_none() {
+            // The file's own directory is imported before anything else, so
+            // everything else comes first.
+            let file = join(directory(self.file), name);
+            if self.project.summary(&file).is_some() {
+                return Some(Found {
+                    kind: Kind::Component(Key { file: file.clone(), inline: None }),
+                    origin: Origin::File(file),
+                });
+            }
+        }
+        None
+    }
+
+    /// Whether `name` is what the file imports something `as`.
+    pub(crate) fn namespace(&self, name: &str) -> Option<&'p Source> {
+        let summary = self.project.summary(self.file)?;
+        summary.imports.iter().rev().find(|import| import.alias.as_deref() == Some(name)).map(|import| &import.source)
+    }
+
+    /// The Qt type a component's objects are, however many components down.
+    pub(crate) fn base(&self, kind: &Kind) -> Option<&'static qt::Type> {
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            match kind {
+                Kind::Qt(ty) => return Some(ty),
+                Kind::Component(key) => {
+                    let shape = self.project.shape(&key)?;
+                    kind = self.root(&key, shape)?;
+                }
+            }
+        }
+        None
+    }
+
+    fn root(&self, key: &Key, shape: &Shape) -> Option<Kind> {
+        let parts: Vec<&str> = shape.root.iter().map(String::as_str).collect();
+        let types = Types { project: self.project, file: &key.file };
+        types.find(&parts).map(|found| found.kind)
+    }
+
+    /// What `name` is on an object of the type: something a component in its
+    /// chain declares, or a member of the Qt type the chain ends in.
+    pub(crate) fn member(&self, kind: &Kind, name: &str) -> Option<Member> {
+        let mut kind = kind.clone();
+        // A component whose root is itself, by whatever detour, has no root.
+        for _ in 0..64 {
+            match kind {
+                Kind::Qt(ty) => return qt_member(ty, name),
+                Kind::Component(key) => {
+                    let shape = self.project.shape(&key)?;
+                    if let Some(member) = shape_member(shape, name) {
+                        return Some(member);
+                    }
+                    kind = self.root(&key, shape)?;
+                }
+            }
+        }
+        None
+    }
+
+    /// The names a handler of the signal `name` may call its arguments. A
+    /// type may have a property of the same name: `pressed` of a MouseArea.
+    pub(crate) fn signal(&self, kind: &Kind, name: &str) -> Option<Vec<String>> {
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            match kind {
+                Kind::Qt(ty) => {
+                    let signal = ty.signal(name)?;
+                    return Some(signal.parameters.iter().map(|name| (*name).to_string()).collect());
+                }
+                Kind::Component(key) => {
+                    let shape = self.project.shape(&key)?;
+                    if let Some(parameters) = shape.signals.get(name) {
+                        return Some(parameters.clone());
+                    }
+                    kind = self.root(&key, shape)?;
+                }
+            }
+        }
+        None
+    }
+
+    /// The properties whoever makes an object of the type has to set.
+    pub(crate) fn required(&self, kind: &Kind) -> Vec<String> {
+        let mut required = Vec::new();
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            let Kind::Component(key) = kind else { break };
+            let Some(shape) = self.project.shape(&key) else { break };
+            for name in &shape.required {
+                if !required.contains(name) {
+                    required.push(name.clone());
+                }
+            }
+            let Some(root) = self.root(&key, shape) else { break };
+            kind = root;
+        }
+        required
+    }
+
+    /// The property objects written inside one of the type go to, when it is
+    /// a template: a Repeater's `delegate`.
+    pub(crate) fn default_component(&self, kind: &Kind) -> Option<&'static str> {
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            match kind {
+                Kind::Qt(ty) => {
+                    let name = ty.default_property()?;
+                    return ty.property(name).is_some_and(|property| property.is_component).then_some(name);
+                }
+                Kind::Component(key) => {
+                    let shape = self.project.shape(&key)?;
+                    if shape.has_default {
+                        return None;
+                    }
+                    kind = self.root(&key, shape)?;
+                }
+            }
+        }
+        None
+    }
+}
+
+pub(crate) fn qt_property(property: &'static qt::Property) -> Property {
+    Property {
+        is_component: property.is_component,
+        is_url: property.type_name == "QUrl" && !property.is_list,
+        is_list: property.is_list,
+        value: property.value_type(),
+    }
+}
+
+pub(crate) fn qt_member(ty: &'static qt::Type, name: &str) -> Option<Member> {
+    if let Some(property) = ty.property(name) {
+        return Some(Member::Property(qt_property(property)));
+    }
+    if ty.signal(name).is_some() {
+        return Some(Member::Signal);
+    }
+    ty.has_method(name).then_some(Member::Method)
+}
+
+/// A declared property, by the type it was declared with.
+pub(crate) fn declared_property(type_name: &str, is_list: bool) -> Property {
+    Property {
+        is_component: type_name == "Component" && !is_list,
+        is_url: type_name == "url" && !is_list,
+        is_list,
+        value: None,
+    }
+}
+
+fn shape_member(shape: &Shape, name: &str) -> Option<Member> {
+    if let Some(declaration) = shape.properties.get(name) {
+        return Some(Member::Property(declared_property(&declaration.type_name, declaration.is_list)));
+    }
+    if shape.signals.contains_key(name) {
+        return Some(Member::Signal);
+    }
+    if shape.functions.contains(name) {
+        return Some(Member::Method);
+    }
+    // A property comes with the signal that says it changed.
+    let property = name.strip_suffix("Changed")?;
+    shape.properties.contains_key(property).then_some(Member::Signal)
+}
+
+/// `onClicked` → `clicked`: the signal a handler's name stands for.
+pub(crate) fn handled(name: &str) -> Option<String> {
+    let rest = name.strip_prefix("on")?;
+    let first = rest.chars().next()?;
+    (first.is_ascii_uppercase() || first == '_').then(|| {
+        let mut signal = first.to_ascii_lowercase().to_string();
+        signal.push_str(&rest[first.len_utf8()..]);
+        signal
+    })
+}
