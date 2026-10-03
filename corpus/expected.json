@@ -5,6 +5,10 @@
       "pixels": 0.95,
       "content": 0.9
     },
+    "maroon": {
+      "pixels": 0.95,
+      "content": 0.95
+    },
     "rssnews": {
       "pixels": 0.98,
       "content": 0.95
