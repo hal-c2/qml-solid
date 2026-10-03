@@ -224,11 +224,14 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
     configResolved(config) {
       cache = join(config.cacheDir, "qml-solid");
     },
-    // Qt's own QML is outside the project.
+    // Qt's own QML is outside the project. What the runtime itself is built
+    // on that is no module (SQLite, for QtQuick.LocalStorage) is bundled
+    // for the browser before a page asks for it.
     config(config) {
-      if (!qt) return null;
+      const optimizeDeps = { include: ["qml-solid > sql.js"] };
+      if (!qt) return { optimizeDeps };
       const allowed = config.server?.fs?.allow ? [] : [searchForWorkspaceRoot(config.root ?? process.cwd())];
-      return { server: { fs: { allow: [...allowed, qt] } } };
+      return { optimizeDeps, server: { fs: { allow: [...allowed, qt] } } };
     },
     async resolveId(source, importer, options) {
       const module = source.match(MODULE)?.[1];
