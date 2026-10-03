@@ -9,7 +9,7 @@
 import { createSignal, onCleanup, untrack } from "solid-js";
 import { defineType, derived, effect, instantiate, slot } from "../object.js";
 import { Flickable } from "./Flickable.js";
-import { moved, Rows, size } from "./model.js";
+import { delegateOf, modelOf, moved, Rows, size } from "./model.js";
 import { settle } from "./settle.js";
 
 const WRITABLE = { ownedWrite: true };
@@ -147,8 +147,8 @@ function notify(self, item, name, handler) {
 
 function refresh(self, state) {
   const rows = state.rows;
-  const model = self.model;
-  const delegate = self.delegate;
+  const model = modelOf(self.model);
+  const delegate = delegateOf(self.model, self.delegate);
   const rowCount = size(model);
   // A model that reports is followed; another is looked at again when it,
   // or how many rows it has, is not what it was.
@@ -440,8 +440,8 @@ export const ItemView = defineType("ItemView", Flickable, {
     effect(
       () => {
         version();
-        size(self.model);
-        void self.delegate;
+        size(modelOf(self.model));
+        void delegateOf(self.model, self.delegate);
         void self.header;
         void self.footer;
         void self.highlight;
