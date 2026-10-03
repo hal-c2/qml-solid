@@ -76,6 +76,7 @@ mod state;
 
 mod js;
 mod jsx;
+pub mod qml;
 mod ts;
 
 mod diagnostics;
@@ -395,6 +396,23 @@ mod parser_parse {
                 )
                 .parse()
             }
+        }
+
+        /// Parse a QML document.
+        ///
+        /// Embedded JavaScript is parsed with this parser's source type, so use a
+        /// TypeScript source type to accept QML's type annotations on functions.
+        /// Spans in the result are offsets into `source_text`.
+        pub fn parse_qml(self) -> qml::QmlParserReturn<'a> {
+            ParserImpl::<C>::new(
+                self.allocator,
+                self.source_text,
+                self.source_type,
+                self.options,
+                self.config,
+                UniquePromise::new(),
+            )
+            .parse_qml()
         }
 
         /// Parse a single [`Expression`].

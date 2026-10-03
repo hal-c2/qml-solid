@@ -110,6 +110,10 @@ parser_diagnostics! {
         OxcDiagnostic::error("Unexpected token").with_label(span)
     };
 
+    qml(message: &'static str, span: Span) => {
+        OxcDiagnostic::error(message).with_label(span)
+    };
+
     // 'abstract' modifier can only appear on a class, method, or property declaration. (1242)
     illegal_abstract_modifier(span: Span) => {
         ts_error(
