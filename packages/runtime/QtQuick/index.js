@@ -5,6 +5,8 @@ export { Component } from "../QtQml/Component.js";
 export { Locale } from "../QtQml/locale.js";
 export { Application } from "../QtQml/application.js";
 export { AnimatedImage } from "./AnimatedImage.js";
+export { AnimatedSprite } from "./AnimatedSprite.js";
+export { Canvas } from "./Canvas.js";
 export { Flickable } from "./Flickable.js";
 export { FocusScope } from "./FocusScope.js";
 export { Font } from "./font.js";
@@ -42,9 +44,26 @@ export { ColorGroup, Palette, SystemPalette } from "./Palette.js";
 export { Pinch, PinchArea } from "./PinchArea.js";
 import "./palettes.js";
 export { SafeArea } from "./SafeArea.js";
+export {
+  Path,
+  PathAngleArc,
+  PathArc,
+  PathAttribute,
+  PathCubic,
+  PathCurve,
+  PathLine,
+  PathMove,
+  PathMultiline,
+  PathPercent,
+  PathPolyline,
+  PathQuad,
+  PathRectangle,
+  PathSvg,
+} from "./Path.js";
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
 export { Repeater } from "./Repeater.js";
 export { Sprite } from "./Sprite.js";
+export { SpriteSequence } from "./SpriteSequence.js";
 export { Text } from "./Text.js";
 export { TextEdit, TextInput } from "./TextInput.js";
 export { FontMetrics, TextMetrics } from "./TextMetrics.js";
