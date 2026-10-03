@@ -381,7 +381,7 @@
       ],
       "qt": {
         "runnable": false,
-        "reason": "QtGraphs is not installed, and the model is the C++ type CsvDataModel."
+        "reason": "QtGraphs is not installed. The model is the C++ type CsvDataModel, a QAbstractTableModel; corpus/standins/graphs_csv stands in for it with an object that answers what QML calls of one, which no view of Qt takes as a model."
       }
     },
     {
