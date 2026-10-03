@@ -6,6 +6,7 @@
 //
 // Times are milliseconds. A job in a group is driven by the group; one on
 // its own is on the clock.
+import { draw, drawing } from "../drawn.js";
 import { clock } from "./clock.js";
 import { mix, rgba } from "./property.js";
 
@@ -70,6 +71,12 @@ export class Job {
     if (state === RUNNING && old === STOPPED && !this.group) this.startLoop();
     this.updateState(state, old);
     if (state !== this.state) return;
+    // What waited for all of it to be over: see DrawnJob.
+    if (state === STOPPED && this.waiting) {
+      const waiting = this.waiting;
+      this.waiting = null;
+      for (const job of waiting) job.settle();
+    }
     this.listener?.stateChanged?.(this, state, old);
     if (state !== this.state) return;
     if (state === RUNNING) {
@@ -254,6 +261,57 @@ export class AnimatorJob extends Job {
   // time; one that loops, from where it was the first time.
   loopStarted() {
     if (this.loops === 1) this.sourced = false;
+  }
+}
+
+// An animator at work: what is drawn goes from one value to the other, and
+// the property is told where it got to when the job is over. In a group that
+// is when the whole group is, as in Qt.
+export class DrawnJob extends AnimatorJob {
+  constructor(length, ease, actions) {
+    super(length, ease, actions);
+    this.at = null;
+    // Clockwise ends where it was told to, the other ways where they got to.
+    this.exact = true;
+  }
+
+  updateTime(time) {
+    if (this.state === STOPPED || !this.actions.length) return;
+    const t = this.length === 0 ? 1 : Math.min(1, Math.max(0, time / this.length));
+    const progress = this.ease(t);
+    this.at ??= new Array(this.actions.length);
+    this.actions.forEach((action, index) => {
+      const { object, key } = action.property;
+      if (!this.sourced && !this.fromDefined) {
+        const over = drawing(object)?.[key];
+        action.from = over === undefined ? action.property.get() : over;
+        action.kind = 0;
+      }
+      const value = progress === 1 && this.exact ? action.to : between(action, progress, this.rotate);
+      if (value === undefined) return;
+      this.at[index] = value;
+      if (object.$touch) draw(object, key, value);
+    });
+    this.sourced = true;
+  }
+
+  updateState(state) {
+    if (state !== STOPPED) return;
+    let top = this;
+    while (top.group) top = top.group;
+    if (top === this || top.state === STOPPED) this.settle();
+    else (top.waiting ??= new Set()).add(this);
+  }
+
+  settle() {
+    const at = this.at;
+    if (!at) return;
+    this.at = null;
+    this.actions.forEach((action, index) => {
+      const { object, key } = action.property;
+      if (object.$touch) draw(object, key, undefined);
+      if (at[index] !== undefined) put(action, at[index]);
+    });
   }
 }
 

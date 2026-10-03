@@ -17,6 +17,7 @@ import { createSignal, flush, onCleanup } from "solid-js";
 import { defineType, effect, located, QtObject, slot } from "../object.js";
 import { Size } from "../QtQml/values.js";
 import { Color, color } from "./color.js";
+import { drawn as shown } from "./drawn.js";
 import { Item } from "./Item.js";
 
 const sheet = new CSSStyleSheet();
@@ -367,7 +368,7 @@ export const ShaderEffect = defineType("ShaderEffect", Item, {
           }
           // The item's opacity is the page's to apply, as its parents' is.
           if (property === "qt_Opacity") return [1];
-          const value = self[property];
+          const value = shown(self, property);
           if (unit >= 0) return [drawable(value), value?.wrapMode ?? 0];
           return type === gl.FLOAT_MAT4 ? columns(value) : numbers(value, WIDTH[type] ?? 1);
         });

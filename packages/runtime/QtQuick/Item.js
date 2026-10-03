@@ -6,6 +6,7 @@
 // the result.
 import { runWithOwner } from "solid-js";
 import { contents, defineType, derived, effect, group, QtObject, settle } from "../object.js";
+import { drawing, drawn } from "./drawn.js";
 import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus } from "./focus.js";
 import { methods as geometry } from "./geometry.js";
 import { navigable } from "./Keys.js";
@@ -155,14 +156,16 @@ const ORIGINS = [
 // `transform` list from its last to its first, then scale and rotation about
 // the transform origin.
 function transform(self) {
-  let css = `translate(${self.x}px,${self.y}px)`;
+  // An animator draws the item somewhere its properties do not say yet.
+  const over = drawing(self);
+  let css = `translate(${over?.x ?? self.x}px,${over?.y ?? self.y}px)`;
   const list = self.transform;
   if (list) {
     const all = Array.isArray(list) ? list : [list];
     for (let index = all.length - 1; index >= 0; index--) css += ` ${all[index].$css()}`;
   }
-  const scale = self.scale;
-  const rotation = self.rotation;
+  const scale = over?.scale ?? self.scale;
+  const rotation = over?.rotation ?? self.rotation;
   if (scale !== 1 || rotation !== 0) {
     const [fx, fy] = ORIGINS[self.transformOrigin] ?? ORIGINS[4];
     const x = fx * self.width;
@@ -316,7 +319,7 @@ export const Item = defineType("Item", QtObject, {
       },
     );
     effect(
-      () => [self.visible, self.opacity, self.z, self.clip],
+      () => [self.visible, drawn(self, "opacity"), self.z, self.clip],
       ([visible, opacity, z, clip]) => {
         node.style.display = visible ? "" : "none";
         node.style.opacity = opacity === 1 ? "" : opacity;
