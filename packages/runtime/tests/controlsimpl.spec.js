@@ -31,9 +31,13 @@ test("the types of QtQuick.Controls.impl answer what Qt's do", async ({ page }) 
 
 test("the types of QtQuick.Controls.impl paint what Qt's do", async ({ page }) => {
   await ready(page);
-  const colours = await pixels(page, painted.map(([point]) => point));
-  const wrong = painted.flatMap(([point, colour], index) => (near(colours[index], colour) ? [] : [`${point}: ${colours[index]}, Qt ${colour}`]));
-  expect(wrong).toEqual([]);
+  // A tint is a mask of the picture, which the browser reads a moment after
+  // the picture itself.
+  await expect(async () => {
+    const colours = await pixels(page, painted.map(([point]) => point));
+    const wrong = painted.flatMap(([point, colour], index) => (near(colours[index], colour) ? [] : [`${point}: ${colours[index]}, Qt ${colour}`]));
+    expect(wrong).toEqual([]);
+  }).toPass({ timeout: 5000 });
 });
 
 // Whether there is a line under the text of the mnemonics at `x`: where it
