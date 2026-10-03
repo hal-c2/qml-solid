@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/qml_solid"]
+members = ["crates/qml_solid", "crates/qmltypes"]
 exclude = ["vendor"]
 
 [workspace.package]
