@@ -720,6 +720,14 @@ impl<'a, 's> Lower<'a, 's> {
         }
         self.urls.push(value.to_string());
         let name = format!("$url{}", self.urls.len());
+        // A shader is baked from its source when the program is built, as
+        // Qt's build does: the build has it, and no file need be there.
+        if value.ends_with(".qsb") {
+            let relative = value.starts_with("./") || value.starts_with("../");
+            let source = if relative { value.to_string() } else { format!("./{value}") };
+            self.module.push(b.import_default(&name, &source));
+            return b.id(&name);
+        }
         let url = b.new_(b.id("URL"), [b.string(value), b.import_meta_url()]);
         self.module.push(b.const_(&name, b.member(url, "href")));
         b.id(&name)

@@ -4,19 +4,32 @@ export { QtObject } from "../object.js";
 export { Component } from "../QtQml/Component.js";
 export { Locale } from "../QtQml/locale.js";
 export { Application } from "../QtQml/application.js";
+export { Accessible } from "./Accessible.js";
 export { AnimatedImage } from "./AnimatedImage.js";
 export { AnimatedSprite } from "./AnimatedSprite.js";
 export { Canvas } from "./Canvas.js";
+export { DelegateModel, DelegateModelGroup } from "./DelegateModel.js";
+export { Drag, DropArea } from "./Drag.js";
 export { Flickable } from "./Flickable.js";
 export { FocusScope } from "./FocusScope.js";
 export { Font } from "./font.js";
 export { FontLoader } from "./FontLoader.js";
 export { GridView } from "./GridView.js";
+export {
+  DragHandler,
+  HoverHandler,
+  PinchHandler,
+  PointerDevice,
+  PointerHandler,
+  TapHandler,
+  WheelHandler,
+} from "./handlers.js";
 export { BorderImage, Image } from "./Image.js";
 export { Instantiator } from "./Instantiator.js";
 export { Item } from "./Item.js";
 export { KeyNavigation, Keys, Shortcut } from "./Keys.js";
 export { StandardKey } from "./keycodes.js";
+export { LayoutMirroring } from "./LayoutMirroring.js";
 export { ListView } from "./ListView.js";
 export { Loader } from "./Loader.js";
 export { ListElement, ListModel, ObjectModel } from "./model.js";
@@ -32,6 +45,7 @@ export { ItemSelectionModel } from "./selection.js";
 export { MouseArea } from "./MouseArea.js";
 export { Column, Flow, Grid, Positioner, Row } from "./positioners.js";
 export { ColorGroup, Palette, SystemPalette } from "./Palette.js";
+export { Pinch, PinchArea } from "./PinchArea.js";
 import "./palettes.js";
 export { SafeArea } from "./SafeArea.js";
 export {
@@ -59,7 +73,9 @@ export { TextEdit, TextInput } from "./TextInput.js";
 export { FontMetrics, TextMetrics } from "./TextMetrics.js";
 export { Rotation, Scale, Translate } from "./transforms.js";
 export { DoubleValidator, IntValidator, RegularExpressionValidator } from "./validators.js";
+export { GridMesh, ShaderEffect, ShaderEffectSource } from "./ShaderEffect.js";
 export { Screen, Window } from "./Window.js";
+export { WindowContainer } from "./WindowContainer.js";
 export { Binding } from "./Binding.js";
 export { Connections } from "./Connections.js";
 export {
@@ -79,6 +95,15 @@ export {
   SmoothedAnimation,
   SpringAnimation,
 } from "./animation/PropertyAnimation.js";
+export {
+  Animator,
+  OpacityAnimator,
+  RotationAnimator,
+  ScaleAnimator,
+  UniformAnimator,
+  XAnimator,
+  YAnimator,
+} from "./animation/Animator.js";
 export { Behavior } from "./animation/Behavior.js";
 export { Easing } from "./animation/easing.js";
 export { FrameAnimation, Timer } from "./animation/Timer.js";

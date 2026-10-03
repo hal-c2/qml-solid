@@ -19,6 +19,7 @@ export default defineConfig({
           : importer?.includes("-said")
             ? { Controls: { Style: "Oak" } }
             : undefined,
+      standins: [join(import.meta.dirname, "standins")],
     }),
   ],
   resolve: { dedupe: ["solid-js", "@solidjs/web", "@solidjs/signals"] },

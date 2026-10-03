@@ -57,7 +57,12 @@ async function show(example) {
   try {
     const module = await example.load();
     if (typeof module.default !== "function") throw new Error(`${example.entry} did not compile to a component`);
-    mount(module.default, stage);
+    // What the example's main.cpp does: it gives the entry file properties,
+    // those the manifest has and those what stands in for main.cpp makes,
+    // and may do something with what is loaded.
+    const main = await example.main?.();
+    const { object } = mount((given) => module.default({ ...given, ...example.qt.properties, ...main?.properties?.() }), stage);
+    main?.loaded?.(object);
     if (state.status === "loading") state.status = "rendered";
   } catch (error) {
     fail(error);

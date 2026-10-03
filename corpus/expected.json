@@ -16,6 +16,7 @@
     "samegame": {
       "pixels": 0.9,
       "content": 0.75
-    }
+    },
+    "windowembedding": {}
   }
 }

@@ -6,9 +6,11 @@
 // the result.
 import { runWithOwner } from "solid-js";
 import { contents, defineType, derived, effect, group, QtObject, settle } from "../object.js";
+import { drawing, drawn } from "./drawn.js";
 import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus } from "./focus.js";
 import { methods as geometry } from "./geometry.js";
 import { navigable } from "./Keys.js";
+import { mirrored } from "./LayoutMirroring.js";
 import { stateful } from "./states.js";
 import "./style.js";
 
@@ -45,21 +47,48 @@ function position(self, { item, edge }) {
 const left = (self, item) => (item === self.parent ? 0 : item.x);
 const top = (self, item) => (item === self.parent ? 0 : item.y);
 
+// A mirrored item's left is what it said of its right, and the line it is
+// anchored to there is the other item's opposite one.
+const OPPOSITE = { left: "right", right: "left", horizontalCenter: "horizontalCenter" };
+const opposite = (line) => line && { item: line.item, edge: OPPOSITE[line.edge] ?? line.edge };
+
+function across(self) {
+  const anchors = self.anchors;
+  if (!mirrored(self)) {
+    return {
+      left: anchors.left,
+      right: anchors.right,
+      center: anchors.horizontalCenter,
+      leftMargin: anchors.leftMargin,
+      rightMargin: anchors.rightMargin,
+      offset: anchors.horizontalCenterOffset,
+    };
+  }
+  return {
+    left: opposite(anchors.right),
+    right: opposite(anchors.left),
+    center: opposite(anchors.horizontalCenter),
+    leftMargin: anchors.rightMargin,
+    rightMargin: anchors.leftMargin,
+    offset: -anchors.horizontalCenterOffset,
+  };
+}
+
 const resolve = {
   x(self, own) {
     const anchors = self.anchors;
     const fill = anchors.fill;
-    if (fill) return left(self, fill) + anchors.leftMargin;
+    if (fill) return left(self, fill) + (mirrored(self) ? anchors.rightMargin : anchors.leftMargin);
     const centerIn = anchors.centerIn;
     if (centerIn) {
-      return left(self, centerIn) + (centerIn.width - self.width) / 2 + anchors.horizontalCenterOffset;
+      const offset = anchors.horizontalCenterOffset;
+      return left(self, centerIn) + (centerIn.width - self.width) / 2 + (mirrored(self) ? -offset : offset);
     }
-    if (anchors.left) return position(self, anchors.left) + anchors.leftMargin;
-    if (anchors.right) return position(self, anchors.right) - anchors.rightMargin - self.width;
-    if (anchors.horizontalCenter) {
-      return position(self, anchors.horizontalCenter) - self.width / 2 + anchors.horizontalCenterOffset;
-    }
-    return own();
+    if (!anchors.left && !anchors.right && !anchors.horizontalCenter) return own();
+    const lines = across(self);
+    if (lines.left) return position(self, lines.left) + lines.leftMargin;
+    if (lines.right) return position(self, lines.right) - lines.rightMargin - self.width;
+    return position(self, lines.center) - self.width / 2 + lines.offset;
   },
   y(self, own) {
     const anchors = self.anchors;
@@ -84,9 +113,8 @@ const resolve = {
     const fill = anchors.fill;
     if (fill) return fill.width - anchors.leftMargin - anchors.rightMargin;
     if (anchors.left && anchors.right) {
-      return (
-        position(self, anchors.right) - anchors.rightMargin - position(self, anchors.left) - anchors.leftMargin
-      );
+      const lines = across(self);
+      return position(self, lines.right) - lines.rightMargin - position(self, lines.left) - lines.leftMargin;
     }
     return own();
   },
@@ -128,14 +156,16 @@ const ORIGINS = [
 // `transform` list from its last to its first, then scale and rotation about
 // the transform origin.
 function transform(self) {
-  let css = `translate(${self.x}px,${self.y}px)`;
+  // An animator draws the item somewhere its properties do not say yet.
+  const over = drawing(self);
+  let css = `translate(${over?.x ?? self.x}px,${over?.y ?? self.y}px)`;
   const list = self.transform;
   if (list) {
     const all = Array.isArray(list) ? list : [list];
     for (let index = all.length - 1; index >= 0; index--) css += ` ${all[index].$css()}`;
   }
-  const scale = self.scale;
-  const rotation = self.rotation;
+  const scale = over?.scale ?? self.scale;
+  const rotation = over?.rotation ?? self.rotation;
   if (scale !== 1 || rotation !== 0) {
     const [fx, fy] = ORIGINS[self.transformOrigin] ?? ORIGINS[4];
     const x = fx * self.width;
@@ -289,7 +319,7 @@ export const Item = defineType("Item", QtObject, {
       },
     );
     effect(
-      () => [self.visible, self.opacity, self.z, self.clip],
+      () => [self.visible, drawn(self, "opacity"), self.z, self.clip],
       ([visible, opacity, z, clip]) => {
         node.style.display = visible ? "" : "none";
         node.style.opacity = opacity === 1 ? "" : opacity;

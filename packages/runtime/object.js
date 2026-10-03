@@ -118,7 +118,9 @@ class Slot {
     this.assigned = false;
     this.value = undefined;
     // Set by whatever lays the object out: a positioner, a layout, a view.
+    // An assignment is over it until it is laid out somewhere else.
     this.placed = undefined;
+    this.over = false;
     // Set by a Behavior: what is shown while the value it follows moves.
     this.shown = null;
     // Most properties are never written, so a slot has no signal of its own
@@ -162,13 +164,20 @@ class Slot {
     return this.shown ? this.shown() : this.target();
   }
 
+  // What the property was given, before its type has its say.
+  asked() {
+    if (this.version) this.version();
+    else this.self.$track();
+    return this.own();
+  }
+
   // The value the property has, whatever is animating towards it.
   target() {
     return this.resolve ? this.resolve(this.self, this.given$) : this.own();
   }
 
   own() {
-    if (this.placed !== undefined) return this.placed;
+    if (this.placed !== undefined && !this.over) return this.placed;
     if (this.assigned) return this.value;
     let value = this.bound ? this.bound() : this.given;
     if (value === undefined && this.whole) value = slot(this.self, this.whole).get()?.[this.member];
@@ -203,7 +212,13 @@ class Slot {
   // which an animation makes every frame.
   write(value) {
     if (typeof value === "function" && value[BINDING]) return this.rebind(value);
-    if (this.assigned && Object.is(this.value, value)) return false;
+    // Where an object was put, it is until what laid it out puts it
+    // somewhere else: a row that is dragged stays where it was dragged to
+    // until its view lays its rows out again, as in Qt. (Qt puts every row
+    // back then, and this only those that are to be elsewhere.) How big it
+    // is is not its own to say: a layout that sized it sizes it again.
+    if (this.placed !== undefined && !this.over && (this.key === "x" || this.key === "y")) this.over = true;
+    else if (this.assigned && Object.is(this.value, value)) return false;
     this.assigned = true;
     this.value = value;
     this.changed();
@@ -231,6 +246,7 @@ class Slot {
   place(value) {
     if (Object.is(this.placed, value)) return;
     this.placed = value;
+    this.over = false;
     this.changed();
   }
 
@@ -464,8 +480,15 @@ function derive(Type, declared) {
 function defineAlias(self, name, [target, ...path]) {
   const last = path.at(-1);
   const holder = () => path.slice(0, -1).reduce((object, member) => object?.[member], target);
+  // What the instance gives the alias is the target's once everything is
+  // made. A binding read before that reads what was given, as in Qt, where
+  // none is read until then.
+  const given = path.length > 0 && name in self.$props;
+  const [early, setEarly] = given ? createSignal(true, { ownedWrite: true }) : [];
   Object.defineProperty(self, name, {
-    get: path.length ? () => holder()?.[last] : () => (target.$type ? target : (target.$track(), null)),
+    get: path.length
+      ? () => (early?.() ? self.$props[name] : holder()?.[last])
+      : () => (target.$type ? target : (target.$track(), null)),
     set(value) {
       const object = holder();
       if (path.length && object) object[last] = value;
@@ -473,10 +496,11 @@ function defineAlias(self, name, [target, ...path]) {
     enumerable: true,
     configurable: true,
   });
-  if (!path.length || !(name in self.$props)) return;
+  if (!given) return;
   // What the instance binds to the alias is the target's binding.
   const key = path.join("$");
   whenComplete(() => {
+    setEarly(false);
     const aliased = target.$type && slot(target, key);
     if (aliased) return aliased.bind(self.$props, name);
     // An alias of an alias, or of an object made later: assigned instead.

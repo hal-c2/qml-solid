@@ -8,11 +8,12 @@
 //
 // A Window is not an item. Its items are the children of its `contentItem`,
 // which is what `parent` is for them (as in Qt).
-import { createSignal, flush, onCleanup, runWithOwner } from "solid-js";
+import { createSignal, flush, onCleanup, runWithOwner, untrack } from "solid-js";
 import { contents, defineType, derived, effect, inside, onChange, QtObject, slot } from "../object.js";
 import { application, listen, singleton } from "../QtQml/application.js";
 import { enums } from "../QtQml/namespace.js";
 import { colorValue, css } from "./color.js";
+import { toScene } from "./geometry.js";
 import { Item } from "./Item.js";
 
 const sheet = new CSSStyleSheet();
@@ -141,6 +142,7 @@ function state(self) {
 
 // Whether the window takes all the room there is rather than its own size.
 function fills(self) {
+  if (self.$heldBy()) return false;
   if (self.$fill()) return true;
   const shown = state(self);
   return shown === Maximized || shown === FullScreen;
@@ -195,12 +197,21 @@ export const Window = defineType("Window", QtObject, {
   enums: { Hidden, AutomaticVisibility, Windowed, Minimized, Maximized, FullScreen },
   resolve: {
     color: colorValue,
+    // A window an item holds (WindowContainer) is where the item is and of
+    // its size, and shows when the item does, whatever it says itself.
+    x: (self, own) => (self.$heldBy() ? toScene(self.$heldBy())[4] : own()),
+    y: (self, own) => (self.$heldBy() ? toScene(self.$heldBy())[5] : own()),
+    visible: (self, own) => self.$heldBy()?.visible ?? own(),
     // The room there is, once the window is somewhere and fills it: until
     // then, and when it does not, the size it was given.
     width: (self, own) =>
-      (fills(self) ? self.$roomWidth() : undefined) ?? clamp(own(), self.minimumWidth, self.maximumWidth),
+      self.$heldBy()?.width ??
+      (fills(self) ? self.$roomWidth() : undefined) ??
+      clamp(own(), self.minimumWidth, self.maximumWidth),
     height: (self, own) =>
-      (fills(self) ? self.$roomHeight() : undefined) ?? clamp(own(), self.minimumHeight, self.maximumHeight),
+      self.$heldBy()?.height ??
+      (fills(self) ? self.$roomHeight() : undefined) ??
+      clamp(own(), self.minimumHeight, self.maximumHeight),
   },
   methods: {
     get visibility() {
@@ -256,6 +267,29 @@ export const Window = defineType("Window", QtObject, {
       window.focus();
       this.raise();
     },
+    // Called by a WindowContainer that takes the window, and with null by
+    // one that lets it go: it is then a window of its own again, shown if
+    // it was.
+    $hold(holder) {
+      const element = this.$element;
+      const shown = untrack(() => this.visible);
+      this.$setHeldBy(holder);
+      if (holder) holder.$node.append(element);
+      else {
+        slot(this, "visible").write(shown);
+        const scene = top(this).$node;
+        if (scene && scene !== element) scene.append(element);
+        else element.remove();
+      }
+    },
+    // The size the window asks for, held or not.
+    $asked() {
+      const side = (name, low, high) => clamp(slot(this, name).asked(), low, high);
+      return [
+        side("width", this.minimumWidth, this.maximumWidth),
+        side("height", this.minimumHeight, this.maximumHeight),
+      ];
+    },
     // Called by `mount` for the object it mounted: the window is the scene.
     // With `{ fill: false }` the scene takes the window's size instead of
     // the window the scene's.
@@ -287,6 +321,7 @@ export const Window = defineType("Window", QtObject, {
 
     [self.$state, self.$setState] = createSignal(undefined, WRITABLE);
     [self.$fill, self.$setFill] = createSignal(root, WRITABLE);
+    [self.$heldBy, self.$setHeldBy] = createSignal(null, WRITABLE);
     [self.$roomWidth, self.$setRoomWidth] = createSignal(undefined, WRITABLE);
     [self.$roomHeight, self.$setRoomHeight] = createSignal(undefined, WRITABLE);
     [self.$data, self.$setData] = createSignal([], WRITABLE);
@@ -315,7 +350,7 @@ export const Window = defineType("Window", QtObject, {
 
     const style = element.style;
     effect(
-      () => (fills(self) ? null : [self.x, self.y, self.width, self.height]),
+      () => (fills(self) ? null : [self.x, self.y, self.width, self.height, Boolean(self.$heldBy())]),
       (box) => {
         if (!box) {
           style.left = style.top = "0";
@@ -323,10 +358,11 @@ export const Window = defineType("Window", QtObject, {
           self.$measure();
           return;
         }
-        const [x, y, width, height] = box;
-        // Where the page is on the screen is not the page's to say.
-        style.left = root ? "0" : `${x}px`;
-        style.top = root ? "0" : `${y}px`;
+        const [x, y, width, height, held] = box;
+        // Where the page is on the screen is not the page's to say, and a
+        // held window is where its holder is.
+        style.left = root || held ? "0" : `${x}px`;
+        style.top = root || held ? "0" : `${y}px`;
         style.width = `${width}px`;
         style.height = `${height}px`;
         // A scene that takes its window's size is as large as the window.
@@ -338,10 +374,11 @@ export const Window = defineType("Window", QtObject, {
       },
     );
     effect(
-      () => [self.visible && state(self) !== Minimized, css(self.color), self.opacity],
-      ([shown, background, opacity]) => {
+      () => [self.visible && state(self) !== Minimized, css(self.color), self.opacity, Boolean(self.$heldBy())],
+      ([shown, background, opacity, held]) => {
         // Said outright for a floating window: it shows over a hidden one.
-        style.visibility = shown ? (root ? "" : "visible") : "hidden";
+        style.visibility = shown ? (root || held ? "" : "visible") : "hidden";
+        element.classList.toggle("qq-layer", !root && !held);
         style.background = background;
         style.opacity = opacity === 1 ? "" : opacity;
       },

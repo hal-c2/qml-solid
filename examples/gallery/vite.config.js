@@ -25,7 +25,8 @@ function examples() {
         const data = JSON.stringify({ id, dir, entry, window, root, rootType, imports, cpp, qt, notes });
         if (example.reference) pictures.push(`import reference${index} from ${JSON.stringify(example.reference + "?url")};`);
         const reference = example.reference ? `reference${index}` : "null";
-        return `{ ...${data}, reference: ${reference}, load: () => import(${JSON.stringify(example.entryFile)}) }`;
+        const main = example.main ? `() => import(${JSON.stringify(example.main)})` : "null";
+        return `{ ...${data}, reference: ${reference}, main: ${main}, load: () => import(${JSON.stringify(example.entryFile)}) }`;
       });
       return `${pictures.join("\n")}\nexport default [\n${entries.join(",\n")}\n];\n`;
     },
@@ -53,6 +54,15 @@ function controls(importer) {
   return conf && existsSync(conf) ? conf : undefined;
 }
 
+// The QML that stands in for the C++ of the example a file is of, or is
+// itself one of the files that do.
+function standins(file) {
+  const example = readManifest().find(
+    ({ directory, standins }) => standins && (file.startsWith(directory + sep) || file.startsWith(standins + sep)),
+  );
+  return example ? [example.standins] : [];
+}
+
 // The plugin stops the build at a file `qmlc` does not take. Here that is the
 // usual case and must not stop anything: the file becomes a module that
 // throws the compiler's message when it is imported, so the example that
@@ -73,7 +83,7 @@ function tolerant(plugin) {
 
 export default defineConfig({
   base: "./",
-  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), style, controls }))],
+  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), style, controls, standins }))],
   resolve: {
     // Qt's examples have no app behind them: nothing to find here.
     alias: { "qml-solid/host": path("./host.js") },

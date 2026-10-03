@@ -18,11 +18,17 @@ export function readManifest() {
   return manifest.examples.map((example) => {
     const directory = join(corpus, manifest.root, example.dir);
     const reference = join(references, `${example.id}.png`);
+    // What stands in for the example's C++: QML for the types it registers,
+    // and a `main.js` for what its main.cpp does: `properties()` are what
+    // it gives the entry file, `loaded(root)` what it does once that is made.
+    const standins = join(corpus, "standins", example.id);
     return {
       ...example,
       directory,
       entryFile: join(directory, example.entry),
       reference: existsSync(reference) ? reference : null,
+      standins: existsSync(standins) ? standins : null,
+      main: existsSync(join(standins, "main.js")) ? join(standins, "main.js") : null,
       capturedAt: index[example.id]?.capturedAt ?? null,
     };
   });
