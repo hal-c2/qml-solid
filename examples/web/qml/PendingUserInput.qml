@@ -1,0 +1,1 @@
+../../../crates/qml_solid/tests/fixtures/tui/PendingUserInput.qml
