@@ -365,13 +365,13 @@ function ungrab(point, cancelled) {
   if (cancelled) for (const one of filters) one.$grab?.(CancelGrabPassive, point);
 }
 
-// What the mouse is over is told so, and what it no longer is over after
-// that. Something that hovers hides what is under it from the mouse, but not
-// what it is inside of.
+// What the mouse is over is told so, topmost first, and what it no longer is
+// over after that, in the order it came over them: Qt's. Something that
+// hovers hides what is under it from the mouse, but not what it is inside of.
+const over = [];
+
 function hover(point, hits) {
-  const was = point.hovered;
-  const now = point.spare;
-  now.length = 0;
+  over.length = 0;
   let blocker = null;
   for (const item of hits) {
     if (blocker && !within(blocker, item)) continue;
@@ -379,19 +379,26 @@ function hover(point, hits) {
     if (handlers) {
       for (const handler of handlers) {
         if (!handler.$hover || !handler.$hovers(point)) continue;
-        now.push(handler);
+        over.push(handler);
         if (handler.blocking) blocker = item;
       }
     }
     if (item.$hover && item.$hovers(point)) {
-      now.push(item);
+      over.push(item);
       blocker = item;
     }
   }
-  point.hovered = now;
-  point.spare = was;
-  for (let index = 0; index < now.length; index++) now[index].$hover(point, true);
-  for (let index = 0; index < was.length; index++) if (!now.includes(was[index])) was[index].$hover(point, false);
+  const hovered = point.hovered;
+  const left = point.spare;
+  left.length = 0;
+  for (let index = hovered.length - 1; index >= 0; index--) {
+    if (over.includes(hovered[index])) continue;
+    left.unshift(hovered[index]);
+    hovered.splice(index, 1);
+  }
+  for (let index = 0; index < over.length; index++) if (!hovered.includes(over[index])) hovered.push(over[index]);
+  for (let index = 0; index < over.length; index++) over[index].$hover(point, true);
+  for (let index = 0; index < left.length; index++) left[index].$hover(point, false);
 }
 
 // The last press of the first pointer: whether what the page would do with
