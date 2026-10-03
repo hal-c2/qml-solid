@@ -21,7 +21,8 @@ function natural(self, name) {
 // once everything is.
 const contained = {
   setup(self, props) {
-    if ("contentItem" in props) return;
+    // A ScrollView's is a Flickable, which it makes itself.
+    if ("contentItem" in props || self.$scrolled) return;
     self.$holder = inside(self, () => Item({}));
     slot(self, "contentItem").provide(self.$holder);
   },

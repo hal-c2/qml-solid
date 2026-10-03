@@ -78,6 +78,145 @@ test("a StackView that was given no transition leaves what is popped where it is
 
 // As Qt's `wheelEvent` does: a notch down is the next tab, one up the one
 // before, and a bar that is not `wheelEnabled` leaves the wheel alone.
+test("scroll bars and indicators follow a Flickable, which goes where a bar is put", async ({ page }) => {
+  await open(page, "scrollbars");
+  await stages(page, SCROLLBARS);
+});
+
+// Qt was not asked what a mouse does: what is expected of a press, a move and
+// a release is what `qquickscrollbar.cpp` does with them.
+test("a ScrollBar is dragged by its handle, and shows while the mouse is on it", async ({ page }) => {
+  await open(page, "scrollbars");
+  const bar = (name) =>
+    page.evaluate((name) => {
+      const { position, pressed, hovered, active } = window.scene[name];
+      return [Math.round(position * 1000) / 1000, pressed, hovered, active];
+    }, name);
+  await page.mouse.move(307, 30);
+  expect(await bar("free")).toEqual([0.2, false, true, true]);
+  // The handle is held where it was pressed, and stops at the ends.
+  await page.mouse.down();
+  expect(await bar("free")).toEqual([0.2, true, true, true]);
+  await page.mouse.move(307, 50);
+  expect(await bar("free")).toEqual([0.4, true, true, true]);
+  await page.mouse.move(250, 250);
+  expect(await bar("free")).toEqual([0.7, true, true, true]);
+  await page.mouse.move(307, 62);
+  await page.mouse.up();
+  expect(await bar("free")).toEqual([0.52, false, true, true]);
+  // A press beside the handle brings its middle there.
+  await page.mouse.move(307, 12);
+  await page.mouse.down();
+  expect(await bar("free")).toEqual([0, true, true, true]);
+  await page.mouse.move(307, 42);
+  expect(await bar("free")).toEqual([0.25, true, true, true]);
+  await page.mouse.up();
+  await page.mouse.move(250, 250);
+  expect(await bar("free")).toEqual([0.25, false, false, false]);
+
+  // One of a Flickable moves what is in it, and stays where it is itself.
+  await page.mouse.move(195, 10);
+  await page.mouse.down();
+  await page.mouse.move(195, 40);
+  expect(await bar("vbar")).toEqual([0.3, true, true, true]);
+  const flick = () =>
+    page.evaluate(() => {
+      const { flick, vdot, vbar } = window.scene;
+      const { x, y, width, height } = vbar.$node.getBoundingClientRect();
+      return [Math.round(flick.contentY * 1000) / 1000, Math.round(vdot.position * 1000) / 1000, flick.$viewport.scrollTop, x, y, width, height];
+    });
+  expect(await flick()).toEqual([150, 0.3, 150, 190, 0, 10, 100]);
+  await page.mouse.up();
+  await page.mouse.move(250, 250);
+  await page.waitForFunction(() => !window.scene.vbar.active);
+  expect(await bar("vbar")).toEqual([0.3, false, false, false]);
+
+  // The wheel moves the Flickable, and its bars and indicators show meanwhile.
+  const shown = await page.evaluate(() => window.scene.shown);
+  await page.mouse.move(100, 50);
+  await page.mouse.wheel(0, 100);
+  await page.waitForFunction(() => window.scene.flick.contentY === 250 && !window.scene.flick.moving);
+  expect(await bar("vbar")).toEqual([0.5, false, false, false]);
+  expect(await page.evaluate(() => [window.scene.shown, window.scene.vdot.active])).toEqual([shown + 11, false]);
+
+  // One that is not interactive is not there for the mouse.
+  await page.evaluate(() => (window.scene.free.interactive = false));
+  await page.mouse.move(307, 30);
+  await page.mouse.down();
+  await page.mouse.move(307, 60);
+  expect(await bar("free")).toEqual([0.25, false, false, false]);
+  await page.mouse.up();
+});
+
+test("a ScrollView's bars scroll it, by the mouse and by the arrow keys, and a finger makes indicators of them", async ({ page }) => {
+  await open(page, "scrollbars");
+  const at = (name) =>
+    page.evaluate((name) => {
+      const view = window.scene[name];
+      const round = (value) => Math.round(value * 1000) / 1000;
+      const { down, across, contentItem } = view;
+      return [round(contentItem.contentX), round(contentItem.contentY), round(across.position), round(down.position)];
+    }, name);
+  await page.evaluate(() => window.scene.view.forceActiveFocus());
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowRight");
+  expect(await at("view")).toEqual([30, 76, 0.1, 0.2]);
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowLeft");
+  expect(await at("view")).toEqual([0, 38, 0, 0.1]);
+
+  // The bar is over the Flickable: the press is the bar's.
+  await page.mouse.move(194, 130);
+  await page.mouse.down();
+  await page.mouse.move(194, 166);
+  expect(await at("view")).toEqual([0, 190, 0, 0.5]);
+  expect(await page.evaluate(() => [window.scene.view.down.pressed, window.scene.view.across.active])).toEqual([true, true]);
+  await page.mouse.up();
+  await page.mouse.move(350, 250);
+  await page.waitForFunction(() => !window.scene.view.down.active);
+
+  const interactive = () =>
+    page.evaluate(() => {
+      const { down, across } = window.scene.view;
+      return [down.interactive, across.interactive, down.$node.style.pointerEvents, across.$node.style.pointerEvents];
+    });
+  const touch = await fingers(page);
+  await touch("touchStart", [1, 100, 150]);
+  await touch("touchEnd");
+  expect(await interactive()).toEqual([false, false, "none", "none"]);
+  await page.mouse.click(100, 150);
+  expect(await interactive()).toEqual([true, true, "", ""]);
+
+  // A view that does not take the wheel keeps it from its Flickable.
+  await page.mouse.move(50, 240);
+  await page.mouse.wheel(0, 100);
+  await page.waitForFunction(() => window.scene.inner.contentY === 100 && !window.scene.given.down.active);
+  expect(await at("given")).toEqual([0, 100, 0, 0.286]);
+  await page.evaluate(() => (window.scene.given.wheelEnabled = false));
+  await page.mouse.wheel(0, 100);
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  expect(await at("given")).toEqual([0, 100, 0, 0.286]);
+});
+
+// Fingers, as the device sends them: `touchStart` says where they are and
+// `touchEnd` lifts them. Each waits for the page to have had its events.
+async function fingers(page) {
+  const device = await page.context().newCDPSession(page);
+  await page.evaluate(() => {
+    window.touched = 0;
+    for (const type of ["pointerdown", "pointerup", "pointercancel"]) {
+      document.addEventListener(type, (event) => void (window.touched += event.pointerType === "touch"));
+    }
+  });
+  let expected = 0;
+  return async (type, ...points) => {
+    expected += 1;
+    await device.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([id, x, y]) => ({ id, x, y })) });
+    await page.waitForFunction((expected) => window.touched >= expected, expected);
+  };
+}
+
 test("the wheel steps through the tabs of a TabBar that takes it", async ({ page }) => {
   await open(page, "tabbar");
   const current = (name) => page.evaluate((name) => window.objects[name].currentIndex, name);
@@ -724,5 +863,314 @@ const STACKBARE = [
     [1, "page", 100, 50, true, true, 3, 0, 1],
     [0, true, false, true, 0, 0],
     ["current null", "a removed", "c removed", "depth 0", "empty true", "inline removed"],
+  ],
+];
+
+const SCROLLBARS = [
+  [
+    [0.3, 0.2, 0.3, 0.2, 2, false, true, false, 2, 22, 10, 30, false, true, 0, 0, 0, 0],
+    [0.25, 0.5, 0.25, 0.5, 1, true, false, false, 52, 2, 25, 10, 0],
+    [0, 0, 5, 1],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0.3, 0.2, 0.5, 0.1429, 2, false, true, false, 2, 16.2857, 10, 50, false, true, 0, 0, 0, 0.5],
+    [0.25, 0.5, 0.5, 0.3333, 1, true, false, false, 35.3333, 2, 50, 10, 0.5],
+    [0, 0, 5, 1],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0.3, 0.9, 0.5, 0.5, 2, false, true, false, 2, 52, 10, 50, false, true, 0, 0, 0, 0.5],
+    [0.25, 0.9, 0.5, 0.5, 1, true, false, false, 52, 2, 50, 10, 0.5],
+    [0, 0, 5, 1],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0.5, 0.5, 0.5, 0.5, 2, false, true, false, 2, 52, 10, 50, false, true, 0, 0, 0, 0.5],
+    [0.6, 0.4, 0.6, 0.4, 1, true, false, false, 42, 2, 60, 10, 0.5],
+    [0, 0, 5, 1],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0.5, 0.5, 0.5, 0.5, 2, false, true, false, 2, 52, 10, 50, false, true, 0, 0, 0, 0],
+    [0.6, 0.4, 0.6, 0.4, 1, true, false, false, 42, 2, 60, 10, 0.5],
+    [0, 0, 5, 1],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0.5, 0.25, 0.5, 0.25, 1, true, false, false, 4.5, 2, 5, 100, false, true, 0.25, 0, 0, 0],
+    [0.6, 0.4, 0.6, 0.4, 1, true, false, false, 42, 2, 60, 10, 0.5],
+    [0, 0, 5, 1],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [1, 0, 1, 0, 1, true, false, false, 2, 2, 10, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [0, 0, 5, 1],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [0, 0, 5, 1],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0, 0.2, 0, 2, false, true, false, 0, 0, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0, 0.5, 0, 1, true, false, false, 0, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [50, 100, 5, 1],
+    [0.2, 0.2, 0.2, 0.2, 2, false, true, false, 0, 20, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0.125, 0.5, 0.125, 1, true, false, false, 25, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0.2, 0.2, 0.2, 2, false, true, false, 0, 20, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0.125, 0.5, 0.125, 1, true, false, false, 25, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [90, 250, 5, 1],
+    [0.2, 0.5, 0.2, 0.5, 2, false, true, false, 0, 50, 10, 20, 190, 0, 10, 100, true],
+    [0.5, 0.225, 0.5, 0.225, 1, true, false, false, 45, 0, 100, 8, 0, 92, 200, 8, true],
+    [0.2, 0.5, 0.2, 0.5, 2, false, true, false, 0, 50, 4, 20, 196, 0, 4, 100, true],
+    [0.5, 0.225, 0.5, 0.225, 1, true, false, false, 45, 0, 100, 4, 0, 96, 200, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [90, 250, 5, 1],
+    [0.3, 0.5, 0.3, 0.5, 2, false, true, false, 0, 75, 10, 45, 290, 0, 10, 150, true],
+    [0.75, 0.225, 0.75, 0.225, 1, true, false, false, 67.5, 0, 225, 8, 0, 142, 300, 8, true],
+    [0.3, 0.5, 0.3, 0.5, 2, false, true, false, 0, 75, 4, 45, 296, 0, 4, 150, true],
+    [0.75, 0.225, 0.75, 0.225, 1, true, false, false, 67.5, 0, 225, 4, 0, 146, 300, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [90, 150, 5, 1],
+    [0.5, 0.5, 0.5, 0.5, 2, false, true, false, 0, 75, 10, 75, 40, 0, 10, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 12, 0, 138, 250, 12, true],
+    [0.5, 0.5, 0.5, 0.5, 2, false, true, false, 0, 75, 4, 75, 246, 0, 4, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 4, 0, 146, 250, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [90, 50, 5, 1],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 10, 112.5, 40, 0, 10, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 12, 0, 138, 250, 12, true],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 4, 112.5, 246, 0, 4, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 4, 0, 146, 250, 4, true],
+    [false, true, 300, 380, 0, 0, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0, 0.2368, 0, 2, false, true, false, 0, 0, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0, 0.6333, 0, 1, true, false, false, 0, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 0, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0, 0.1714, 0, 2, false, true, false, 0, 0, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [90, 50, 5, 1],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 10, 112.5, 40, 0, 10, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 12, 0, 138, 250, 12, true],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 4, 112.5, 246, 0, 4, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 4, 0, 146, 250, 4, true],
+    [false, true, 300, 380, 30, 95, 300, 380, 300, 380, 1, 12, 9, 5, 5, 190, 90, true, true],
+    [0.2368, 0.25, 0.2368, 0.25, 2, false, true, false, 0, 22.5, 12, 21.3158, 188, 5, 12, 90, true],
+    [0.6333, 0.1, 0.6333, 0.1, 1, true, false, false, 19, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 175, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0.5, 0.1714, 0.5, 2, false, true, false, 0, 30, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [90, 50, 5, 1],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 10, 112.5, 40, 0, 10, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 12, 0, 138, 250, 12, true],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 4, 112.5, 246, 0, 4, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 4, 0, 146, 250, 4, true],
+    [false, true, 300, 760, 30, 95, 300, 760, 300, 760, 1, 0, 0, 5, 5, 190, 90, true, true],
+    [0.1184, 0.125, 0.1184, 0.125, 2, false, true, false, 0, 11.25, 12, 10.6579, 188, 5, 12, 90, true],
+    [0.6333, 0.1, 0.6333, 0.1, 1, true, false, false, 19, 0, 120.3333, 9, 5, 91, 190, 9, true],
+    [true, false, 250, 350, 0, 175, 250, 350, 250, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0.5, 0.1714, 0.5, 2, false, true, false, 0, 30, 12, 10.2857, 138, 0, 12, 60],
+    [0.6, 0, 0.6, 0, 1, true, false, false, 0, 0, 90, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [90, 50, 5, 1],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 10, 112.5, 40, 0, 10, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 12, 0, 138, 250, 12, true],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 4, 112.5, 246, 0, 4, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 4, 0, 146, 250, 4, true],
+    [false, true, 600, 760, 30, 95, 600, 760, 600, 760, 1, 12, 0, 5, 5, 190, 90, true, true],
+    [0.1184, 0.125, 0.1184, 0.125, 2, false, true, false, 0, 11.25, 12, 10.6579, 188, 5, 12, 90, true],
+    [0.3167, 0.05, 0.3167, 0.05, 1, true, false, false, 9.5, 0, 60.1667, 9, 5, 91, 190, 9, true],
+    [true, false, 400, 350, 0, 29, 400, 350, 400, 350, 1, 12, 9, 0, 0, 150, 60, true, true],
+    [0.1714, 0.0829, 0.1714, 0.0829, 2, false, true, false, 0, 4.9714, 12, 10.2857, 138, 0, 12, 60],
+    [0.375, 0, 0.375, 0, 1, true, false, false, 0, 0, 56.25, 9, 0, 51, 150, 9],
+    [false, true, 320, 80, 0, 0, 320, 80, 320, 80, 2, 12, 9, 0, 0, 100, 80],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 80, 0.3125, 0, 0.3125, 0, 1, true, false, false, 0, 0, 31.25, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
+  ],
+  [
+    [0, 0.4, 0, 0.4, 1, true, false, true, 6, 2, 0, 100, false, true, 0.25, 0, 0, 0],
+    [2, -0.2, 1.2, 0, 1, true, false, false, 2, 2, 120, 10, 0.5],
+    [90, 50, 5, 1],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 10, 112.5, 40, 0, 10, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 12, 0, 138, 250, 12, true],
+    [0.75, 0.25, 0.75, 0.25, 2, false, true, false, 0, 37.5, 4, 112.5, 246, 0, 4, 150, true],
+    [0.625, 0.225, 0.625, 0.225, 1, true, false, false, 56.25, 0, 156.25, 4, 0, 146, 250, 4, true],
+    [false, true, 600, 760, 30, 95, 600, 760, 600, 760, 1, 16, 0, 5, 5, 190, 90, true, true],
+    [0.1184, 0.125, 0.1184, 0.125, 2, false, true, false, 0, 11.25, 16, 10.6579, 184, 5, 16, 90, true],
+    [0.3167, 0.05, 0.3167, 0.05, 1, true, false, false, 9.5, 0, 60.1667, 13, 5, 87, 190, 13, true],
+    [true, false, 400, 350, 0, 29, 400, 350, 400, 350, 1, 12, 7, 0, 0, 150, 60, true, true],
+    [0.1714, 0.0829, 0.1714, 0.0829, 2, false, true, false, 0, 4.9714, 12, 10.2857, 138, 0, 12, 60],
+    [0.375, 0, 0.375, 0, 1, true, false, false, 0, 0, 56.25, 7, 0, 53, 150, 7],
+    [false, true, 90, 120, 0, 0, 90, 120, 90, 120, 2, 12, 9, 0, 0, 100, 120],
+    [1, 0, 1, 0, 2, false, true, false, 0, 0, 12, 120, 1, 0, 1, 0, 1, true, false, false, 0, 0, 100, 9],
+    [false, true, -1, -1, 0, 0, -1, -1, -1, -1, 0],
   ],
 ];
