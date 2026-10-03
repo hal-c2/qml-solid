@@ -10,6 +10,7 @@
     "./QtQuick": "./QtQuick/index.js",
     "./QtQuick/Layouts": "./QtQuick/Layouts/index.js",
     "./QtQuick/Window": "./QtQuick/Window/index.js",
+    "./QtQuick/LocalStorage": "./QtQuick/LocalStorage/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtQml/XmlListModel": "./QtQml/XmlListModel/index.js",
     "./QtCore": "./QtCore/index.js",
@@ -27,5 +28,8 @@
     "@playwright/test": "^1.63.0",
     "solid-js": "2.0.0-rc.13",
     "vite": "^8.0.0"
+  },
+  "dependencies": {
+    "sql.js": "^1.14.2"
   }
 }
