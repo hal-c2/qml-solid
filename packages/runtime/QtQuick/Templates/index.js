@@ -5,5 +5,6 @@ export { Container } from "./Container.js";
 export { Control } from "./Control.js";
 export { Label } from "./Label.js";
 export { Frame, GroupBox, Page, Pane, ToolBar } from "./Pane.js";
+export { StackView } from "./StackView.js";
 export { SwipeView } from "./SwipeView.js";
 export { TabBar } from "./TabBar.js";
