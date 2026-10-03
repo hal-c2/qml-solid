@@ -134,13 +134,17 @@ export const MaskShape = defineType("MaskShape", QtObject, {
     },
   },
   setup(self) {
-    self.$image = null;
+    self.$image = self.$loading = null;
+    self.$from = undefined;
     self.$points = new Uint32Array(0);
     self.$alpha = null;
     self.$width = self.$height = -1;
     effect(
       () => self.source,
       (source) => {
+        // Asked again whenever any of its properties is written.
+        if (source === self.$from) return;
+        self.$from = source;
         self.$image = self.$loading = null;
         self.$width = self.$height = -1;
         if (!source) return;
