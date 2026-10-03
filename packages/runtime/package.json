@@ -20,6 +20,8 @@
     "./QtQuick/Controls/Material": "./QtQuick/Controls/Material/index.js",
     "./QtQuick/Controls/Universal": "./QtQuick/Controls/Universal/index.js",
     "./QtQuick/LocalStorage": "./QtQuick/LocalStorage/index.js",
+    "./QtQuick/Dialogs": "./QtQuick/Dialogs/index.js",
+    "./QtMultimedia": "./QtMultimedia/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtQml/Models": "./QtQml/Models/index.js",
     "./QtQml/XmlListModel": "./QtQml/XmlListModel/index.js",
