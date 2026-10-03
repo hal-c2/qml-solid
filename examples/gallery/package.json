@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "report": "playwright test"
+    "report": "playwright test",
+    "selftest": "node tests/selftest/run.mjs"
   },
   "dependencies": {
     "@solidjs/web": "2.0.0-rc.13",

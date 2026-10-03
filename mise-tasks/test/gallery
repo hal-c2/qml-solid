@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="The gallery's report, checked on examples whose answers are known (with a stand-in compiler)"
+#MISE depends=["browser"]
+set -euo pipefail
+pnpm --filter qml-solid-example-gallery selftest "$@"
