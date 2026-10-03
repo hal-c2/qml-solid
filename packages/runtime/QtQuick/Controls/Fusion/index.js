@@ -3,9 +3,10 @@
 // its controls are drawn in. The arithmetic is Qt's (`qquickfusionstyle.cpp`),
 // on whole numbers as QColor does it, so that the colours are Qt's exactly.
 import { styleHints } from "../../../QtQml/application.js";
-import { color as colour, hsla, hsva, rgba } from "../../color.js";
+import { color as colour, hsva, rgba } from "../../color.js";
 import { themed } from "../../Templates/theme.js";
 import { preferred } from "../attached.js";
+import { darker, degrees, eight, hsl, hsv, lighter } from "./shades.js";
 
 themed("QtQuick.Controls.Fusion", {});
 
@@ -15,20 +16,6 @@ const LIGHT = 1;
 
 const none = colour(null);
 
-// A channel as QColor gives it from 0 to 255, and a hue in whole degrees
-// (-1 for a grey, which has none).
-const eight = (channel) => {
-  const value = Math.round(channel * 65535) + 128;
-  return (value - (value >> 8)) >> 8;
-};
-const degrees = (hue) => (hue < 0 ? -1 : Math.trunc(Math.round(hue * 36000) / 100));
-
-// `QColor::setHsv` and `setHsl` with whole numbers: opaque, whatever it was.
-const hsv = (hue, saturation, value) => hsva(hue < 0 ? -1 : (hue % 360) / 360, saturation / 255, value / 255);
-const hsl = (hue, saturation, lightness) => hsla(hue < 0 ? -1 : (hue % 360) / 360, saturation / 255, lightness / 255);
-
-const lighter = (value, percent) => value.lighter(percent / 100);
-const darker = (value, percent) => value.darker(percent / 100);
 const scheme = () => styleHints().colorScheme;
 
 export const Fusion = Object.freeze({
