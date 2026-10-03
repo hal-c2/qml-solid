@@ -35,7 +35,7 @@ const WRAP_ANYWHERE = 3;
 const PARAGRAPHS = /\r\n|[\n\u2028\u2029]/;
 const TRAILING = /[ \t]+$/;
 // A text whose first letter is Hebrew or Arabic starts from the right.
-const RIGHT_TO_LEFT = /^[^\p{L}]*[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u;
+export const RIGHT_TO_LEFT = /^[^\p{L}]*[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u;
 
 const hangs = (code) => code === 32 || code === 9;
 const letter = (code) => (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code >= 0xc0;
