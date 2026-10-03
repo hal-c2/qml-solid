@@ -28,6 +28,7 @@ an inline `component` of the same file.
 - `crates/qml_solid`: the compiler (`qml_solid::compile`) and the `qmlc` binary.
 - `packages/runtime`: what compiled output imports as `qml-solid/runtime`, and the Vite plugin.
 - `examples/web`: QML rendered in the browser: hal-c2 TUI bricks, and components using each other.
+- `corpus/qtdoc`: Qt's own examples (a submodule), the yardstick for what to support next.
 - `vendor/`: patched upstream crates, see below.
 
 ## Use
@@ -40,6 +41,9 @@ cargo run --bin qmlc -- --out-dir out *.qml
 cargo run --bin qmlc -- --alone File.qml          # without the files next to it
 
 cargo test                                        # parser, compiler, fixture snapshots
+
+git submodule update --init --depth 1 corpus/qtdoc
+corpus/report.sh                                  # how much of Qt's examples compiles, and what stops the rest
 
 pnpm install
 pnpm --filter qml-solid-example-web dev           # the example, with Vite
