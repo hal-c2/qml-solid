@@ -1,35 +1,49 @@
 //! `qmlc [--emit js|lowered] [--out-dir DIR] [--host MODULE] [--runtime MODULE] [--alone] FILE.qml...`
 //!
 //! Compiles each QML file to a JavaScript module. Without `--out-dir` the
-//! output goes to stdout. A file is compiled with the QML files next to it,
-//! which is where the components it names are and where it is used. With
+//! output goes to stdout. A file is compiled with the QML files next to it
+//! and in the directories they import, which is where the components it
+//! names are and where it is used. With
 //! `--alone` it is compiled by itself: it takes only what it declares, and a
 //! type it does not know is taken to be a component.
 
-use std::{path::Path, process::ExitCode};
+use std::{collections::HashSet, path::Path, process::ExitCode};
 
 use qml_solid::{Options, Project, compile, lowered_source};
 
-/// The QML files next to `path`: what a file is compiled with. One that does
-/// not parse is left out here and reported when it is compiled itself.
+/// The QML files `path` is compiled with: the ones next to it, which is
+/// where the components it names are and where it is used, and the ones in
+/// the directories any of them imports. One that does not parse is left out
+/// here and reported when it is compiled itself.
 fn project(path: &Path) -> Project {
     let mut project = Project::new();
-    let directory = match path.parent() {
+    let root = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
     };
-    let Ok(entries) = std::fs::read_dir(directory) else { return project };
-    for entry in entries.flatten() {
-        let sibling = entry.path();
-        if sibling.extension().is_none_or(|extension| extension != "qml") {
+    // A file's key is its path from the compiled file's directory, without
+    // the extension: `Clock`, `content/Clock`.
+    let mut loaded = HashSet::new();
+    let mut pending = vec![String::new()];
+    while let Some(directory) = pending.pop() {
+        if !loaded.insert(directory.clone()) {
             continue;
         }
-        let (Some(stem), Ok(source)) =
-            (sibling.file_stem().and_then(|stem| stem.to_str()), std::fs::read_to_string(&sibling))
-        else {
-            continue;
-        };
-        let _ = project.add(stem, &source);
+        let Ok(entries) = std::fs::read_dir(root.join(&directory)) else { continue };
+        for entry in entries.flatten() {
+            let file = entry.path();
+            if file.extension().is_none_or(|extension| extension != "qml") {
+                continue;
+            }
+            let (Some(stem), Ok(source)) =
+                (file.file_stem().and_then(|stem| stem.to_str()), std::fs::read_to_string(&file))
+            else {
+                continue;
+            };
+            let key = if directory.is_empty() { stem.to_string() } else { format!("{directory}/{stem}") };
+            let _ = project.add(&key, &source);
+        }
+        pending.extend(project.directories());
     }
     project
 }
