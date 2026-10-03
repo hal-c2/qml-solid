@@ -177,11 +177,15 @@ function exported(context, file, names = new Set(), seen = new Set()) {
 // - `style`: what `import QtQuick.Controls` is, "Material" or "Fusion": a
 //   name, or a function of the file that imports it when the files of one
 //   build are not all of one style. Qt's default when there is none.
-export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
+// - `standins`: directories of QML modules, each with its `qmldir`, that
+//   stand in for the types a program has in C++, where there is no C++: or
+//   a function of the file compiled that gives them.
+export default function qml({ qmlc = "qmlc", args = [], qt, style, standins = [] } = {}) {
   let asked;
   const found = () => (asked ??= installed());
   qt ??= process.env.QT_INSTALL_QML ?? found().qml ?? null;
   const styled = (importer) => (typeof style === "function" ? style(importer) : style);
+  const stood = (file) => (typeof standins === "function" ? standins(file) : standins) ?? [];
   let cache = join(runtime, "node_modules/.vite/qml-solid");
   // The pictures of a module, by what its QML names them: next to the QML
   // when the installation has them there, otherwise read out of the plugin
@@ -341,7 +345,15 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
       for (const sibling of readdirSync(directory)) {
         if (sibling.endsWith(".qml")) this.addWatchFile(join(directory, sibling));
       }
-      const result = spawnSync(qmlc, [...args, file], { encoding: "utf8" });
+      // What stands in for a type decides what it takes likewise.
+      const more = stood(file);
+      for (const directory of more) {
+        if (!existsSync(directory)) continue;
+        for (const name of readdirSync(directory, { recursive: true })) {
+          if (name.endsWith(".qml") || name.endsWith("qmldir")) this.addWatchFile(join(directory, name));
+        }
+      }
+      const result = spawnSync(qmlc, [...args, ...more.flatMap((directory) => ["--with", directory]), file], { encoding: "utf8" });
       if (result.error) this.error(`could not run ${qmlc}: ${result.error.message}`);
       if (result.status !== 0) this.error(result.stderr.trim());
       return { code: result.stdout, map: null };
