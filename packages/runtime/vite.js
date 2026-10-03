@@ -119,6 +119,23 @@ function described(directory) {
   return { file, types, imports, style: optional ? (defaults[0] ?? null) : null };
 }
 
+// What a `qtquickcontrols2.conf` says, by its groups: `[Material]`, and
+// under it `Theme=Dark`.
+function conf(file) {
+  const groups = {};
+  let group = null;
+  for (const line of existsSync(file) ? readFileSync(file, "utf8").split("\n") : []) {
+    const text = line.trim();
+    const named = text.match(/^\[(.*)\]$/);
+    if (named) group = groups[named[1]] ??= {};
+    else if (group && /^[^;#=][^=]*=/.test(text)) {
+      const at = text.indexOf("=");
+      group[text.slice(0, at).trim()] = text.slice(at + 1).trim().replace(/^"(.*)"$/, "$1");
+    }
+  }
+  return groups;
+}
+
 // The names a module of the runtime's exports, its `export *` followed.
 function exported(context, file, names = new Set(), seen = new Set()) {
   if (seen.has(file) || !existsSync(file)) return names;
@@ -141,12 +158,24 @@ function exported(context, file, names = new Set(), seen = new Set()) {
 // - `qt`: where the QML modules of Qt are, when not where `qtpaths` says.
 // - `style`: what `import QtQuick.Controls` is, "Material" or "Fusion": a
 //   name, or a function of the file that imports it when the files of one
-//   build are not all of one style. Qt's default when there is none.
-export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
+//   build are not all of one style. Otherwise the one the settings name,
+//   and Qt's default when there is none.
+// - `controls`: the settings of Qt Quick Controls, which an application of
+//   Qt's has in its `qtquickcontrols2.conf`: that file, or its groups
+//   (`{ Material: { Theme: "Dark" } }`), or a function of the file that
+//   imports the controls, as `style` is.
+export default function qml({ qmlc = "qmlc", args = [], qt, style, controls } = {}) {
   let asked;
   const found = () => (asked ??= installed());
   qt ??= process.env.QT_INSTALL_QML ?? found().qml ?? null;
-  const styled = (importer) => (typeof style === "function" ? style(importer) : style);
+  const set = (importer) => {
+    const given = typeof controls === "function" ? controls(importer) : controls;
+    const groups = typeof given === "string" ? conf(given) : given;
+    return groups && Object.keys(groups).length > 0 ? groups : null;
+  };
+  // `Default` is what the style Qt falls back on was once called.
+  const styled = (importer) =>
+    (typeof style === "function" ? style(importer) : style) ?? set(importer)?.Controls?.Style?.replace(/^Default$/, "Basic");
   let cache = join(runtime, "node_modules/.vite/qml-solid");
   // The pictures of a module, by what its QML names them: next to the QML
   // when the installation has them there, otherwise read out of the plugin
@@ -237,7 +266,14 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
       const module = source.match(MODULE)?.[1];
       if (module && has(module)) {
         const chosen = composed(module)?.style;
-        return `${VIRTUAL}${module}${chosen ? `?style=${styled(importer) ?? chosen.split(".").at(-1)}` : ""}`;
+        const query = new URLSearchParams();
+        if (chosen) query.set("style", styled(importer) ?? chosen.split(".").at(-1));
+        // The settings go with the controls, and with a style imported by
+        // its own name: whichever a program has first tells the runtime.
+        const settings = chosen || /^QtQuick\/Controls\/[A-Z]\w*$/.test(module) ? set(importer) : null;
+        // In letters an address keeps as they are, whoever passes it on.
+        if (settings) query.set("controls", Buffer.from(JSON.stringify(settings)).toString("base64url"));
+        return `${VIRTUAL}${module}${query.size > 0 ? `?${query}` : ""}`;
       }
       if (!importer || (!importer.split("?")[0].endsWith(".qml") && !isScript(importer))) return null;
       // What compiled QML imports is the runtime's to find, wherever the QML
@@ -256,7 +292,8 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
     load(id) {
       if (id.startsWith(VIRTUAL)) {
         const [module, query] = id.slice(VIRTUAL.length).split("?");
-        const { about, native, brought, missing } = made(this, module, new URLSearchParams(query).get("style") ?? undefined);
+        const asked = new URLSearchParams(query);
+        const { about, native, brought, missing } = made(this, module, asked.get("style") ?? undefined);
         const kernel = JSON.stringify(join(runtime, natives()["./object"]));
         const lines = [];
         // What the runtime has of the module: the types Qt has in C++.
@@ -279,9 +316,15 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style } = {}) {
         for (const [uri, names] of brought) lines.push(`export { ${names.join(", ")} } from "qml-solid/${uri}";`);
         // A style is told to what it is the style of: what is not QML in it
         // (the colours and fonts of a control) goes by which was chosen.
-        if (query && brought.length > 0) {
+        if (asked.has("style") && brought.length > 0) {
           const uri = (module) => JSON.stringify(module.replaceAll("/", "."));
           lines.push(`import { chosen as $chosen } from ${kernel};`, `$chosen.set(${uri(module)}, ${uri(brought[0][0])});`);
+        }
+        // And what the application's settings say of the styles: a style
+        // takes its own group of them.
+        if (asked.has("controls")) {
+          const settings = JSON.stringify(join(runtime, "QtQuick/Controls/settings.js"));
+          lines.push(`import { configure as $configure } from ${settings};`, `$configure(${Buffer.from(asked.get("controls"), "base64url")});`);
         }
         // What Qt has of it and the runtime does not, yet.
         if (missing.length > 0) {
