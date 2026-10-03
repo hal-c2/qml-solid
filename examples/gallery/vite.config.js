@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import qml from "qml-solid/vite";
@@ -30,6 +32,19 @@ function examples() {
   };
 }
 
+// The style of Qt Quick Controls an example has: the one its main.cpp or
+// its qtquickcontrols2.conf chooses, as the reference picture was taken with,
+// and otherwise the one Qt chooses on the machine the pictures are from.
+function style(importer) {
+  const example = readManifest().find(({ directory }) => importer?.startsWith(directory + sep));
+  if (!example) return undefined;
+  if (example.qt.style) return example.qt.style;
+  const conf = example.qt.controlsConf && join(example.directory, example.qt.controlsConf);
+  const chosen = conf && existsSync(conf) ? readFileSync(conf, "utf8").match(/^\s*Style\s*=\s*(\w+)/m)?.[1] : null;
+  if (chosen) return chosen === "Default" ? "Basic" : chosen;
+  return "Fusion";
+}
+
 // The plugin stops the build at a file `qmlc` does not take. Here that is the
 // usual case and must not stop anything: the file becomes a module that
 // throws the compiler's message when it is imported, so the example that
@@ -50,7 +65,7 @@ function tolerant(plugin) {
 
 export default defineConfig({
   base: "./",
-  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc") }))],
+  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), style }))],
   resolve: {
     // Qt's examples have no app behind them: nothing to find here.
     alias: { "qml-solid/host": path("./host.js") },
