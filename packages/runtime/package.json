@@ -8,6 +8,7 @@
     "./runtime.css": "./style.css",
     "./object": "./object.js",
     "./QtQuick": "./QtQuick/index.js",
+    "./QtQuick/Window": "./QtQuick/Window/index.js",
     "./QtQml": "./QtQml/index.js",
     "./vite": "./vite.js"
   },
