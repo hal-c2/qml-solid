@@ -7,7 +7,7 @@ import { defineType, derived, QtObject } from "../../../object.js";
 import { color as colour } from "../../color.js";
 import { lazy } from "../../compute.js";
 import { themed } from "../../Templates/theme.js";
-import { around, chosenColour, fromArgb, preferred, reached, said, Theme, themeOf } from "../attached.js";
+import { around, chosenColour, fromArgb, preferred, said, Theme, themeOf } from "../attached.js";
 import { configured } from "../settings.js";
 
 const header = { pixelSize: 24, weight: 300 };
@@ -160,5 +160,4 @@ export const Universal = defineType("Universal", QtObject, {
   attached: UniversalStyle,
 });
 
-reached("Universal", Universal);
 preferred("QtQuick.Controls.Universal");

@@ -7,7 +7,7 @@ import { defineType, derived, QtObject } from "../../../object.js";
 import { color as colour, hsla, rgba } from "../../color.js";
 import { lazy } from "../../compute.js";
 import { themed } from "../../Templates/theme.js";
-import { around, chosenColour, fromArgb, preferred, reached, said, Theme, themeOf } from "../attached.js";
+import { around, chosenColour, fromArgb, preferred, said, Theme, themeOf } from "../attached.js";
 import { configured } from "../settings.js";
 
 const Variant = { Normal: 0, Dense: 1 };
@@ -398,5 +398,4 @@ export const Material = defineType("Material", QtObject, {
   attached: MaterialStyle,
 });
 
-reached("Material", Material);
 preferred("QtQuick.Controls.Material");

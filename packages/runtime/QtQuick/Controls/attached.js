@@ -2,7 +2,7 @@
 // is inherited: an item has what the item it is in has, an item in none what
 // its window has, a window what the window it belongs to has. What was set on
 // an object is its own and that of everything inside it.
-import { chosen, QtObject, slot } from "../../object.js";
+import { chosen, slot } from "../../object.js";
 import { styleHints } from "../../QtQml/application.js";
 import { Color, color } from "../color.js";
 import { Item } from "../Item.js";
@@ -20,17 +20,6 @@ export function around(Type, object) {
 export function said(self, name) {
   const own = slot(self, name);
   return own.explicit() ? own.own() : undefined;
-}
-
-// `control.Material.elevation`: the attached object, read off an object by
-// the name of its type.
-export function reached(name, Type) {
-  Object.defineProperty(QtObject.proto, name, {
-    get() {
-      return Type.attached(this);
-    },
-    configurable: true,
-  });
 }
 
 // A style imported where nothing has chosen one is the style, as in Qt.

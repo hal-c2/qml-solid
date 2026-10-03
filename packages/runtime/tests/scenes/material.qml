@@ -93,61 +93,55 @@ Item {
     }
 
     function colours(item) {
-        const m = item.Material
-        return [m.theme, m.primary, m.accent, m.foreground, m.background].map(String)
+        return [item.Material.theme, item.Material.primary, item.Material.accent, item.Material.foreground, item.Material.background].map(String)
     }
     function all(item) {
-        const m = item.Material
-        return [m.primaryColor, m.accentColor, m.backgroundColor, m.primaryTextColor, m.primaryHighlightedTextColor,
-            m.secondaryTextColor, m.hintTextColor, m.textSelectionColor, m.dropShadowColor, m.dividerColor,
-            m.iconColor, m.iconDisabledColor, m.frameColor, m.rippleColor, m.highlightedRippleColor,
-            m.switchUncheckedTrackColor, m.switchCheckedTrackColor, m.switchUncheckedHandleColor,
-            m.switchUncheckedHoveredHandleColor, m.switchDisabledUncheckedTrackColor,
-            m.switchDisabledCheckedTrackColor, m.switchDisabledUncheckedTrackBorderColor,
-            m.switchCheckedHandleColor, m.switchDisabledUncheckedHandleColor, m.switchDisabledCheckedHandleColor,
-            m.switchDisabledCheckedIconColor, m.switchDisabledUncheckedIconColor, m.scrollBarColor,
-            m.scrollBarHoveredColor, m.scrollBarPressedColor, m.dialogColor, m.backgroundDimColor,
-            m.listHighlightColor, m.tooltipColor, m.toolBarColor, m.toolTextColor, m.spinBoxDisabledIconColor,
-            m.sliderDisabledColor, m.textFieldFilledContainerColor].map(String)
+        return [item.Material.primaryColor, item.Material.accentColor, item.Material.backgroundColor, item.Material.primaryTextColor, item.Material.primaryHighlightedTextColor,
+            item.Material.secondaryTextColor, item.Material.hintTextColor, item.Material.textSelectionColor, item.Material.dropShadowColor, item.Material.dividerColor,
+            item.Material.iconColor, item.Material.iconDisabledColor, item.Material.frameColor, item.Material.rippleColor, item.Material.highlightedRippleColor,
+            item.Material.switchUncheckedTrackColor, item.Material.switchCheckedTrackColor, item.Material.switchUncheckedHandleColor,
+            item.Material.switchUncheckedHoveredHandleColor, item.Material.switchDisabledUncheckedTrackColor,
+            item.Material.switchDisabledCheckedTrackColor, item.Material.switchDisabledUncheckedTrackBorderColor,
+            item.Material.switchCheckedHandleColor, item.Material.switchDisabledUncheckedHandleColor, item.Material.switchDisabledCheckedHandleColor,
+            item.Material.switchDisabledCheckedIconColor, item.Material.switchDisabledUncheckedIconColor, item.Material.scrollBarColor,
+            item.Material.scrollBarHoveredColor, item.Material.scrollBarPressedColor, item.Material.dialogColor, item.Material.backgroundDimColor,
+            item.Material.listHighlightColor, item.Material.tooltipColor, item.Material.toolBarColor, item.Material.toolTextColor, item.Material.spinBoxDisabledIconColor,
+            item.Material.sliderDisabledColor, item.Material.textFieldFilledContainerColor].map(String)
     }
     function buttons(item) {
-        const m = item.Material
         const rows = []
         for (const [enabled, flat, highlighted, checked] of [[true, false, false, false], [false, false, false, false],
                 [false, true, false, false], [true, true, false, false], [true, false, true, false],
                 [true, false, true, true], [true, true, true, false], [true, true, true, true]])
-            rows.push(String(m.buttonColor(m.theme, m.background, m.accent, enabled, flat, highlighted, checked)))
+            rows.push(String(item.Material.buttonColor(item.Material.theme, item.Material.background, item.Material.accent, enabled, flat, highlighted, checked)))
         return rows
     }
     function shades(item, color) {
-        const m = item.Material
         const rows = []
         for (let shade = Material.Shade50; shade <= Material.ShadeA700; shade++)
-            rows.push(String(m.shade(color, shade)))
+            rows.push(String(item.Material.shade(color, shade)))
         return rows
     }
     function table(item) {
-        const m = item.Material
         const rows = []
         for (let color = Material.Red; color <= Material.BlueGrey; color++) {
             const row = []
             for (let shade = Material.Shade50; shade <= Material.ShadeA700; shade++)
-                row.push(String(m.color(color, shade)))
+                row.push(String(item.Material.color(color, shade)))
             rows.push(row.join(" "))
         }
         return rows
     }
     function measures(item) {
-        const m = item.Material
-        return [m.touchTarget, m.buttonVerticalPadding, m.buttonHeight, m.delegateHeight, m.dialogButtonBoxHeight,
-            m.dialogTitleFontPixelSize, m.dialogRoundedScale, m.frameVerticalPadding, m.menuItemHeight,
-            m.menuItemVerticalPadding, m.switchIndicatorWidth, m.switchIndicatorHeight, m.switchNormalHandleHeight,
-            m.switchCheckedHandleHeight, m.switchLargestHandleHeight, m.switchDelegateVerticalPadding,
-            m.textFieldHeight, m.textFieldHorizontalPadding, m.textFieldVerticalPadding, m.tooltipHeight,
-            m.buttonLeftPadding(false, false), m.buttonLeftPadding(false, true), m.buttonLeftPadding(true, true),
-            m.buttonRightPadding(false, false, false), m.buttonRightPadding(false, true, true),
-            m.buttonRightPadding(true, false, true), m.buttonRightPadding(true, true, false),
-            m.buttonRightPadding(true, true, true)]
+        return [item.Material.touchTarget, item.Material.buttonVerticalPadding, item.Material.buttonHeight, item.Material.delegateHeight, item.Material.dialogButtonBoxHeight,
+            item.Material.dialogTitleFontPixelSize, item.Material.dialogRoundedScale, item.Material.frameVerticalPadding, item.Material.menuItemHeight,
+            item.Material.menuItemVerticalPadding, item.Material.switchIndicatorWidth, item.Material.switchIndicatorHeight, item.Material.switchNormalHandleHeight,
+            item.Material.switchCheckedHandleHeight, item.Material.switchLargestHandleHeight, item.Material.switchDelegateVerticalPadding,
+            item.Material.textFieldHeight, item.Material.textFieldHorizontalPadding, item.Material.textFieldVerticalPadding, item.Material.tooltipHeight,
+            item.Material.buttonLeftPadding(false, false), item.Material.buttonLeftPadding(false, true), item.Material.buttonLeftPadding(true, true),
+            item.Material.buttonRightPadding(false, false, false), item.Material.buttonRightPadding(false, true, true),
+            item.Material.buttonRightPadding(true, false, true), item.Material.buttonRightPadding(true, true, false),
+            item.Material.buttonRightPadding(true, true, true)]
     }
 
     function answers() {

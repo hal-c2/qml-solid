@@ -63,17 +63,15 @@ Item {
     }
 
     function colours(item) {
-        const u = item.Universal
-        return [u.theme, u.accent, u.foreground, u.background].map(String)
+        return [item.Universal.theme, item.Universal.accent, item.Universal.foreground, item.Universal.background].map(String)
     }
     function all(item) {
-        const u = item.Universal
-        return [u.altHighColor, u.altLowColor, u.altMediumColor, u.altMediumHighColor, u.altMediumLowColor,
-            u.baseHighColor, u.baseLowColor, u.baseMediumColor, u.baseMediumHighColor, u.baseMediumLowColor,
-            u.chromeAltLowColor, u.chromeBlackHighColor, u.chromeBlackLowColor, u.chromeBlackMediumLowColor,
-            u.chromeBlackMediumColor, u.chromeDisabledHighColor, u.chromeDisabledLowColor, u.chromeHighColor,
-            u.chromeLowColor, u.chromeMediumColor, u.chromeMediumLowColor, u.chromeWhiteColor, u.listLowColor,
-            u.listMediumColor].map(String)
+        return [item.Universal.altHighColor, item.Universal.altLowColor, item.Universal.altMediumColor, item.Universal.altMediumHighColor, item.Universal.altMediumLowColor,
+            item.Universal.baseHighColor, item.Universal.baseLowColor, item.Universal.baseMediumColor, item.Universal.baseMediumHighColor, item.Universal.baseMediumLowColor,
+            item.Universal.chromeAltLowColor, item.Universal.chromeBlackHighColor, item.Universal.chromeBlackLowColor, item.Universal.chromeBlackMediumLowColor,
+            item.Universal.chromeBlackMediumColor, item.Universal.chromeDisabledHighColor, item.Universal.chromeDisabledLowColor, item.Universal.chromeHighColor,
+            item.Universal.chromeLowColor, item.Universal.chromeMediumColor, item.Universal.chromeMediumLowColor, item.Universal.chromeWhiteColor, item.Universal.listLowColor,
+            item.Universal.listMediumColor].map(String)
     }
 
     function answers() {
