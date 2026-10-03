@@ -107,12 +107,14 @@ QtObject {
     function chooseRandomWord() {
         if (wordList.length === 0)
             return
-        const chosen = wordList[Math.floor(Math.random() * wordList.length)]
-        // The same word again is still a new word to guess.
-        if (chosen === word)
-            wordChanged()
+        // Another word than the one there is, so that the word changes: in
+        // C++ the same again is a new word to guess as well, one time in as
+        // many as there are words.
+        const others = wordList.filter((entry) => entry !== word)
+        if (others.length > 0)
+            word = others[Math.floor(Math.random() * others.length)]
         else
-            word = chosen
+            wordChanged()
     }
 
     // The words are a resource of the program: here a file of the example,
