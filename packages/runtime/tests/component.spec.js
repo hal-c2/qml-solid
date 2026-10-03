@@ -83,3 +83,17 @@ test("an enum is keys of the type that declares it", async ({ page }) => {
   });
   expect(read).toEqual([0, 2, 10, 20]);
 });
+
+test("a name a component does not have is found in whatever made it", async ({ page }) => {
+  await open(page, "scopes");
+  expect(await rect(page, "dot")).toEqual({ x: 0, y: 0, width: 200, height: 8 });
+  expect(await rect(page, "chip")).toEqual({ x: 0, y: 100, width: 100, height: 10 });
+  // It is the object and the property themselves: what changes them is seen.
+  await page.evaluate(() => {
+    window.scene.width = 200;
+    window.scene.__cell = 12;
+    window.flush();
+  });
+  expect(await rect(page, "dot")).toEqual({ x: 0, y: 0, width: 100, height: 12 });
+  expect(await rect(page, "chip")).toEqual({ x: 0, y: 100, width: 50, height: 10 });
+});

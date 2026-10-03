@@ -380,7 +380,8 @@ function inherit(own, given) {
   for (const key of Object.keys(given)) {
     // Its children are put where the component says, and the object itself
     // is the one the component made.
-    if (key === "children" || key === "$self" || key === "$given") continue;
+    // What it finds names in is its own context, not the one it was made in.
+    if (key === "children" || key === "$self" || key === "$given" || key === "$context") continue;
     const descriptor = Object.getOwnPropertyDescriptor(given, key);
     if (!(key in own)) Object.defineProperty(props, key, descriptor);
     else if (key === "$declare") props.$declare = [own.$declare, given.$declare].flat();
@@ -573,6 +574,29 @@ export function $component(make) {
   };
   return make;
 }
+
+// QML finds a name by walking contexts: a component's own, then the one of
+// whatever made it. The compiler does the first part; where a project uses
+// an id of another component, the rest is done here. A context is a
+// component's ids and its root, and the context it was made in.
+export function $context(outer, root, ids) {
+  return { outer, root, ids };
+}
+
+// What `name` is to an object made in `context`: an id or a property of the
+// root of the nearest component around it that has one, or something the
+// program was given for every context.
+export function $lookup(context, name) {
+  for (let around = context.outer; around; around = around.outer) {
+    const ids = around.ids?.();
+    if (ids && name in ids) return ids[name];
+    if (name in around.root) return around.root[name];
+  }
+  return globals[name];
+}
+
+// What every context has: the context properties a host sets.
+export const globals = Object.create(null);
 
 // `pragma Singleton`: the one object of a file, made the first time anything
 // asks for it and kept for as long as the page. It is nobody's child, and

@@ -334,10 +334,62 @@ fn a_name_nothing_has_is_an_error() {
         errors("import QtQuick\nItem { Nope { } }"),
         ["`Nope` is not a type of anything the file imports"]
     );
-    // An inline component sees nothing of the file around it.
+}
+
+#[test]
+fn a_name_of_whatever_made_the_component_is_found_as_it_runs() {
+    let files = [
+        (
+            "Sample",
+            r#"import QtQuick
+Item {
+    id: board
+    property int __cell: 8
+    component Dot: Rectangle { width: board.width / 2; height: __cell }
+    Dot { }
+    Row { id: row; Tile { } }
+}"#,
+        ),
+        ("Tile", "import QtQuick\nItem {\n    width: row.spacing\n    Mark { }\n}"),
+        ("Mark", "import QtQuick\nItem { id: mark; width: board.width }"),
+    ];
+    let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, r#"import { $context, $lookup, $object } from "qml-solid/object";"#);
+    // An inline component is a component of its own: the file's ids are
+    // those of whatever makes it, which is not always the file.
+    assert_contains(&code, "const $scope1 = $context($props.$context, $1);");
+    assert_contains(&code, r#"width={$lookup($scope1, "board").width / 2}"#);
+    assert_contains(&code, r#"height={$lookup($scope1, "__cell")}"#);
+    // What the file has to be found: the ids something else names, and its
+    // root for what that declares.
+    assert_contains(&code, "const $scope = $context($props.$context, board, () => ({\n\t\tboard,\n\t\trow\n\t}));");
+    assert_contains(&code, "<Dot $context={$scope}></Dot>");
+    assert_contains(&code, "<Tile $context={$scope}></Tile>");
+
+    // A component between the two passes on where it was made.
+    let code = lowered_in(&files, "Tile").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "const $scope = $context($props.$context, $1);");
+    assert_contains(&code, r#"width={$lookup($scope, "row").spacing}"#);
+    assert_contains(&code, "<Mark $context={$scope}></Mark>");
+
+    // One that makes nothing has nothing to pass on, only something to find.
+    let code = lowered_in(&files, "Mark").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "const $scope = $context($props.$context, mark);");
+    assert_contains(&code, r#"width={$lookup($scope, "board").width}"#);
+
+    // A project that does none of this pays nothing for it.
+    let code = lowered_in(
+        &[("Sample", "import QtQuick\nItem { id: board\n Tile { } }"), ("Tile", "import QtQuick\nItem { width: 2 }")],
+        "Sample",
+    )
+    .unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_lacks(&code, "$context");
+    assert_lacks(&code, "$scope");
+    // And a name no component has is still an error.
     assert_eq!(
-        errors("import QtQuick\nItem { id: root\n component Dot: Rectangle { width: root.width } }"),
-        ["`root` is not defined"]
+        lowered_in(&[("Sample", "import QtQuick\nItem { component Dot: Item { width: board.width } }")], "Sample")
+            .unwrap_err(),
+        ["`board` is not defined"]
     );
 }
 

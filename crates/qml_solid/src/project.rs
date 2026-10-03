@@ -10,11 +10,13 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use oxc_allocator::Allocator;
+use oxc_ast::ast::{Expression, IdentifierReference};
+use oxc_ast_visit::Visit;
 use oxc_parser::{Parser, qml::ast::*};
 use oxc_span::SourceType;
 
 use crate::{
-    Error, parse_errors,
+    Error, parse_errors, qt,
     registry::{Element, Prop, Types},
     scope::{Own, alias_target, classify, object_id},
 };
@@ -84,6 +86,11 @@ pub(crate) struct Shape {
     pub has_default: bool,
     /// `enum Theme { Light, Dark }`: the keys of each.
     pub enums: HashMap<String, Vec<String>>,
+    /// The ids of its objects.
+    pub ids: HashSet<String>,
+    /// The names its scripts use that nothing in it declares: members of
+    /// Qt's types, mostly.
+    pub mentions: HashSet<String>,
 }
 
 /// A `property` declaration, as far as an instance cares.
@@ -229,6 +236,31 @@ impl Project {
     /// Whether the file was added, and parsed.
     pub fn has(&self, file: &str) -> bool {
         self.files.contains_key(file)
+    }
+
+    /// The names QML finds only when the program runs: an id of one
+    /// component, or something its root declares, that another one's scripts
+    /// use. An object is made in the context of whatever made it, and a name
+    /// its own component does not have is looked for there.
+    ///
+    /// Which names those are is settled when each file is compiled; this is
+    /// what they can be, so that the components between the two know to
+    /// pass the context on. A name some type of Qt's has is taken to be
+    /// that, unless it is an id: nobody names an object for a property.
+    pub(crate) fn dynamic_names(&self) -> HashSet<String> {
+        let mut has: HashSet<&str> = HashSet::new();
+        for shape in self.files.values().flat_map(|summary| &summary.shapes) {
+            has.extend(shape.ids.iter().map(String::as_str));
+            let declared =
+                shape.properties.keys().chain(shape.signals.keys()).chain(&shape.functions).map(String::as_str);
+            has.extend(declared.filter(|name| !qt::is_member_name(name)));
+        }
+        self.files
+            .values()
+            .flat_map(|summary| &summary.shapes)
+            .flat_map(|shape| shape.mentions.iter().filter(|name| has.contains(name.as_str())))
+            .cloned()
+            .collect()
     }
 
     /// The file the type `name` of the project's module `uri` is.
@@ -378,7 +410,14 @@ fn shape(summary: &mut Summary, inline: Option<&str>, root: &QmlObject<'_>) {
         required: Vec::new(),
         has_default: false,
         enums: HashMap::new(),
+        ids: HashSet::new(),
+        mentions: HashSet::new(),
     };
+    let mut names = Names { ids: HashSet::new(), declared: HashSet::new(), mentions: HashSet::new() };
+    names.object(root);
+    shape.mentions =
+        names.mentions.into_iter().filter(|name| !names.ids.contains(name) && !names.declared.contains(name)).collect();
+    shape.ids = names.ids;
     for member in &root.members {
         match member {
             QmlMember::Property(property) => {
@@ -416,6 +455,69 @@ fn shape(summary: &mut Summary, inline: Option<&str>, root: &QmlObject<'_>) {
     }
     summary.shapes.push(shape);
     inline_shapes(summary, root);
+}
+
+/// The ids of a component's objects and the names its scripts use. An inline
+/// component is one of its own.
+struct Names {
+    ids: HashSet<String>,
+    /// What any of its objects declares.
+    declared: HashSet<String>,
+    mentions: HashSet<String>,
+}
+
+impl Names {
+    fn object(&mut self, object: &QmlObject<'_>) {
+        for member in &object.members {
+            match member {
+                QmlMember::Property(property) => {
+                    self.declared.insert(property.name.name.to_string());
+                }
+                QmlMember::Signal(signal) => {
+                    self.declared.insert(signal.name.name.to_string());
+                }
+                QmlMember::Function(function) => {
+                    self.declared.extend(function.id.as_ref().map(|id| id.name.to_string()));
+                }
+                _ => {}
+            }
+            match member {
+                QmlMember::Object(child) => self.object(child),
+                QmlMember::Binding(QmlBinding {
+                    name,
+                    value: QmlBindingValue::Expression(Expression::Identifier(id)),
+                    ..
+                }) if name.as_simple() == Some("id") => {
+                    self.ids.insert(id.name.to_string());
+                }
+                QmlMember::Binding(QmlBinding { value, .. })
+                | QmlMember::Property(QmlPropertyDeclaration { value: Some(value), .. }) => match value {
+                    QmlBindingValue::Expression(expression) => self.visit_expression(expression),
+                    QmlBindingValue::Statement(statement) => self.visit_statement(statement),
+                    QmlBindingValue::Object(child) => self.object(child),
+                    QmlBindingValue::Objects(children) => {
+                        for child in children {
+                            self.object(child);
+                        }
+                    }
+                },
+                QmlMember::Function(function) => {
+                    if let Some(body) = &function.body {
+                        self.visit_function_body(body);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl<'a> Visit<'a> for Names {
+    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        if identifier.name.starts_with(|c: char| c.is_ascii_lowercase() || c == '_') {
+            self.mentions.insert(identifier.name.to_string());
+        }
+    }
 }
 
 /// Inline components may be declared anywhere in the file.

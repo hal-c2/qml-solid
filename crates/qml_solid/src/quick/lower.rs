@@ -120,6 +120,8 @@ pub(crate) struct Lower<'a, 's> {
     urls: Vec<String>,
     /// The keys of the enums the component being built declares.
     enums: Vec<(String, Expression<'a>)>,
+    /// The names some component of the project takes from whatever made it.
+    pub dynamic: HashSet<String>,
 }
 
 impl<'a, 's> Lower<'a, 's> {
@@ -137,6 +139,7 @@ impl<'a, 's> Lower<'a, 's> {
             specs: 0,
             urls: Vec::new(),
             enums: Vec::new(),
+            dynamic: types.project.dynamic_names(),
         }
     }
 
@@ -150,7 +153,8 @@ impl<'a, 's> Lower<'a, 's> {
         export: bool,
     ) -> (Statement<'a>, Vec<(String, Expression<'a>)>) {
         let b = self.b;
-        let handle = self.tree.objects[self.tree.index_of(&root)].handle.clone();
+        let index = self.tree.index_of(&root);
+        let handle = self.tree.objects[index].handle.clone();
         let children = children_target(&root).unwrap_or_else(|| handle.clone());
         // What an instance gives the root goes through its binding.
         self.uses.handles.insert(handle.clone());
@@ -171,6 +175,18 @@ impl<'a, 's> Lower<'a, 's> {
         let given = b.member(b.id("$props"), "$self");
         statements.push(b.const_(&handle, b.coalesce(given, b.call(b.id("$object"), []))));
         statements.extend(frame);
+        // Where the project looks a name up as it runs, the component says
+        // what it has to be found: its ids, and its root for its properties.
+        // What made it is where the search goes on.
+        if !self.dynamic.is_empty() {
+            let mut arguments = vec![b.member(b.id("$props"), "$context"), b.id(&handle)];
+            let ids: Vec<_> =
+                self.tree.ids_of(index).into_iter().filter(|id| self.dynamic.contains(*id)).collect();
+            if !ids.is_empty() {
+                arguments.push(b.arrow(&[], b.record(ids.iter().map(|id| ((*id).to_string(), b.id(id))))));
+            }
+            statements.push(b.const_(&self.tree.scope_of(index), b.call(b.id("$context"), arguments)));
+        }
         statements.push(b.return_(element));
         let function = if export {
             b.export_default_function(name, &["$props"], statements)
@@ -222,6 +238,12 @@ impl<'a, 's> Lower<'a, 's> {
                 built.attributes.push(b.attr_string("$property", property));
             }
             Role::Template(_) | Role::Plain => {}
+        }
+        // A component of the project may look for a name in what made it.
+        if !self.dynamic.is_empty() && matches!(info.origin, Some(Origin::File(_) | Origin::Inline)) {
+            let scope = tree.scope_of(index);
+            built.attributes.push(b.attr("$context", b.id(&scope)));
+            self.uses.handles.insert(scope);
         }
         if !matches!(role, Role::Root) {
             self.uses.kernel.insert("$object");

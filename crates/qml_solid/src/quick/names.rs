@@ -37,11 +37,12 @@ pub(crate) fn resolve<'a>(
     tree: &Tree<'a>,
     types: Types<'_>,
     own: &str,
+    dynamic: &HashSet<String>,
     uses: &mut Uses,
     errors: &mut Vec<Error>,
 ) {
     let free = free_references(program);
-    let mut resolver = Resolver { b, tree, types, own, free, uses, errors };
+    let mut resolver = Resolver { b, tree, types, own, dynamic, free, uses, errors };
     resolver.visit_program(program);
     Pruner { used: &resolver.uses.handles }.visit_program(program);
 }
@@ -74,6 +75,10 @@ struct Resolver<'a, 's, 'p> {
     /// component or to the singleton, so JavaScript finds it; what it is to
     /// QML still has to be asked.
     own: &'s str,
+    /// The names the project finds as it runs: see [`Project::dynamic_names`].
+    ///
+    /// [`Project::dynamic_names`]: crate::project::Project::dynamic_names
+    dynamic: &'s HashSet<String>,
     free: HashSet<u32>,
     uses: &'s mut Uses,
     errors: &'s mut Vec<Error>,
@@ -170,6 +175,14 @@ impl<'a> Resolver<'a, '_, '_> {
                 Some(outer) => b.conditional(b.binary(b.string(name), BinaryOperator::In, b.id(given)), own, outer),
                 None => own,
             });
+        }
+        if read.is_none() && self.dynamic.contains(name) {
+            // An id of another component: of the one that made this one, if
+            // the program is right, which only running it tells.
+            let scope = tree.scope_of(scope);
+            self.uses.kernel.insert("$lookup");
+            read = Some(b.call(b.id("$lookup"), [b.id(&scope), b.string(name)]));
+            self.uses.handles.insert(scope);
         }
         if read.is_none() {
             self.errors.push(Error::new(format!("`{name}` is not defined"), span));
@@ -345,12 +358,14 @@ struct Pruner<'s> {
 }
 
 impl Pruner<'_> {
-    /// `$7`: a name the analysis gave an object that has no id.
+    /// `$7`: a name the analysis gave an object that has no id. `$scope`: a
+    /// context nothing looks anything up in.
     fn is_unused(&self, name: &str) -> bool {
-        let anonymous = name.strip_prefix('$').is_some_and(|rest| {
-            !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit())
+        let ours = name.strip_prefix('$').is_some_and(|rest| {
+            let rest = rest.strip_prefix("scope").unwrap_or(rest);
+            rest.bytes().all(|byte| byte.is_ascii_digit()) && name.len() > 1
         });
-        anonymous && !self.used.contains(name)
+        ours && !self.used.contains(name)
     }
 }
 

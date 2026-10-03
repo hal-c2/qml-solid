@@ -239,6 +239,23 @@ pub(crate) struct EnumValue {
     pub number: Option<i64>,
 }
 
+/// Whether some type of Qt's has a member called `name`: a name that is
+/// most likely that member wherever it is written.
+pub(crate) fn is_member_name(name: &str) -> bool {
+    static NAMES: OnceLock<std::collections::HashSet<&'static str>> = OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            let mut names = std::collections::HashSet::new();
+            for ty in &table().types {
+                names.extend(ty.properties.iter().map(|property| property.name));
+                names.extend(ty.signals.iter().map(|signal| signal.name));
+                names.extend(ty.methods.iter().copied());
+            }
+            names
+        })
+        .contains(name)
+}
+
 #[derive(Default)]
 struct Table {
     modules: HashMap<&'static str, Module>,

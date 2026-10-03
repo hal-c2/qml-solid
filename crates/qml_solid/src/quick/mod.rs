@@ -61,7 +61,10 @@ pub(crate) fn lower<'a>(
     }
     let mut program = b.program(source, body);
     let mut uses = lower.uses;
-    names::resolve(b, &mut program, &tree, types, stem, &mut uses, &mut errors);
+    names::resolve(b, &mut program, &tree, types, stem, &lower.dynamic, &mut uses, &mut errors);
+    if uses.handles.iter().any(|handle| handle.starts_with("$scope")) {
+        uses.kernel.insert("$context");
+    }
     if !errors.is_empty() {
         return Err(errors);
     }

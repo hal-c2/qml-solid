@@ -83,6 +83,27 @@ impl<'a> Tree<'a> {
             .map_or(0, |(index, _)| index)
     }
 
+    /// The name of the binding that holds the context of the component the
+    /// object is in: the file's, or an inline one's.
+    pub(crate) fn scope_of(&self, index: usize) -> String {
+        let mut context = self.objects[index].context;
+        while let Some(outer) = self.contexts[context].outer {
+            context = outer;
+        }
+        if context == 0 { "$scope".to_string() } else { format!("$scope{context}") }
+    }
+
+    /// The ids of the component whose root is `root` that its scripts reach
+    /// as JavaScript bindings of its function: not the ones in a delegate.
+    pub(crate) fn ids_of(&self, root: usize) -> Vec<&str> {
+        let context = self.objects[root].context;
+        self.objects
+            .iter()
+            .filter(|object| object.context == context && self.ids.contains(object.handle.as_str()))
+            .map(|object| object.handle.as_str())
+            .collect()
+    }
+
     pub(crate) fn is_id(&self, name: &str) -> bool {
         self.ids.contains(name)
     }
