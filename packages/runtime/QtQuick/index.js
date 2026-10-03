@@ -23,6 +23,7 @@ export {
   StringSorter,
   ValueFilter,
 } from "./proxy.js";
+export { ItemSelectionModel } from "./selection.js";
 export { Column, Flow, Grid, Positioner, Row } from "./positioners.js";
 export { ColorGroup, Palette, SystemPalette } from "./Palette.js";
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
