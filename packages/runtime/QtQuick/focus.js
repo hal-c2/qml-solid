@@ -117,12 +117,21 @@ function forget(item) {
 
 const PROPERTIES = ["focus", "activeFocus"];
 
+// Why focus moved, Qt's `Qt.FocusReason`: a control shows that it has focus
+// only when a key brought it there.
+export const MouseFocusReason = 0;
+export const TabFocusReason = 1;
+export const BacktabFocusReason = 2;
+export const OtherFocusReason = 7;
+
 // What changed is told as Qt tells it: item by item in the order they were
-// touched, an item's focus before its active focus.
-function tell(window, changed) {
+// touched, an item's focus before its active focus. One that keeps the
+// reason (`$reason`) is told it first, whether it gained focus or lost it.
+function tell(window, changed, reason = OtherFocusReason) {
   for (let index = 0; index < changed.length; index += 2) {
     const item = changed[index];
     if (changed.indexOf(item) < index) continue;
+    item.$reason?.(reason);
     for (const property of PROPERTIES) {
       for (let at = index; at < changed.length; at += 2) {
         if (changed[at] !== item || changed[at + 1] !== property) continue;
@@ -137,22 +146,22 @@ function tell(window, changed) {
 }
 
 // `item.focus = value`, without settling what depends on it.
-export function setFocus(item, value) {
+export function setFocus(item, value, reason) {
   if ((item.$focus === true) === Boolean(value)) return;
   const window = windowOf(item);
   const scope = scopeOf(item, window);
   const changed = [];
   if (value) give(window, scope, item, changed);
   else take(window, scope, item, changed);
-  tell(window, changed);
+  tell(window, changed, reason);
 }
 
 // Focus for the item and for every scope around it, so that it is the one
 // the keys go to.
-export function forceActiveFocus(item) {
-  setFocus(item, true);
+export function forceActiveFocus(item, reason) {
+  setFocus(item, true, reason);
   for (let parent = parentOf(item); parent; parent = parentOf(parent)) {
-    if (parent.$focusScope) setFocus(parent, true);
+    if (parent.$focusScope) setFocus(parent, true, reason);
   }
   current = windowOf(item);
   settle();
@@ -243,6 +252,6 @@ export const nextItemInFocusChain = (item, forward) => nextInChain(windowOf(item
 export function tab(window, item, forward) {
   const next = nextInChain(window, item, forward);
   if (!next || next === item) return false;
-  forceActiveFocus(next);
+  forceActiveFocus(next, forward ? TabFocusReason : BacktabFocusReason);
   return true;
 }
