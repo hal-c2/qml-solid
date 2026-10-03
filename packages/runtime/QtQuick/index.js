@@ -90,6 +90,14 @@ export {
   SmoothedAnimation,
   SpringAnimation,
 } from "./animation/PropertyAnimation.js";
+export {
+  Animator,
+  OpacityAnimator,
+  RotationAnimator,
+  ScaleAnimator,
+  XAnimator,
+  YAnimator,
+} from "./animation/Animator.js";
 export { Behavior } from "./animation/Behavior.js";
 export { Easing } from "./animation/easing.js";
 export { FrameAnimation, Timer } from "./animation/Timer.js";
