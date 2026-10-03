@@ -5,6 +5,7 @@ export { Component } from "../QtQml/Component.js";
 export { Locale } from "../QtQml/locale.js";
 export { Application } from "../QtQml/application.js";
 export { AnimatedImage } from "./AnimatedImage.js";
+export { Canvas } from "./Canvas.js";
 export { Flickable } from "./Flickable.js";
 export { Font } from "./font.js";
 export { FontLoader } from "./FontLoader.js";
