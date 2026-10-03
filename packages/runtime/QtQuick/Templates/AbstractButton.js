@@ -182,20 +182,21 @@ export const AbstractButton = defineType("AbstractButton", Control, {
       this.$checkedChange(checked);
       return true;
     },
-    // What a change of `checked` does, whoever made it.
-    $checkedChange(checked) {
+    // What a change of `checked` does, whoever made it. One that is
+    // `declared` checked excludes nothing: in Qt it has no siblings yet.
+    $checkedChange(checked, declared) {
       const mine = this.$button;
       const action = now(this, "action");
       if (action) {
         mine.followed = checked;
         check(action, checked);
       }
-      this.$buttonChange(checked);
+      this.$buttonChange(checked, declared);
       this.$buttonGroup?.$updateCurrent(this);
     },
     // What the type does about it: a button unchecks the one it excludes.
-    $buttonChange(checked) {
-      if (!checked) return;
+    $buttonChange(checked, declared) {
+      if (!checked || declared) return;
       const other = this.$findChecked();
       if (other && other !== this) other.$setChecked(false);
     },
@@ -208,8 +209,8 @@ export const AbstractButton = defineType("AbstractButton", Control, {
       if (!now(this, "autoExclusive")) return null;
       const siblings = now(this, "parent")?.$node ? untrack(() => this.parent.children) : [];
       for (const other of siblings) {
-        // What a sibling was last known to be: one that is declared checked
-        // after this one has not been heard yet, and wins when it is.
+        // What a sibling was last known to be: one whose binding says it is
+        // checked has not been heard yet, and wins when it is.
         if (other === this || !other.$button?.checked || other.$buttonGroup) continue;
         if (now(other, "autoExclusive")) return other;
       }
@@ -375,13 +376,16 @@ export const AbstractButton = defineType("AbstractButton", Control, {
       },
     );
     // `checked` assigned or bound from outside is a change like its own.
+    let declared = !slot(self, "checked").bound;
     effect(
       () => self.checked,
       () => {
+        const first = declared;
+        declared = false;
         const checked = now(self, "checked");
         if (checked === mine.checked) return;
         mine.checked = checked;
-        untrack(() => self.$checkedChange(checked));
+        untrack(() => self.$checkedChange(checked, first));
       },
     );
     // A button that stops repeating stops at once.
