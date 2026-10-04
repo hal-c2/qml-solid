@@ -59,6 +59,9 @@ export const Connections = defineType("Connections", QtObject, {
     self.$named = "target" in props;
     const handlers = Object.keys(props).filter((key) => HANDLER.test(key));
     if (!handlers.length) return;
+    // A handler is a function of the object too, which a program may call
+    // itself: to do at the start what it does at each change.
+    for (const handler of handlers) Object.defineProperty(self, handler, { value: (...args) => props[handler]?.(...args), configurable: true });
     whenComplete(() => {
       let disconnect = null;
       createRenderEffect(
