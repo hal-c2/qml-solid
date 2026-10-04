@@ -45,10 +45,10 @@ for (const example of readManifest()) {
 
     // As the reference was taken: no network, and for an example that shows
     // the time, the moment of the reference.
-    await page.route(
-      (url) => !["127.0.0.1", "localhost"].includes(url.hostname),
-      (route) => route.abort(),
-    );
+    const elsewhere = (url) => !["127.0.0.1", "localhost"].includes(url.hostname);
+    await page.route(elsewhere, (route) => route.abort());
+    // A socket is no request, and is closed as one that reached nobody.
+    await page.routeWebSocket(elsewhere, (socket) => socket.close());
     if (example.volatile === "time" && example.capturedAt) await page.clock.setFixedTime(example.capturedAt);
     // What moves is where it was in the reference only at the same moment:
     // its time stands still until it is there, and then runs as long as Qt's
