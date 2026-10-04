@@ -325,6 +325,9 @@ function ringed(owner, compute, first, binding) {
     const reader = getObserver();
     const asking = reader && evaluated !== null && evaluated.node === reader ? evaluated : null;
     if (evaluating) {
+      // What it is first computed to be is not made yet, as an object named
+      // by an id is not: `contentItem.width` in what `contentItem` is given.
+      if (!record.done) early++;
       if (reader === record.node) return held;
       if (!reader) return held;
       // All that is being computed between the two is of the ring.
