@@ -23,6 +23,9 @@
 // A surface that is lit is in the scene's fog, where it has one. One that
 // is not lit, and what is behind the scene, are not, as in Qt.
 //
+// A shape drawn by a table of instances is drawn once for each entry, by
+// one call: where each is and what colour it is times are the entry's.
+//
 // Not here: a probe that is a canvas is folded once, as it is when first
 // drawn, and a material's own probe is not looked at.
 import * as math from "./math.js";
@@ -74,9 +77,15 @@ layout(location = 5) in vec4 attr_weights;
 layout(location = 6) in vec2 attr_uv1;
 layout(location = 7) in vec3 attr_textan;
 layout(location = 8) in vec3 attr_binormal;
+layout(location = 9) in vec4 inst_row0;
+layout(location = 10) in vec4 inst_row1;
+layout(location = 11) in vec4 inst_row2;
+layout(location = 12) in vec4 inst_color;
 uniform mat4 u_all;
 uniform mat4 u_world;
 uniform mat3 u_facing;
+uniform bool u_instanced;
+uniform mat4 u_above;
 uniform float u_point;
 uniform bool u_skinned;
 uniform highp sampler2D u_bones;
@@ -116,16 +125,27 @@ void main() {
         tangent = mat3(moved) * tangent;
         binormal = mat3(moved) * binormal;
     }
-    v_position = (u_world * position).xyz;
+    mat4 world = u_world;
+    mat3 turn = u_facing;
+    mat4 all = u_all;
+    v_color = attr_color;
+    // One of many drawn by a table is where its entry puts it, within
+    // where the table is, and its colour is times the entry's.
+    if (u_instanced) {
+        world = u_above * transpose(mat4(inst_row0, inst_row1, inst_row2, vec4(0.0, 0.0, 0.0, 1.0))) * u_world;
+        turn = transpose(inverse(mat3(world)));
+        all = u_all * world;
+        v_color *= inst_color;
+    }
+    v_position = (world * position).xyz;
     // The way a corner faces is made one long here, before it is spread
     // over the triangle, as Qt makes it.
-    v_normal = normalize(u_facing * facing);
-    v_tangent = mat3(u_world) * tangent;
-    v_binormal = mat3(u_world) * binormal;
+    v_normal = normalize(turn * facing);
+    v_tangent = mat3(world) * tangent;
+    v_binormal = mat3(world) * binormal;
     v_uv = attr_uv0;
     v_uv1 = attr_uv1;
-    v_color = attr_color;
-    gl_Position = u_all * position;
+    gl_Position = all * position;
     gl_PointSize = u_point;
 }
 `;
@@ -513,6 +533,8 @@ const UNIFORMS = [
   "u_point",
   "u_skinned",
   "u_bones",
+  "u_instanced",
+  "u_above",
   "u_color",
   "u_opacity",
   "u_emissive",
@@ -1229,6 +1251,39 @@ function jointed(bones) {
   gl.activeTexture(gl.TEXTURE0);
 }
 
+// The entries of a table, as OpenGL holds them: each is three rows of a
+// matrix, a colour, and four numbers of its own, which nothing here reads.
+// A table whose entries are put in order for every picture has one buffer
+// for them all.
+const ENTRY = 20;
+const tables = new WeakMap();
+let ordered = null;
+function entered(instances) {
+  let buffer = instances.fresh ? (ordered ??= gl.createBuffer()) : tables.get(instances.data);
+  const fresh = instances.fresh || !buffer;
+  if (!buffer) tables.set(instances.data, (buffer = gl.createBuffer()));
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  if (fresh) gl.bufferData(gl.ARRAY_BUFFER, instances.data, instances.fresh ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
+  for (let row = 0; row < 4; row++) {
+    gl.enableVertexAttribArray(9 + row);
+    gl.vertexAttribPointer(9 + row, 4, gl.FLOAT, false, ENTRY * 4, row * 16);
+    gl.vertexAttribDivisor(9 + row, 1);
+  }
+}
+
+// The entries of a table from the farthest along the way the eye looks to
+// the nearest, which is the order Qt draws them in where the table says to
+// put them in order: `way` is the way the eye looks, as the model has it.
+function farthestFirst(data, count, way) {
+  const order = Array.from({ length: count }, (_, index) => {
+    const from = index * ENTRY;
+    return [data[from + 3] * way[0] + data[from + 7] * way[1] + data[from + 11] * way[2], from];
+  }).sort((a, b) => b[0] - a[0]);
+  const sorted = new Float32Array(count * ENTRY);
+  order.forEach(([, from], index) => sorted.set(data.subarray(from, from + ENTRY), index * ENTRY));
+  return sorted;
+}
+
 const UNTURNED = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
 // One part of a shape, with the material it is drawn with.
@@ -1247,9 +1302,15 @@ function part(piece) {
   gl.uniform1f(at.u_opacity, opacity * material.opacity);
   gl.uniform3fv(at.u_emissive, material.emissive);
   gl.uniform1i(at.u_lit, material.lit ? 1 : 0);
-  gl.uniform1i(at.u_colors, material.colors && made.colors ? 1 : 0);
+  // An entry of a table colours what it draws whether the material looks
+  // at the colours of the corners or not; how far it is seen through shows
+  // only where the table says something of it is.
+  const { instances } = piece;
+  gl.uniform1i(at.u_instanced, instances ? 1 : 0);
+  if (instances) gl.uniformMatrix4fv(at.u_above, false, instances.above);
+  gl.uniform1i(at.u_colors, (material.colors && made.colors) || instances ? 1 : 0);
   gl.uniform1i(at.u_principled, material.principled ? 1 : 0);
-  gl.uniform1i(at.u_solid, material.solid ? 1 : 0);
+  gl.uniform1i(at.u_solid, material.solid || (instances && !piece.sheer) ? 1 : 0);
   gl.uniform1f(at.u_cutoff, material.cutoff);
   gl.uniform1f(at.u_specular, material.specular);
   gl.uniform1f(at.u_shine, material.shine ?? 1);
@@ -1281,7 +1342,7 @@ function part(piece) {
   gl.uniform3fv(at.u_reads, reads);
   gl.uniformMatrix3fv(at.u_places, false, places);
   // Which side of a triangle is its front is the other one in a mirror.
-  const anticlockwise = (shape.winding !== 1) !== math.mirrors(world);
+  const anticlockwise = (shape.winding !== 1) !== math.mirrors(piece.placed ?? world);
   gl.frontFace(anticlockwise ? gl.CCW : gl.CW);
   gl.uniform1i(at.u_sided, material.cull === 3 ? 1 : 0);
   if (material.cull === 3) gl.disable(gl.CULL_FACE);
@@ -1289,8 +1350,16 @@ function part(piece) {
     gl.enable(gl.CULL_FACE);
     gl.cullFace(material.cull === 2 ? gl.FRONT : gl.BACK);
   }
-  if (made.kind) gl.drawElements(made.mode, subset.count, made.kind, subset.offset * made.size);
-  else gl.drawArrays(made.mode, subset.offset, subset.count);
+  if (!instances) {
+    if (made.kind) gl.drawElements(made.mode, subset.count, made.kind, subset.offset * made.size);
+    else gl.drawArrays(made.mode, subset.offset, subset.count);
+    return;
+  }
+  entered(instances);
+  if (made.kind) gl.drawElementsInstanced(made.mode, subset.count, made.kind, subset.offset * made.size, instances.count);
+  else gl.drawArraysInstanced(made.mode, subset.offset, subset.count, instances.count);
+  // The shape is held once, for what draws it once as well.
+  for (let row = 0; row < 4; row++) gl.disableVertexAttribArray(9 + row);
 }
 
 // Whether something is seen through what a material draws.
@@ -1367,16 +1436,26 @@ export function draw(scene, canvas, paper) {
     const clear = [];
     for (const model of scene.models) {
       const { shape, materials, opacity, bones } = model;
-      // A bent shape is where its joints put it, wherever its model is.
-      const world = bones ? math.IDENTITY : model.world;
-      const all = math.multiply(seen, world);
+      let { instances } = model;
+      if (instances && !instances.count) continue;
+      // A bent shape is where its joints put it, wherever its model is. One
+      // drawn by a table is where each entry puts it, which the corners
+      // work out: here it is as its model is within the entry.
+      const world = bones ? math.IDENTITY : (instances?.local ?? model.world);
+      const all = instances ? seen : math.multiply(seen, world);
+      const placed = instances ? math.multiply(instances.above, world) : world;
+      if (instances?.sorted) {
+        const way = math.normalized(math.point(math.inverse(model.world) ?? math.IDENTITY, -eye[8], -eye[9], -eye[10]));
+        instances = { ...instances, data: farthestFirst(instances.data, instances.count, way), fresh: true };
+      }
       shape.subsets.forEach((subset, index) => {
         const material = materials[Math.min(index, materials.length - 1)];
         if (!material || material.waiting) return;
-        const middle = math.point(world, ...subset.min.map((least, axis) => (least + subset.max[axis]) / 2));
+        const middle = math.point(placed, ...subset.min.map((least, axis) => (least + subset.max[axis]) / 2));
         // How far in front of the eye it is: the eye looks down its own z.
         const distance = -math.point(view, ...middle)[2];
-        (sheer(material, opacity) ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones });
+        const through = sheer(material, opacity) || Boolean(instances?.sheer);
+        (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, instances, placed, sheer: through });
       });
     }
     solid.sort((a, b) => a.distance - b.distance);

@@ -6,7 +6,9 @@
 //
 // Not here: shadows, a light's `scope`, a sky box that is a cube of six
 // pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, a material's
-// own probe, and an environment's `effects`, which are held and not run. Of
+// own probe, an environment's `effects`, which are held and not run, and
+// the distances a model draws the entries of its table between
+// (`instancingLodMin` and `instancingLodMax`). Of
 // a material's pictures: a height map moves nothing, nothing is let through
 // (`transmissionFactor` and its maps), a specular map and a translucency map
 // are not read, a picture is read whole where Qt can read one channel of it
@@ -158,8 +160,46 @@ export const Model = defineType("Model", Node, {
     // What bends it: a skin's joints, else a skeleton's with the poses the
     // model has for them.
     self.$bones = () => (self.skin ? (self.skin.$bones?.() ?? null) : (self.skeleton?.$bones?.(list(self.inverseBindPoses)) ?? null));
+    // The table it is drawn by, once for each entry, and where the entries
+    // are: `above` is what the whole table is moved by and `local` what
+    // each entry is, in its own place. Null where it is drawn once.
+    self.$instances = () => {
+      const table = self.instancing?.$table?.();
+      return table ? { ...table, ...instanced(self) } : null;
+    };
   },
 });
+
+const above = (node) => (node.parent?.$spatial ? node.parent.$world() : math.IDENTITY);
+
+// Where the entries of a node's table are. With no `instanceRoot` the node's
+// position moves the whole table, and its turn and size are each entry's
+// own; with itself as the root its position too is each entry's own; with
+// another node as the root, the table is where that node's would be, and
+// everything between the two is each entry's own.
+function instanced(node, depth = 0) {
+  const root = node.instanceRoot;
+  if (root === node) return { local: node.$local(), above: above(node) };
+  if (root?.$spatial && depth < 16) {
+    const from = instanced(root, depth + 1);
+    let local = node.$local();
+    for (let over = node.parent; over?.$spatial; over = over.parent) {
+      if (over === root) {
+        local = math.multiply(from.local, local);
+        break;
+      }
+      local = math.multiply(over.$local(), local);
+    }
+    return { local, above: from.above };
+  }
+  const local = [...node.$local()];
+  const moved = [...math.IDENTITY];
+  for (const at of [12, 13, 14]) {
+    moved[at] = local[at];
+    local[at] = 0;
+  }
+  return { local, above: math.multiply(above(node), moved) };
+}
 
 const ClampToEdge = 1;
 const MirroredRepeat = 2;

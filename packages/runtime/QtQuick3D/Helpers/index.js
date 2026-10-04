@@ -2,5 +2,6 @@
 // (OrbitCameraController, WasdController, ExtendedSceneEnvironment and the
 // rest) is Qt's own, compiled.
 export { ConeGeometry, CuboidGeometry, CylinderGeometry, GridGeometry, PlaneGeometry, ProceduralMesh, ProceduralMeshSubset, SphereGeometry, TorusGeometry } from "./geometries.js";
+export { InstanceModel, InstanceRange, InstanceRepeater, RandomInstancing } from "./instancing.js";
 export { LookAtNode } from "./LookAtNode.js";
 export { ProceduralSkyTextureData, ProceduralTextureData } from "./textures.js";

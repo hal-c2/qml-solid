@@ -1253,3 +1253,144 @@ test("a scene's fog hides what is far and what is low, as Qt's does", async ({ p
     near(await painted(page, at.map((point, index) => [point, colours[index]])), colours, call, 3);
   }
 });
+
+test("a table of instances has the entries Qt's has", async ({ page }) => {
+  const read = async (call) => {
+    await open(page, "instanced3d");
+    if (call) await page.evaluate(`window.scene.${call}`);
+    return page.evaluate(() => window.scene.read());
+  };
+  const list = [
+    { position: [-110, 50, 0], scale: [1, 1, 1], rotation: [1, 0, 0, 0], color: [1, 0.217, 0.051, 1], data: [1, 2, 3, 4] },
+    { position: [-50, 50, 0], scale: [0.5, 1, 1], rotation: [0.966, 0, 0, 0.259], color: [0.051, 1, 0.217, 1], data: [0, 0, 0, 0] },
+    { position: [10, 50, 0], scale: [1, 1, 1], rotation: [0.924, 0, 0, 0.383], color: [0.051, 0.217, 1, 1], data: [0, 0, 0, 0] },
+    { position: [70, 50, 0], scale: [1, 1, 1], rotation: [1, 0, 0, 0], color: [1, 1, 1, 0.502], data: [0, 0, 0, 0] },
+  ];
+  // What a delegate reads of its row, and where an InstanceRepeater put it:
+  // not where the delegate says.
+  const nodes = list.map(({ position, scale, rotation, color }, at) => ({ position, scale, rotation, tone: color, at, where: position }));
+  // An entry's colour reads in linear light. What is asked of an entry
+  // there is none of is nothing. A table made up from a seed is the one Qt
+  // makes up from it.
+  near(await read(), {
+    count: [4, 5, 4, 4],
+    list,
+    past: [0, 0, 0],
+    random: [
+      { position: [35.919, 5.17, 0], scale: [0.977, 0.977, 0.977], rotation: [0.913, 0, 0, 0.408], color: [0.077, 0.343, 0.125, 1], data: [0.495, 8.174, 42.268, 569.684] },
+      { position: [37.562, 29.275, 0], scale: [0.897, 0.897, 0.897], rotation: [0.933, 0, 0, 0.359], color: [0.156, 0.874, 0.069, 1], data: [0.225, 3.737, 61.893, 34.48] },
+      { position: [23.589, -9.18, 0], scale: [1.333, 1.333, 1.333], rotation: [0.93, 0, 0, 0.367], color: [0.089, 0.931, 0.055, 1], data: [0.488, 5.257, 55.835, 350.173] },
+      { position: [17.091, 18.526, 0], scale: [1.151, 1.151, 1.151], rotation: [0.926, 0, 0, 0.378], color: [0.196, 0.086, 0.928, 1], data: [0.691, 2.84, 86.09, 795.101] },
+      { position: [40.399, 7.173, 0], scale: [1.078, 1.078, 1.078], rotation: [0.968, 0, 0, 0.252], color: [0.129, 0.592, 0.044, 1], data: [0.48, 0.736, 47.172, 1.832] },
+    ],
+    nodes,
+  });
+  // A table told to draw two of its entries still has four, and so has
+  // the InstanceRepeater; an InstanceModel says it has two rows.
+  near(await read("fewer()"), { count: [4, 5, 4, 2], list, nodes });
+  // An entry that changes is a table that changes: the nodes are made anew.
+  const moved = { position: [-50, 20, 0], color: [1, 1, 0, 1] };
+  near(await read("moved()"), {
+    count: [4, 5, 4, 4],
+    list: list.map((entry, at) => (at === 1 ? { ...entry, ...moved } : entry)),
+    nodes: nodes.map((node, at) => (at === 1 ? { ...node, position: moved.position, tone: moved.color, where: moved.position } : node)),
+  });
+  near(await read("seeded()"), {
+    count: [4, 3, 4, 4],
+    random: [
+      { position: [-25.994, 0.894, 0], scale: [0.601, 0.601, 0.601], rotation: [0.994, 0, 0, 0.109], color: [0.192, 0.185, 0.161, 1], data: [0.035, 2.176, 38.026, 469.28] },
+      { position: [-44.803, 38.2, 0], scale: [1.324, 1.324, 1.324], rotation: [0.991, 0, 0, 0.132], color: [0.025, 0.084, 0.055, 1], data: [0.114, 1.943, 52.496, 679.417] },
+      { position: [14.777, 32.256, 0], scale: [1.339, 1.339, 1.339], rotation: [0.985, 0, 0, 0.171], color: [0.18, 0.38, 0.245, 1], data: [0.932, 3.254, 7.261, 666.115] },
+    ],
+  });
+  // Colours mixed by hue, how strong and how bright, one number drawn for
+  // all four: which leaves three fewer for each entry, so every entry after
+  // the first is another.
+  near(await read("coloured()"), {
+    random: [
+      { position: [35.919, 5.17, 0], scale: [0.977, 0.977, 0.977], rotation: [0.913, 0, 0, 0.408], color: [0.143, 0.539, 0.016, 1], data: [0.566, 2.988, 84.779, 494.575] },
+      { position: [31.742, -6.186, 0], scale: [1.376, 1.376, 1.376], rotation: [0.952, 0, 0, 0.307], color: [0.014, 0.893, 0.468, 1], data: [0.974, 4.68, 18.896, 934.305] },
+      { position: [-31.04, -17.417, 0], scale: [0.874, 0.874, 0.874], rotation: [0.838, 0, 0, 0.546], color: [0.328, 0.439, 0.016, 1], data: [0.873, 8.329, 18.508, 924.219] },
+      { position: [-2.136, -3.141, 0], scale: [0.653, 0.653, 0.653], rotation: [0.916, 0, 0, 0.401], color: [0.1, 0.57, 0.016, 1], data: [0.35, 6.709, 73.157, 561.977] },
+      { position: [15.143, 37.131, 0], scale: [0.993, 0.993, 0.993], rotation: [0.727, 0, 0, 0.686], color: [0.211, 0.499, 0.016, 1], data: [0.691, 2.84, 86.09, 795.101] },
+    ],
+  });
+  // By hue, how strong and how light: the same numbers drawn as at first.
+  const lighter = await read("lighter()");
+  near(
+    lighter.random.map((entry) => entry.color),
+    [
+      [0.101, 0.46, 0.004, 1],
+      [0.465, 0.139, 0, 1],
+      [0.159, 0.446, 0, 1],
+      [0.713, 0.105, 0.049, 1],
+      [0.389, 0.287, 0.001, 1],
+    ],
+    "lighter",
+  );
+  // On a grid no entry is in a cell next to one taken: the third is where
+  // it first found room.
+  near(await read("gridded()"), {
+    count: [4, 5, 4, 4],
+    random: [
+      { position: [35.919, 5.17, 0], scale: [0.977, 0.977, 0.977], rotation: [0.913, 0, 0, 0.408], color: [0.077, 0.343, 0.125, 1], data: [0.495, 8.174, 42.268, 569.684] },
+      { position: [37.562, 29.275, 0], scale: [0.897, 0.897, 0.897], rotation: [0.933, 0, 0, 0.359], color: [0.156, 0.874, 0.069, 1], data: [0.225, 3.737, 61.893, 34.48] },
+      { position: [33.288, -25.194, 0], scale: [0.979, 0.979, 0.979], rotation: [0.993, 0, 0, 0.12], color: [0.162, 0.267, 0.302, 1], data: [0.35, 6.709, 73.157, 561.977] },
+      { position: [15.143, 37.131, 0], scale: [0.993, 0.993, 0.993], rotation: [0.727, 0, 0, 0.686], color: [0.087, 0.49, 0.116, 1], data: [0.795, 9.04, 58.966, 958.519] },
+      { position: [7.816, -19.236, 0], scale: [0.825, 0.825, 0.825], rotation: [0.995, 0, 0, 0.098], color: [0.038, 0.259, 0.029, 1], data: [0.002, 4.523, 30.068, 96.009] },
+    ],
+  });
+});
+
+test("a Model is drawn once for each entry of its table, where Qt draws it", async ({ page }) => {
+  const ground = [64, 80, 96];
+  const states = [
+    // Along the top, a rectangle for each entry, of the entry's colour: the
+    // last wholly white, though its entry is half seen through. Below, two
+    // cubes that are lit, the second times its entry's red; two rectangles
+    // somewhat seen through, the later entry over the earlier; and five put
+    // at random.
+    [
+      "",
+      [
+        [[20, 20], ground],
+        [[50, 36], [255, 128, 64]],
+        [[104, 38], [64, 255, 128]],
+        [[172, 32], [64, 128, 255]],
+        [[248, 36], [255, 255, 255]],
+        [[34, 134], [159, 159, 159]],
+        [[26, 140], [174, 174, 174]],
+        [[40, 148], [79, 79, 79]],
+        [[88, 132], [188, 70, 70]],
+        [[104, 138], [101, 33, 33]],
+        [[130, 130], [208, 20, 24]],
+        [[146, 146], [51, 5, 198]],
+        [[160, 146], [16, 20, 216]],
+        [[272, 114], [110, 240, 74]],
+        [[252, 122], [122, 83, 247]],
+        [[258, 148], [84, 247, 66]],
+      ],
+    ],
+    // Two of the four.
+    ["fewer()", [[[50, 36], [255, 128, 64]], [[104, 38], [64, 255, 128]], [[172, 32], ground], [[248, 36], ground]]],
+    ["moved()", [[[104, 38], ground], [[102, 74], [255, 255, 0]]]],
+    // A table that says something of it is seen through shows it.
+    ["sheer()", [[[248, 36], [160, 168, 176]]]],
+    // Put in order, the farther entry is drawn first.
+    ["sorted()", [[[130, 130], [208, 20, 24]], [[146, 146], [196, 5, 53]], [[160, 146], [16, 20, 216]]]],
+    ["seeded()", [[[196, 100], [44, 82, 66]], [[254, 106], [117, 165, 135]], [[210, 146], [121, 119, 112]], [[272, 114], ground]]],
+    ["coloured()", [[[244, 106], [127, 187, 34]], [[270, 146], [31, 243, 182]], [[232, 150], [89, 198, 34]], [[202, 162], [155, 177, 34]]]],
+    ["lighter()", [[[272, 114], [181, 104, 0]], [[252, 122], [219, 91, 62]], [[274, 136], [167, 146, 1]], [[258, 148], [111, 178, 0]]]],
+    ["gridded()", [[[244, 106], [83, 186, 96]], [[270, 138], [78, 158, 99]], [[238, 166], [55, 139, 48]], [[272, 170], [112, 141, 149]]]],
+    // A model's position moves its whole table; with the model as its own
+    // `instanceRoot` it moves each entry in the entry's own place, and
+    // with the node above it as the root that node's size does too.
+    ["rooted()", [[[50, 36], [255, 128, 64]], [[104, 34], [64, 255, 128]], [[176, 22], [64, 128, 255]], [[154, 58], ground]]],
+    ["held()", [[[68, 40], [255, 128, 64]], [[26, 40], ground], [[110, 38], [64, 255, 128]], [[176, 26], [64, 128, 255]], [[216, 52], [255, 255, 255]], [[258, 38], ground]]],
+  ];
+  for (const [call, points] of states) {
+    await open(page, "instanced3d");
+    if (call) await page.evaluate(`window.scene.${call}`);
+    near(await painted(page, points), points.map(([, colour]) => colour), call, 3);
+  }
+});

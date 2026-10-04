@@ -26,7 +26,7 @@ function found(self) {
     const opacity = above * node.opacity;
     if (node.$model) {
       const shape = node.$shape();
-      if (shape) models.push({ shape, world: node.$world(), bones: node.$bones(), materials: node.$materials().map((material) => material?.$material?.() ?? null), opacity });
+      if (shape) models.push({ shape, world: node.$world(), bones: node.$bones(), instances: node.$instances(), materials: node.$materials().map((material) => material?.$material?.() ?? null), opacity });
     } else if (node.$light) lights.push(node.$light());
     else if (node.$camera) camera ??= node;
     for (const child of inside(node)) walk(child, opacity);
