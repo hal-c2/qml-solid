@@ -5,8 +5,8 @@
 // out, so plain text is measured and broken into lines here and the element
 // is given the lines. Markup is the browser's to set: it is measured in an
 // element off the page.
-import { defineType, derived, effect, flush, slot } from "../object.js";
-import { css } from "./color.js";
+import { $string, defineType, derived, effect, flush, kinds, slot, typed } from "../object.js";
+import { color, css } from "./color.js";
 import { given, lazy, sized } from "./compute.js";
 import {
   advance,
@@ -307,9 +307,9 @@ const layout = (self) => self.$text.layout();
 
 export const Text = defineType("Text", Item, {
   properties: {
-    text: "",
+    text: $string,
     font,
-    color: "black",
+    color: typed(kinds.color, color("black")),
     linkColor: "blue",
     style: 0,
     styleColor: "black",

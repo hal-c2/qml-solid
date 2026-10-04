@@ -23,6 +23,7 @@ import {
   runWithOwner,
   untrack,
 } from "solid-js";
+import { Color, color } from "./QtQuick/color.js";
 
 // Solid refuses a write from a component's body or a computation; an object
 // is assigned to from wherever its QML says.
@@ -70,6 +71,163 @@ export const derived = (compute) => ({ [DERIVED]: compute });
 // bound as the prop `anchors$fill`.
 const GROUP = Symbol("group");
 export const group = (properties) => ({ [GROUP]: properties });
+
+// A property of a type: `property int hours` is an int, whatever it is
+// given, and what it is given becomes one as Qt makes it one. `typed(int, 0)`
+// is such a property that is 0 until something says otherwise. What cannot
+// become one is refused: an assignment throws, as Qt's does, and a binding is
+// told of and leaves the property what it was.
+const TYPED = Symbol("typed");
+const REFUSED = Symbol("refused");
+export const typed = (kind, initial) => ({ [TYPED]: kind, initial });
+
+// A number in a string, as Qt reads one: all of it, and in tens.
+const NUMERAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+// A number is cut to 32 bits, as JavaScript's `| 0` cuts it; a string is
+// read and rounded.
+function int(value) {
+  switch (typeof value) {
+    case "number":
+      return value | 0;
+    case "boolean":
+      return value ? 1 : 0;
+    case "string": {
+      const text = value.trim();
+      if (!NUMERAL.test(text)) return REFUSED;
+      const number = Number(text);
+      if (!Number.isFinite(number)) return REFUSED;
+      const rounded = number < 0 ? -Math.round(-number) : Math.round(number);
+      return Math.abs(rounded) >= 2 ** 31 ? -(2 ** 31) : rounded | 0;
+    }
+    default:
+      return REFUSED;
+  }
+}
+int.type = "int";
+
+// Whatever JavaScript makes a number of, so a string that is no number is
+// not refused: it is NaN.
+function real(value) {
+  if (typeof value === "number") return value;
+  if (typeof value === "symbol" || typeof value === "bigint") return REFUSED;
+  try {
+    return Number(value);
+  } catch {
+    return NaN;
+  }
+}
+real.type = "double";
+
+const bool = (value) => Boolean(value);
+bool.type = "bool";
+
+// A number as Qt writes one into a string: the shorter of the plain and the
+// scientific, whose exponent has two digits at least. One that could be an
+// int is written as one. (Qt writes a whole number it holds as a double the
+// other way, `1e+05`: whether it does is not to be seen from here.)
+function numeral(value) {
+  if (!Number.isFinite(value)) return Number.isNaN(value) ? "nan" : value > 0 ? "inf" : "-inf";
+  const plain = String(value);
+  if (Number.isInteger(value) && Math.abs(value) < 2 ** 31) return plain;
+  const [mantissa, exponent] = value.toExponential().split("e");
+  const power = Number(exponent);
+  const scientific = `${mantissa}e${power < 0 ? "-" : "+"}${String(Math.abs(power)).padStart(2, "0")}`;
+  return plain.includes("e") || scientific.length < plain.length ? scientific : plain;
+}
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const two = (number) => String(number).padStart(2, "0");
+
+// A date as Qt writes one: `Thu Jan 1 01:00:00 1970 GMT+0100`.
+function dated(date) {
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = -date.getTimezoneOffset();
+  const zone = `${offset < 0 ? "-" : "+"}${two(Math.trunc(Math.abs(offset) / 60))}${two(Math.abs(offset) % 60)}`;
+  const time = `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
+  return `${DAYS[date.getDay()]} ${MONTHS[date.getMonth()]} ${date.getDate()} ${time} ${date.getFullYear()} GMT${zone}`;
+}
+
+// Numbers, colours, dates and nothing at all have a text; an object has
+// none. A list has the text of the one thing in it.
+// A list written to a string is a list of letters to Qt: the first of a
+// string, the one a number is the code of.
+function letter(value) {
+  if (typeof value === "string") return value.slice(0, 1);
+  if (Array.isArray(value)) return value.length ? letter(value[0]) : "";
+  return String.fromCharCode(typeof value === "number" || typeof value === "boolean" ? value : 0);
+}
+
+function string(value) {
+  switch (typeof value) {
+    case "string":
+      return value;
+    case "number":
+      return numeral(value);
+    case "boolean":
+      return String(value);
+    case "object": {
+      if (value === null) return "";
+      if (Array.isArray(value)) return value.map(letter).join("");
+      if (value instanceof Color) return String(value);
+      if (value instanceof Date) return dated(value);
+      return REFUSED;
+    }
+    default:
+      return REFUSED;
+  }
+}
+string.type = "QString";
+
+// A colour is a value, whatever it was written as; what is no colour is the
+// colour that is not one.
+const tint = (value) => color(value);
+tint.type = "QColor";
+
+// What Qt calls the value it refuses.
+function named(value) {
+  if (value === undefined) return "[undefined]";
+  if (value === null) return "std::nullptr_t";
+  switch (typeof value) {
+    case "string":
+      return "QString";
+    case "number":
+      return Number.isInteger(value) ? "int" : "double";
+    case "boolean":
+      return "bool";
+    case "function":
+      return "JavaScript function";
+    default:
+      if (value instanceof Color) return "QColor";
+      if (value instanceof Date) return "QDateTime";
+      return value?.$type ? "QObject*" : "QJSValue";
+  }
+}
+
+// For a type that says how a property of its own is typed:
+// `typed(kinds.int, -1)`.
+export const kinds = { int, real, bool, string, color: tint };
+
+// What the compiler declares a property of a file as.
+export const $int = typed(int, 0);
+export const $real = typed(real, 0);
+export const $bool = typed(bool, false);
+export const $string = typed(string, "");
+export const $color = typed(tint, color(""));
+
+// A binding's value as the property's type has it.
+function converted(key, kind, compute) {
+  let last;
+  return () => {
+    const value = compute();
+    if (value === undefined) return value;
+    const made = kind(value);
+    if (made !== REFUSED) return (last = made);
+    console.warn(`${key.replaceAll("$", ".")}: Unable to assign ${named(value)} to ${kind.type}`);
+    return last;
+  };
+}
 
 const next = (version) => version + 1;
 
@@ -408,11 +566,13 @@ function* sources(record) {
 }
 
 class Slot {
-  constructor(self, key, initial, resolve, whole, member) {
+  constructor(self, key, initial, resolve, whole, member, kind) {
     this.self = self;
     this.key = key;
     this.initial = initial;
     this.resolve = resolve;
+    // What makes a value one of the property's type, when it has one.
+    this.kind = kind;
     // For a property of a group, the group and its name in it: `font` and
     // `bold` for `font.bold`, which `font: other.font` gives too.
     this.whole = whole;
@@ -448,15 +608,12 @@ class Slot {
     // the content item of a window.
     // What it reads of its own property, itself or through another's
     // binding, is what the property had.
-    this.bound = descriptor?.get
-      ? ringed(
-          self.$owner,
-          guarded(key, () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key]))),
-          undefined,
-          true,
-        )
+    const kind = this.kind;
+    const compute = descriptor?.get
+      ? guarded(key, () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key])))
       : null;
-    this.given = descriptor && !descriptor.get ? descriptor.value : undefined;
+    this.bound = compute ? ringed(self.$owner, kind ? converted(key, kind, compute) : compute, undefined, true) : null;
+    this.given = descriptor && !descriptor.get ? this.made(descriptor.value) : undefined;
     this.bound?.start();
   }
 
@@ -529,6 +686,11 @@ class Slot {
   // which an animation makes every frame.
   write(value) {
     if (typeof value === "function" && value[BINDING]) return this.rebind(value);
+    if (this.kind) {
+      const made = value === undefined ? REFUSED : this.kind(value);
+      if (made === REFUSED) throw Object.assign(new Error(`Cannot assign ${named(value)} to ${this.kind.type}`), { refused: true });
+      value = made;
+    }
     // Where an object was put, it is until what laid it out puts it
     // somewhere else: a row that is dragged stays where it was dragged to
     // until its view lays its rows out again, as in Qt. (Qt puts every row
@@ -549,12 +711,8 @@ class Slot {
     // What it reads of its own property, itself or through another's
     // binding, is what the property had.
     const had = untrack(() => this.own());
-    this.bound = ringed(
-      self.$owner,
-      guarded(this.key, () => compute.call(self)),
-      had,
-      true,
-    );
+    const guard = guarded(this.key, () => compute.call(self));
+    this.bound = ringed(self.$owner, this.kind ? converted(this.key, this.kind, guard) : guard, had, true);
     this.bound.begin();
     this.assigned = false;
     this.value = undefined;
@@ -562,8 +720,17 @@ class Slot {
     return true;
   }
 
+  // What the property is given without a binding, as its type has it; what
+  // cannot be of the type is as good as nothing.
+  made(value) {
+    if (!this.kind || value === undefined) return value;
+    const made = this.kind(value);
+    return made === REFUSED ? undefined : made;
+  }
+
   // What a parent or a view gives the object: a default, not an assignment.
   provide(value) {
+    value = this.made(value);
     if (Object.is(this.given, value)) return;
     this.given = value;
     this.changed();
@@ -593,7 +760,9 @@ export function slot(self, key) {
 
 function defineProperty(Type, proto, name, initial) {
   const resolve = Type.spec.resolve?.[name];
-  const make = (self) => (self.$slots[name] = new Slot(self, name, initial, resolve));
+  const kind = initial?.[TYPED];
+  if (kind) initial = initial.initial;
+  const make = (self) => (self.$slots[name] = new Slot(self, name, initial, resolve, undefined, undefined, kind));
   Type.slots[name] = make;
   Object.defineProperty(proto, name, {
     get() {
@@ -896,12 +1065,21 @@ function defineAlias(self, name, [target, ...path]) {
     const aliased = target.$type && slot(target, key);
     if (aliased) return aliased.bind(self.$props, name);
     // An alias of an alias, or of an object made later: assigned instead.
+    // Assigned when what is bound changes, not whenever it is worked out.
     createRenderEffect(
-      binding,
+      createMemo(binding),
       (value) =>
         settled(() => {
           const object = holder();
-          if (object) object[last] = value;
+          if (!object) return;
+          // It is a binding all the same: a value the property cannot hold
+          // leaves it what it held, and is told of.
+          try {
+            object[last] = value;
+          } catch (error) {
+            if (!error.refused) throw error;
+            console.warn(`${name}: ${error.message.replace("Cannot", "Unable to")}`);
+          }
         }),
     );
   });

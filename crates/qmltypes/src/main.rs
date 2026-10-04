@@ -12,6 +12,7 @@
 //!
 //! `--qt` may be given more than once, for modules of Qt that are kept
 //! somewhere else: a module is taken from the first directory that has it.
+//! Without it, the directories `QML_IMPORT_PATH` names come before Qt's own.
 
 mod model;
 mod qmldir;
@@ -109,7 +110,11 @@ fn main() -> ExitCode {
         }
     }
 
+    // As Qt looks for them: where `QML_IMPORT_PATH` says, then Qt's own.
     if qt.is_empty() {
+        if let Some(elsewhere) = std::env::var_os("QML_IMPORT_PATH") {
+            qt.extend(std::env::split_paths(&elsewhere).filter(|path| !path.as_os_str().is_empty()));
+        }
         qt.push(PathBuf::from("/usr/lib/qt6/qml"));
     }
 
