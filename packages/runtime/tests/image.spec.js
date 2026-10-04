@@ -47,6 +47,7 @@ const QT = {
   wide: [1, 1, 100, 20, 40, 20, 40, 20, 40, 20],
   vector: [1, 1, 120, 60, 120, 60, 120, 60, 120, 0],
   drawn: [1, 1, 60, 30, 60, 30, 60, 30, 60, 30],
+  packed: [1, 1, 60, 30, 60, 30, 60, 30, 60, 30],
   broken: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   none: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 };
@@ -289,6 +290,26 @@ test("a drawing is painted at the size asked for", async ({ page }) => {
     [120, 30, 120, 30, 8, 4],
     [40, 20, 400, 400],
   ]);
+  // And is stretched to them: the disc is twice as wide as it is tall.
+  const stretched = await pixels(page, [
+    [5, 245],
+    [12, 245],
+    [48, 245],
+    [115, 245],
+    [30, 233],
+    [30, 237],
+  ]);
+  expect(stretched).toEqual([YELLOW, BLUE, BLUE, YELLOW, YELLOW, BLUE]);
+});
+
+test("a compressed drawing is opened and painted", async ({ page }) => {
+  await pictures(page);
+  // The server does not say that it is compressed, as most do not.
+  const read = await pixels(page, [
+    [345, 215],
+    [380, 215],
+  ]);
+  expect(read).toEqual([BLUE, YELLOW]);
 });
 
 test("a picture that changes is loaded and laid out again", async ({ page }) => {

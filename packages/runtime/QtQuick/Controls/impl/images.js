@@ -3,7 +3,7 @@
 import { defineType, derived, effect } from "../../../object.js";
 import { colorValue, equal } from "../../color.js";
 import { rules } from "../../compute.js";
-import { geometry, Image } from "../../Image.js";
+import { drawn, geometry, Image } from "../../Image.js";
 
 // The colour is what is painted, and the picture what lets it through: the
 // picture's own colours are gone, its shape and how opaque it is stay.
@@ -25,7 +25,7 @@ function tinted(self, tint) {
       const record = self.$image.record();
       if (!colour || !record || record.status() !== READY) return null;
       const { inner, repeat } = geometry(self);
-      return { url: record.url, inner, repeat, colour: colour.css() };
+      return { url: drawn(record), inner, repeat, colour: colour.css() };
     },
     (next) => {
       face.classList.toggle("qq-tinted", Boolean(next));

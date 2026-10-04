@@ -18,6 +18,7 @@
 //     Image { id: wide; x: 220; y: 200; width: 100; source: "/assets/flag.png"; fillMode: Image.PreserveAspectFit }
 //     Image { id: vector; y: 230; source: "/assets/disc.svg"; sourceSize.width: 120; asynchronous: true }
 //     Image { id: drawn; x: 130; y: 250; source: "/assets/disc.svg" }
+//     Image { id: packed; x: 330; y: 200; source: "/assets/disc.svgz" }
 //     Image { id: broken; source: "data:image/png;base64,AAAA" }
 //     Image { id: none }
 //     BorderImage {
@@ -60,6 +61,7 @@ export default function Pictures() {
     named(Image, "wide", { x: 220, y: 200, width: 100, source: flag, fillMode: Image.PreserveAspectFit }),
     named(Image, "vector", { y: 230, source: disc, sourceSize$width: 120, asynchronous: true }),
     named(Image, "drawn", { x: 130, y: 250, source: disc }),
+    named(Image, "packed", { x: 330, y: 200, source: "/assets/disc.svgz" }),
     named(Image, "broken", { source: "data:image/png;base64,AAAA" }),
     named(Image, "none", {}),
     named(BorderImage, "frame", {

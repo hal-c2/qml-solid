@@ -34,6 +34,20 @@ export function picture(url) {
   return record;
 }
 
+// `.svgz`: a drawing, compressed. A browser shows one only when what serves
+// it says that it is compressed, which few do: it is opened here.
+const PACKED = /\.svgz(?:[?#]|$)/i;
+
+async function opened(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  // Already opened by the browser, where the server did say.
+  const packed = bytes[0] === 0x1f && bytes[1] === 0x8b;
+  const drawing = packed ? await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).blob() : bytes;
+  return URL.createObjectURL(new Blob([drawing], { type: "image/svg+xml" }));
+}
+
 function fetched(url) {
   const record = picture(url);
   const element = document.createElement("img");
@@ -43,7 +57,9 @@ function fetched(url) {
     record.settle(READY);
   };
   element.onerror = () => record.settle(ERROR);
-  element.src = url;
+  if (!PACKED.test(url)) element.src = url;
+  // What is shown is what was opened.
+  else opened(url).then((address) => (element.src = record.url = address), element.onerror);
   return record;
 }
 
@@ -77,8 +93,9 @@ function arrived(self) {
 function loaded(self) {
   const record = arrived(self);
   const { width, height, scalable } = record;
-  const wide = given(self, "sourceSize", "width") ? Number(self.sourceSize.width) || 0 : 0;
-  const tall = given(self, "sourceSize", "height") ? Number(self.sourceSize.height) || 0 : 0;
+  // Qt's size is in whole pixels.
+  const wide = given(self, "sourceSize", "width") ? Math.round(Number(self.sourceSize.width)) || 0 : 0;
+  const tall = given(self, "sourceSize", "height") ? Math.round(Number(self.sourceSize.height)) || 0 : 0;
   if ((wide <= 0 && tall <= 0) || !width || !height) return record;
   if (scalable && wide > 0 && tall > 0) return { width: wide, height: tall };
   let ratio = 0;
@@ -201,6 +218,10 @@ export function geometry(self) {
 }
 
 const address = (url) => `url(${JSON.stringify(url)})`;
+// A drawing fills what it is painted in, as the picture Qt makes of it does:
+// left to itself the browser would keep its shape.
+export const drawn = (record) =>
+  record.scalable && !record.url.includes("#") ? `${record.url}#svgView(preserveAspectRatio(none))` : record.url;
 // A mirrored picture is turned over where it is.
 const flipped = (self) =>
   self.mirror || self.mirrorVertically ? `scale(${self.mirror ? -1 : 1}, ${self.mirrorVertically ? -1 : 1})` : "";
@@ -256,7 +277,7 @@ export const Image = defineType("Image", ImageBase, {
         const record = self.$image.record();
         if (!record || record.status() !== READY) return null;
         // An animation paints its frames itself, in the same place.
-        return { ...geometry(self), url: record.frames ? "" : record.url, flip: flipped(self), rendering: rendering(self) };
+        return { ...geometry(self), url: record.frames ? "" : drawn(record), flip: flipped(self), rendering: rendering(self) };
       },
       (next) => {
         style.display = next ? "" : "none";
