@@ -11,7 +11,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join, sep } from "node:path";
 import { searchForWorkspaceRoot } from "vite";
 
 // What marks a `.js` file as the script a QML file imports
@@ -30,6 +30,14 @@ const natives = () => JSON.parse(readFileSync(join(runtime, "package.json"), "ut
 // `qml-solid/QtQuick/Controls`: a module of Qt's, not `qml-solid/object`.
 const MODULE = /^qml-solid\/(Qt[\w/]*)$/;
 const VIRTUAL = "\0qml-solid:";
+// Qt's own QML is of no program, and takes the style of the one that came
+// to it: its address says which (`DebugView.qml?for=Material`), and so does
+// that of each module on the way.
+const FOR = "for";
+const carried = (importer) => new URLSearchParams(importer?.split("?")[1]).get(FOR);
+// The part of a module that is the types nothing has yet, which the QML of
+// the module itself may name: it is there before they are.
+const ABSENT = "absent";
 const path = (uri) => uri.replaceAll(".", "/");
 
 // What the Qt installed here says of itself: where it keeps its QML modules
@@ -190,7 +198,9 @@ function exported(context, file, names = new Set(), seen = new Set()) {
 }
 
 // - `qmlc`, `args`: the compiler and what it is run with.
-// - `qt`: where the QML modules of Qt are, when not where `qtpaths` says.
+// - `qt`: where the QML modules of Qt are, when not where `qtpaths` says:
+//   a directory, or several, a module being of the first to have it. When
+//   not given, `QML_IMPORT_PATH` names more of them, as it does to Qt.
 // - `style`: what `import QtQuick.Controls` is, "Material" or "Fusion": a
 //   name, or a function of the file that imports it when the files of one
 //   build are not all of one style. Otherwise the one the settings name,
@@ -205,7 +215,13 @@ function exported(context, file, names = new Set(), seen = new Set()) {
 export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, standins = [] } = {}) {
   let asked;
   const found = () => (asked ??= installed());
-  qt ??= process.env.QT_INSTALL_QML ?? found().qml ?? null;
+  const elsewhere = process.env.QML_IMPORT_PATH?.split(delimiter) ?? [];
+  const roots = [qt ?? [...elsewhere, process.env.QT_INSTALL_QML ?? found().qml]].flat().filter(Boolean);
+  // Where a module of Qt's is: null when Qt has none of that name here.
+  const home = (module) => {
+    const root = roots.find((root) => existsSync(join(root, module, "qmldir")));
+    return root ? join(root, module) : null;
+  };
   const set = (importer) => {
     const given = typeof controls === "function" ? controls(importer) : controls;
     const groups = typeof given === "string" ? conf(given) : given;
@@ -215,6 +231,7 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
   const styled = (importer) =>
     (typeof style === "function" ? style(importer) : style) ?? set(importer)?.Controls?.Style?.replace(/^Default$/, "Basic");
   const stood = (file) => (typeof standins === "function" ? standins(file) : standins) ?? [];
+  const compiled = new Map();
   let cache = join(runtime, "node_modules/.vite/qml-solid");
   // The pictures of a module, by what its QML names them: next to the QML
   // when the installation has them there, otherwise read out of the plugin
@@ -222,9 +239,9 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
   // about yet.
   const kept = (module, about) => {
     const folder = `${KEPT}/${module}/images`;
-    let directory = join(qt, module, "images");
+    let directory = join(home(module), "images");
     if (!existsSync(directory)) {
-      const named = [...about.types.values()].some((file) => readFileSync(join(qt, module, file), "utf8").includes(folder));
+      const named = [...about.types.values()].some((file) => readFileSync(join(home(module), file), "utf8").includes(folder));
       if (!named) return [];
       const { bins, version } = found();
       directory = join(cache, version || "qt", module, "images");
@@ -251,7 +268,8 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
   // What Qt's installation says of a module, when it is worth reading: one
   // with QML files or a style, or one that only brings others.
   const composed = (module, seen = []) => {
-    const about = qt && !seen.includes(module) ? described(join(qt, module)) : null;
+    const directory = seen.includes(module) ? null : home(module);
+    const about = directory ? described(directory) : null;
     if (!about) return null;
     if (about.types.size > 0 || about.style) return about;
     return about.imports.some((uri) => has(path(uri), [...seen, module])) ? about : null;
@@ -260,6 +278,22 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
   // in it the runtime has in QtQml.
   const has = (module, seen = []) =>
     /^Qt/.test(module) && Boolean(natives()[`./${module}`] || needed(module) || composed(module, seen));
+  // Whether what a module of Qt's is depends on the style: it has the choice
+  // of one, or its QML or what it brings comes to a module that has. Only
+  // such a module is one for each style; any other is the same for all.
+  const sways = new Map();
+  const swayed = (module, seen = []) => {
+    if (sways.has(module)) return sways.get(module);
+    const about = seen.includes(module) ? null : composed(module);
+    if (!about) return false;
+    const named = [...about.types.values()].flatMap((file) =>
+      [...readFileSync(join(home(module), file), "utf8").matchAll(/^\s*import\s+([A-Za-z][\w.]*)/gm)].map(([, uri]) => uri),
+    );
+    const others = [...new Set([...about.imports, ...named])].map(path);
+    const sway = Boolean(about.style) || others.some((other) => other !== module && swayed(other, [...seen, module]));
+    if (seen.length === 0) sways.set(module, sway);
+    return sway;
+  };
   // What a module is made of, in the order that decides whose a name is:
   // what the runtime has of it and its QML files, then what it brings, each
   // name from the first module to have it, and last what Qt has in C++ and
@@ -297,21 +331,24 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
     // for the browser before a page asks for it.
     config(config) {
       const optimizeDeps = { include: ["qml-solid > sql.js"] };
-      if (!qt) return { optimizeDeps };
+      if (roots.length === 0) return { optimizeDeps };
       const allowed = config.server?.fs?.allow ? [] : [searchForWorkspaceRoot(config.root ?? process.cwd())];
-      return { optimizeDeps, server: { fs: { allow: [...allowed, qt] } } };
+      return { optimizeDeps, server: { fs: { allow: [...allowed, ...roots] } } };
     },
     async resolveId(source, importer, options) {
+      if (source.startsWith(VIRTUAL)) return source;
       const module = source.match(MODULE)?.[1];
+      const carry = styled(importer) ?? carried(importer);
       if (module && has(module)) {
         const chosen = composed(module)?.style;
         const query = new URLSearchParams();
-        if (chosen) query.set("style", styled(importer) ?? chosen.split(".").at(-1));
+        if (chosen) query.set("style", carry ?? chosen.split(".").at(-1));
         // The settings go with the controls, and with a style imported by
         // its own name: whichever a program has first tells the runtime.
         const settings = chosen || /^QtQuick\/Controls\/[A-Z]\w*$/.test(module) ? set(importer) : null;
         // In letters an address keeps as they are, whoever passes it on.
         if (settings) query.set("controls", Buffer.from(JSON.stringify(settings)).toString("base64url"));
+        if (carry && swayed(module)) query.set(FOR, carry);
         return `${VIRTUAL}${module}${query.size > 0 ? `?${query}` : ""}`;
       }
       if (!importer || (!importer.split("?")[0].endsWith(".qml") && !isScript(importer))) return null;
@@ -325,6 +362,11 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
         const own = natives()[source.replace(/^qml-solid(?=\/)/, ".")];
         return own ? join(runtime, own) : this.resolve(source, join(runtime, "index.js"), { ...options, skipSelf: true });
       }
+      // What Qt's own QML has next to it is of the same program.
+      if (source.endsWith(".qml") && /^\.\.?\//.test(source) && carried(importer)) {
+        const next = await this.resolve(source, importer, { ...options, skipSelf: true });
+        return !next || next.id.includes("?") ? next : { ...next, id: `${next.id}?${FOR}=${carried(importer)}` };
+      }
       if (!source.endsWith(".js") || !/^\.\.?\//.test(source)) return null;
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       if (!resolved || resolved.external || resolved.id.includes("?")) return resolved;
@@ -337,14 +379,24 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
         const { about, native, brought, missing } = made(this, module, asked.get("style") ?? undefined);
         const kernel = JSON.stringify(join(runtime, natives()["./object"]));
         const lines = [];
+        // What Qt has of it and the runtime does not, yet.
+        if (asked.has(ABSENT)) {
+          const uri = JSON.stringify(module.replaceAll("/", "."));
+          lines.push(`import { absent as $absent } from ${kernel};`);
+          for (const name of missing) lines.push(`export const ${name} = /* @__PURE__ */ $absent(${uri}, ${JSON.stringify(name)});`);
+          return { code: lines.join("\n") + "\n", map: null };
+        }
+        const carry = asked.has(FOR) ? `?${FOR}=${asked.get(FOR)}` : "";
         // What the runtime has of the module: the types Qt has in C++.
         if (native) lines.push(`export * from ${JSON.stringify(join(runtime, native))};`);
+        // Those come before the QML, which is in the module it imports.
+        if (missing.length > 0) lines.push(`export { ${missing.join(", ")} } from ${JSON.stringify(`${id}${query ? "&" : "?"}${ABSENT}`)};`);
         if (about) {
           this.addWatchFile(about.file);
           // Its QML files, which come before a type of the same name the
           // runtime has: a named export hides one that `export *` brings.
           for (const [name, file] of about.types) {
-            lines.push(`export { default as ${name} } from ${JSON.stringify(join(qt, module, file))};`);
+            lines.push(`export { default as ${name} } from ${JSON.stringify(join(home(module), file) + carry)};`);
           }
           const pictures = kept(module, about);
           if (pictures.length > 0) {
@@ -366,12 +418,6 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
         if (asked.has("controls")) {
           const settings = JSON.stringify(join(runtime, "QtQuick/Controls/settings.js"));
           lines.push(`import { configure as $configure } from ${settings};`, `$configure(${Buffer.from(asked.get("controls"), "base64url")});`);
-        }
-        // What Qt has of it and the runtime does not, yet.
-        if (missing.length > 0) {
-          const uri = JSON.stringify(module.replaceAll("/", "."));
-          lines.push(`import { absent as $absent } from ${kernel};`);
-          for (const name of missing) lines.push(`export const ${name} = /* @__PURE__ */ $absent(${uri}, ${JSON.stringify(name)});`);
         }
         return { code: lines.join("\n") + "\n", map: null };
       }
@@ -405,11 +451,15 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
           if (name.endsWith(".qml") || name.endsWith("qmldir")) this.addWatchFile(join(directory, name));
         }
       }
+      // Qt's own is compiled once, whichever programs come to it.
+      const own = roots.some((root) => file.startsWith(root + sep));
+      if (own && compiled.has(file)) return { code: compiled.get(file), map: null };
       const result = spawnSync(qmlc, [...args, ...more.flatMap((directory) => ["--with", directory]), ...(selector ? ["--select", selector] : []), file], {
         encoding: "utf8",
       });
       if (result.error) this.error(`could not run ${qmlc}: ${result.error.message}`);
       if (result.status !== 0) this.error(result.stderr.trim());
+      if (own) compiled.set(file, result.stdout);
       return { code: result.stdout, map: null };
     },
     // The same for the dev server: a changed file takes the compiled output

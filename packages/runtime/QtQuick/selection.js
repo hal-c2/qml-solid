@@ -2,7 +2,7 @@
 // is current.
 import { onCleanup, untrack } from "solid-js";
 import { defineType, effect, QtObject, slot } from "../object.js";
-import { modelIndex, moved } from "./model.js";
+import { columnsOf, modelIndex, moved, rowsOf } from "./model.js";
 import { settle } from "./settle.js";
 
 const NO_UPDATE = 0;
@@ -16,6 +16,30 @@ const COLUMNS = 64;
 
 const NOWHERE = modelIndex(null, -1);
 const NONE = Object.freeze([]);
+
+// A cell of `model` as the selection keeps it: one object per cell, whatever
+// object the model itself gives for it, so that `===` tells two apart.
+const own = (model, index) => (model && index?.valid && index.model === model ? modelIndex(model, index.row, index.column) : NOWHERE);
+
+// A model that tells of its rows with signals, as a QAbstractItemModel does,
+// tells the observer. Gives what stops it.
+function listen(model, observer) {
+  const heard = {
+    rowsInserted: (parent, first, last) => observer.inserted(first, last - first + 1),
+    rowsRemoved: (parent, first, last) => observer.removed(first, last - first + 1),
+    // The rows are put before `row`, counted while they are still there.
+    rowsMoved: (parent, first, last, destination, row) => observer.moved(first, row > first ? row - (last - first + 1) : row, last - first + 1),
+    modelReset: () => observer.reset(),
+  };
+  const undo = [];
+  for (const name of Object.keys(heard)) {
+    const emitted = model?.[name];
+    if (typeof emitted?.connect !== "function") continue;
+    emitted.connect(heard[name]);
+    undo.push(() => emitted.disconnect(heard[name]));
+  }
+  return undo.length ? () => undo.forEach((stop) => stop()) : null;
+}
 
 // A selection is made in two steps, as Qt makes it: what is settled, and
 // the cells of the last command, which a command with `Current` replaces
@@ -95,20 +119,22 @@ export const ItemSelectionModel = defineType("ItemSelectionModel", QtObject, {
   },
   signals: ["selectionChanged", "currentChanged", "currentRowChanged", "currentColumnChanged"],
   methods: {
+    // `index` is a cell, or a list of them: Qt's QItemSelection.
     select(index, command) {
       command = Number(command) || NO_UPDATE;
       if (command === NO_UPDATE) return;
       const model = untrack(() => this.model);
-      let cells = [];
-      if (model && index?.valid && index.model === model) {
-        cells = [index];
-        if (command & ROWS) {
-          cells = Array.from({ length: model.columnCount() }, (_, column) => model.index(index.row, column));
-        }
-        if (command & COLUMNS) {
-          const rows = model.rowCount();
-          cells = cells.flatMap((cell) => Array.from({ length: rows }, (_, row) => model.index(row, cell.column)));
-        }
+      let cells = (Array.isArray(index) ? index : [index]).map((cell) => own(model, cell)).filter((cell) => cell.valid);
+      cells = [...new Set(cells)];
+      if (command & ROWS) {
+        const columns = columnsOf(model);
+        const rows = [...new Set(cells.map((cell) => cell.row))];
+        cells = rows.flatMap((row) => Array.from({ length: columns }, (_, column) => modelIndex(model, row, column)));
+      }
+      if (command & COLUMNS) {
+        const rows = rowsOf(model);
+        const columns = [...new Set(cells.map((cell) => cell.column))];
+        cells = columns.flatMap((column) => Array.from({ length: rows }, (_, row) => modelIndex(model, row, column)));
       }
       const before = selection(this);
       if (command & CLEAR) {
@@ -129,7 +155,7 @@ export const ItemSelectionModel = defineType("ItemSelectionModel", QtObject, {
     setCurrentIndex(index, command) {
       const model = untrack(() => this.model);
       if (!model) return;
-      if (!index?.valid || index.model !== model) index = NOWHERE;
+      index = own(model, index);
       const previous = untrack(() => this.currentIndex);
       if (index === previous) return this.select(index, command);
       slot(this, "currentIndex").write(index);
@@ -160,25 +186,26 @@ export const ItemSelectionModel = defineType("ItemSelectionModel", QtObject, {
       settle();
     },
     isSelected(index) {
-      return this.selectedIndexes.includes(index);
+      const model = this.model;
+      return this.selectedIndexes.includes(own(model, index));
     },
     isRowSelected(row) {
       const model = this.model;
-      const columns = model?.columnCount?.() ?? 0;
+      const columns = columnsOf(model);
       const selected = this.selectedIndexes;
       for (let column = 0; column < columns; column++) {
-        if (!selected.includes(model.index(row, column))) return false;
+        if (!selected.includes(modelIndex(model, row, column))) return false;
       }
-      return columns > 0 && row >= 0 && row < model.rowCount();
+      return columns > 0 && row >= 0 && row < rowsOf(model);
     },
     isColumnSelected(column) {
       const model = this.model;
-      const rows = model?.rowCount?.() ?? 0;
+      const rows = rowsOf(model);
       const selected = this.selectedIndexes;
       for (let row = 0; row < rows; row++) {
-        if (!selected.includes(model.index(row, column))) return false;
+        if (!selected.includes(modelIndex(model, row, column))) return false;
       }
-      return rows > 0 && column >= 0 && column < model.columnCount();
+      return rows > 0 && column >= 0 && column < columnsOf(model);
     },
     rowIntersectsSelection(row) {
       return this.selectedIndexes.some((cell) => cell.row === row);
@@ -189,11 +216,11 @@ export const ItemSelectionModel = defineType("ItemSelectionModel", QtObject, {
     // The rows that are selected in every column, as cells of `column`.
     selectedRows(column = 0) {
       const rows = new Set(this.selectedIndexes.map((cell) => cell.row));
-      return [...rows].filter((row) => this.isRowSelected(row)).map((row) => this.model.index(row, column));
+      return [...rows].filter((row) => this.isRowSelected(row)).map((row) => modelIndex(this.model, row, column));
     },
     selectedColumns(row = 0) {
       const columns = new Set(this.selectedIndexes.map((cell) => cell.column));
-      return [...columns].filter((column) => this.isColumnSelected(column)).map((column) => this.model.index(row, column));
+      return [...columns].filter((column) => this.isColumnSelected(column)).map((column) => modelIndex(this.model, row, column));
     },
   },
   setup(self) {
@@ -226,7 +253,7 @@ export const ItemSelectionModel = defineType("ItemSelectionModel", QtObject, {
         if (was.valid && was.row >= index && was.row < index + count) {
           // The current row went: the one after it is current now, or the
           // one before when it was the last.
-          const rows = model.rowCount();
+          const rows = rowsOf(model);
           current(self, modelIndex(model, index < rows ? index : index - 1, was.column), was, true);
         }
         if (gone.length) self.selectionChanged([], gone);
@@ -235,6 +262,10 @@ export const ItemSelectionModel = defineType("ItemSelectionModel", QtObject, {
         follow(model, (row) => moved(row, from, to, count));
       },
       role() {},
+      // A model that is another one altogether: Qt forgets, and tells nobody.
+      reset() {
+        forget(self);
+      },
     });
     effect(
       () => self.model,
@@ -244,7 +275,7 @@ export const ItemSelectionModel = defineType("ItemSelectionModel", QtObject, {
         if (followed !== undefined) forget(self);
         followed = model;
         unobserve?.();
-        unobserve = model?.$observe?.(observer(model)) ?? null;
+        unobserve = (model?.$observe ? model.$observe(observer(model)) : listen(model, observer(model))) ?? null;
       },
     );
   },

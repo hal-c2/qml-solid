@@ -160,6 +160,10 @@ export function settle() {
   if (!settling) flush();
 }
 
+// Whether a flush is on, where `settle()` settles nothing: for what cannot
+// go on until what it changed has settled.
+export const flushing = () => settling > 0;
+
 // What `work` emits and changes is told of once it is done, what it emitted
 // first: for what Qt tells of before it tells of the change that made it.
 export function gather(work) {
@@ -666,6 +670,8 @@ function defineGroup(Type, proto, name, properties) {
     enumerable: true,
     configurable: true,
   });
+  Type.groups[name] = Object.keys(properties);
+  defineChange(proto, name);
 }
 
 const handlerName = (name) => `on${name[0].toUpperCase()}${name.slice(1)}`;
@@ -722,6 +728,7 @@ export function defineType(name, base, spec = {}) {
   Type.spec = spec;
   Type.proto = proto;
   Type.slots = Object.create(base ? base.slots : null);
+  Type.groups = Object.create(base ? base.groups : null);
   Type.chain = base ? [...base.chain, Type] : [Type];
   // `item instanceof Type`, which QML's JavaScript asks of an object.
   Object.defineProperty(Type, Symbol.hasInstance, { value: (object) => object?.$type?.chain.includes(Type) === true });
@@ -1011,16 +1018,21 @@ function flatten(made, into) {
 // it is once the objects being created all are.
 export function onChange(self, name, handler, first) {
   const owner = getOwner();
+  // `fontChanged`: a group is the one object whatever is in it, and changes
+  // when anything in it does.
+  const members = self.$type?.groups[name];
+  const read = members ? () => members.map((member) => self[name][member]) : () => self[name];
+  const same = members ? (value, last) => value.every((member, index) => Object.is(member, last[index])) : Object.is;
   const watch = (firsts) => {
-    let last = untrack(() => self[name]);
+    let last = untrack(read);
     first?.(last, firsts);
     runWithOwner(owner, () =>
       createEffect(
-        () => self[name],
+        read,
         (value) => {
           // Reading it again is not a change: what it was computed from may
           // have changed and left it as it was.
-          if (Object.is(value, last)) return;
+          if (same(value, last)) return;
           last = value;
           after(handler);
         },

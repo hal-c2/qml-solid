@@ -23,6 +23,11 @@ fn a_module_has_its_own_types() {
     assert!(rectangle.is_creatable && !rectangle.is_singleton && rectangle.qml_file.is_none());
     assert!(super::module("QtQuick").unwrap().type_named("Button").is_none());
     assert!(super::module("QtQuick.NoSuchModule").is_none());
+    // A module of Qt.labs is a module like any other.
+    let model = ty("Qt.labs.qmlmodels", "TableModel");
+    assert_eq!((model.class, model.module), ("QQmlTableModel", "Qt.labs.qmlmodels"));
+    assert!(model.property("rows").is_some() && model.property("columnCount").is_some());
+    assert!(ty("Qt.labs.qmlmodels", "TableModelColumn").property("display").is_some());
 }
 
 /// `import QtQuick` is also `QtQml`, `QtQml.Models` and the builtins.
