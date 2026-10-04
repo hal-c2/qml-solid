@@ -345,3 +345,49 @@ test("a clear coat and a light's shine are as Qt has them", async ({ page }) => 
   ];
   near(await painted(page, points, 4), points.map(([, colour]) => colour), "", 4);
 });
+
+test("a Repeater3D makes a node for every row, inside itself", async ({ page }) => {
+  await open(page, "repeater3d");
+  // What it makes is its own, and not its parent's as an item a Repeater
+  // makes is: where it is moves them, and its parent has it alone.
+  near(await page.evaluate(() => window.scene.read()), {
+    count: [3, 2, 2],
+    objectAt: [-40, null, null],
+    parent: [false, true, false, true],
+    holder: "before,rep,after",
+    scenePosition: [[-40, -160, 0], [20, 80, 0]],
+    log: ["added 0 -100", "added 1 -40", "added 2 20"],
+  });
+  const none = [32, 32, 32];
+  const points = [
+    // One before them, one for each of three, none for a fourth, and one
+    // after them.
+    [[30, 70], [255, 255, 255]],
+    [[100, 70], [255, 0, 0]],
+    [[160, 70], [0, 255, 0]],
+    [[220, 70], [0, 0, 255]],
+    [[280, 70], none],
+    [[370, 70], [128, 128, 128]],
+    // Those of a list are moved off the picture with the repeater, and
+    // those of an array are where they say.
+    [[100, 230], none],
+    [[160, 230], none],
+    [[260, 230], [255, 128, 0]],
+    [[320, 230], [128, 0, 255]],
+    [[200, 150], none],
+  ];
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+  // Another number of them is all of them anew: the last goes first.
+  expect(await page.evaluate(() => window.scene.grow(4))).toEqual({
+    count: 4,
+    log: ["removed 2 20", "removed 1 -40", "removed 0 -100", "added 0 -100", "added 1 -40", "added 2 20", "added 3 80"],
+    holder: "before,rep,after",
+  });
+  expect(await page.evaluate(() => window.scene.grow(2))).toEqual({
+    count: 2,
+    log: ["removed 3 80", "removed 2 20", "removed 1 -40", "removed 0 -100", "added 0 -100", "added 1 -40"],
+    holder: "before,rep,after",
+  });
+  // A list that says what changed in it is followed row by row.
+  expect(await page.evaluate(() => window.scene.swap())).toEqual({ count: 2, x: -100 });
+});
