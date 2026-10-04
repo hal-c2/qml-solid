@@ -5,13 +5,15 @@
 // The control says how big its two items are, and they say how big it would
 // like to be (`implicitContentWidth`, `implicitBackgroundWidth`): a style
 // computes `implicitWidth` from those.
-import { untrack } from "solid-js";
-import { defineType, derived, effect, slot } from "../../object.js";
+import { onCleanup, untrack } from "solid-js";
+import { defineType, derived, effect, settle, slot } from "../../object.js";
 import { locale } from "../../QtQml/locale.js";
 import { styleHints } from "../../QtQml/application.js";
 import { sized } from "../compute.js";
+import { forceActiveFocus, MouseFocusReason, OtherFocusReason, windowOf } from "../focus.js";
 import { Item } from "../Item.js";
 import { mirrored } from "../LayoutMirroring.js";
+import { CancelGrabExclusive, drop, gone, hoverable, receive, UngrabExclusive, wheels } from "../pointer.js";
 import { font } from "./font.js";
 import { palette } from "./theme.js";
 
@@ -97,6 +99,111 @@ export const methods = {
 
 export const insets = { topInset: 0, leftInset: 0, rightInset: 0, bottomInset: 0 };
 
+// What a control decides of itself (`pressed`, `hovered`, `position`):
+// written when it changes and not otherwise, since a write is one whatever
+// the value. Whether it did change.
+export function put(self, name, value) {
+  if (Object.is(untrack(() => self[name]), value)) return false;
+  slot(self, name).write(value);
+  return true;
+}
+
+// A property that the control writes and its user may bind (`checked`,
+// `value`). As in Qt, the property holds a value and the binding assigns to
+// it when what it computes changes: what the control wrote holds until
+// then. The property is never read through its binding, so two bound to
+// each other, a check box and the group it checks, do not go round: it
+// starts as what the type starts with, and the binding is heard after.
+export function loose(self, name) {
+  const held = slot(self, name);
+  if (!held.bound) return;
+  let last = held.initial;
+  held.write(last);
+  effect(
+    () => held.bound(),
+    (value = held.initial) => {
+      // An effect is run again for any write of its object: what the
+      // control wrote since is not undone by what the binding said before.
+      if (Object.is(value, last)) return;
+      last = value;
+      held.write(value);
+    },
+  );
+}
+
+// Whether a point of the control is in it.
+export const within = (self, x, y) =>
+  untrack(() => x >= 0 && y >= 0 && x < self.width && y < self.height);
+
+// A control hovers when the control it is in does, and at the top when the
+// device has something to hover with. Qt asks any item around it that has a
+// `hoverEnabled`.
+function hovering(self) {
+  for (let parent = self.parent; parent; parent = parent.parent) {
+    const enabled = parent.hoverEnabled;
+    if (typeof enabled === "boolean") return enabled;
+  }
+  return styleHints().useHoverEffects;
+}
+
+// The focus a key brought: the reasons Qt shows it for.
+const VISUAL = [1, 2, 5];
+
+// What makes a control live: the mouse over it, a press of it, focus and
+// the wheel. A type says which buttons it takes (`$accepts`) and what a
+// press, a move, a release and the loss of the press do: `$handlePress`,
+// `$handleMove`, `$handleRelease` and `$handleUngrab`, Qt's names.
+const live = {
+  $accepts: 0,
+  forceActiveFocus(reason = OtherFocusReason) {
+    forceActiveFocus(this, reason);
+  },
+  $reason(reason) {
+    put(this, "focusReason", reason);
+  },
+  $hovers() {
+    return this.hoverEnabled;
+  },
+  $hover(point, inside) {
+    if (put(this, "hovered", inside)) settle();
+  },
+  $wheel() {
+    return this.wheelEnabled;
+  },
+  $press(point) {
+    if (!point.primary || !(point.button & this.$accepts)) return false;
+    // A click gives focus before it presses.
+    if (this.focusPolicy & 2) forceActiveFocus(this, MouseFocusReason);
+    const { x, y } = point.in(this);
+    this.$point = point;
+    this.$handlePress(x, y, point);
+    settle();
+    return true;
+  },
+  $move(point) {
+    const { x, y } = point.in(this);
+    // Nothing hovers while a button is held but what holds it.
+    put(this, "hovered", this.hoverEnabled && within(this, x, y));
+    this.$handleMove(x, y, point);
+    settle();
+  },
+  $release(point) {
+    const { x, y } = point.in(this);
+    this.$handleRelease(x, y, point);
+    this.$point = null;
+    settle();
+  },
+  $grab(transition) {
+    if (transition !== CancelGrabExclusive && transition !== UngrabExclusive) return;
+    this.$point = null;
+    this.$handleUngrab();
+  },
+  $handlePress() {},
+  $handleMove() {},
+  $handleRelease() {},
+  $handleUngrab() {},
+};
+
 export const Control = defineType("Control", Item, {
   properties: {
     font,
@@ -114,10 +221,12 @@ export const Control = defineType("Control", Item, {
     locale: derived(() => locale()),
     mirrored: derived(mirrored),
     focusPolicy: 0,
-    focusReason: 7,
-    visualFocus: false,
+    focusReason: OtherFocusReason,
+    visualFocus: derived((self) => self.activeFocus && VISUAL.includes(self.focusReason)),
+    // Tab stops at a control whose policy says so.
+    activeFocusOnTab: derived((self) => (self.focusPolicy & 1) !== 0),
     hovered: false,
-    hoverEnabled: derived(() => styleHints().useHoverEffects),
+    hoverEnabled: derived(hovering),
     wheelEnabled: false,
     background: null,
     contentItem: null,
@@ -127,7 +236,7 @@ export const Control = defineType("Control", Item, {
     implicitBackgroundHeight: derived((self) => self.background?.implicitHeight ?? 0),
     baselineOffset: derived((self) => self.topPadding + (self.contentItem?.baselineOffset ?? 0)),
   },
-  methods,
+  methods: { ...methods, ...live },
   setup(self) {
     backed(self);
     keeps(self, () => [self.contentItem]);
@@ -137,6 +246,31 @@ export const Control = defineType("Control", Item, {
         if (item) fitted(item, x, y, width, height);
       },
     );
+    self.$point = null;
+    if (self.$accepts) receive(self);
+    let hovers = false;
+    effect(
+      () => [self.hoverEnabled, self.wheelEnabled, self.activeFocusOnTab, self.visible && self.enabled],
+      ([hover, wheel, tab, able]) => {
+        if (hover !== hovers) {
+          hovers = hover;
+          hoverable(hover ? 1 : -1);
+        }
+        if (wheel) wheels();
+        if (hover || wheel) receive(self);
+        // Tab finds it when nothing has focus yet.
+        if (tab) windowOf(self);
+        if (able) return;
+        // One that is hidden or disabled has nothing over it and holds
+        // nothing.
+        put(self, "hovered", false);
+        if (self.$point) drop(self.$point, self);
+      },
+    );
+    onCleanup(() => {
+      if (hovers) hoverable(-1);
+      gone(self);
+    });
   },
 });
 
