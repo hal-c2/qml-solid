@@ -257,51 +257,110 @@ impl<'a> Resolver<'a, '_, '_> {
     }
 }
 
+/// Where the type of `object.Type` is named from.
+enum Attaching {
+    /// `Namespace.Type`: attached to the object the expression is written in.
+    Here(String),
+    /// `object.Namespace.Type`.
+    Through(String),
+    /// `object.Type`.
+    Object,
+}
+
 impl<'a> Resolver<'a, '_, '_> {
     /// `object.Type.member`: a member of what the type attaches to that
     /// object, and no property of it (`delegate.ListView.isCurrentItem`).
     /// `Namespace.Type.member` is of what it attaches to the object the
-    /// expression is written in.
+    /// expression is written in, and `object.Namespace.Type.member` of what
+    /// it attaches to the object.
     fn attached_member(&mut self, member: &mut StaticMemberExpression<'a>) -> bool {
-        let b = self.b;
         let span = member.span;
         let wanted = member.property.name.to_string();
         let Expression::StaticMemberExpression(inner) = &mut member.object else { return false };
+        let Some(attached) = self.attachment(inner, Some(&wanted), span) else { return false };
+        member.object = attached;
+        true
+    }
+
+    /// `object.Type`, held as a value (`const said = item.SplitView`): what
+    /// the type attaches to the object. `Namespace.Type` is the type.
+    fn attached_object(&mut self, expression: &mut Expression<'a>) -> bool {
+        let Expression::StaticMemberExpression(member) = expression else { return false };
+        let span = member.span;
+        let Some(attached) = self.attachment(member, None, span) else { return false };
+        *expression = attached;
+        true
+    }
+
+    /// `Type.attached(object)` for `object.Type`, if the type attaches
+    /// `wanted`, or anything at all when nothing is asked of it.
+    fn attachment(
+        &mut self,
+        inner: &mut StaticMemberExpression<'a>,
+        wanted: Option<&str>,
+        span: Span,
+    ) -> Option<Expression<'a>> {
+        let b = self.b;
         let name = inner.property.name.to_string();
         if !name.starts_with(|c: char| c.is_ascii_uppercase()) {
-            return false;
+            return None;
         }
-        let namespace = match &inner.object {
+        // A type of a namespace is the type, wherever the namespace is named:
+        // what the compiler wrote names it too.
+        if wanted.is_none()
+            && let Expression::Identifier(object) = &inner.object
+            && self.types.namespace(object.name.as_str()).is_some()
+        {
+            return None;
+        }
+        let of = match &inner.object {
             Expression::Identifier(object) if self.is_free(object) && object.name.starts_with(|c: char| c.is_ascii_uppercase()) => {
                 // `Qt.Window`, `Text.Text`: a member of a type or a global.
-                if self.types.namespace(object.name.as_str()).is_none() {
-                    return false;
-                }
-                Some(object.name.to_string())
+                self.types.namespace(object.name.as_str())?;
+                Attaching::Here(object.name.to_string())
             }
-            _ => None,
+            Expression::StaticMemberExpression(outer) if self.types.namespace(outer.property.name.as_str()).is_some() => {
+                Attaching::Through(outer.property.name.to_string())
+            }
+            _ => Attaching::Object,
         };
-        let path: Vec<&str> = namespace.as_deref().into_iter().chain([name.as_str()]).collect();
-        let Some(found) = self.types.find(&path) else { return false };
-        let Some(ty) = self.types.base(&found.kind) else { return false };
-        if !ty.attaches(&wanted) || ty.is_singleton {
-            return false;
+        let namespace = match &of {
+            Attaching::Here(namespace) | Attaching::Through(namespace) => Some(namespace.as_str()),
+            Attaching::Object => None,
+        };
+        let path: Vec<&str> = namespace.into_iter().chain([name.as_str()]).collect();
+        let found = self.types.find(&path)?;
+        let ty = self.types.base(&found.kind)?;
+        if ty.is_singleton {
+            return None;
         }
-        match namespace {
-            Some(namespace) => {
+        match wanted {
+            Some(wanted) if !ty.attaches(wanted) => return None,
+            None if ty.attached().is_none() || matches!(of, Attaching::Here(_)) => return None,
+            _ => {}
+        }
+        Some(match of {
+            Attaching::Here(namespace) => {
+                let ty = b.member(b.id(&namespace), &name);
                 self.uses.namespaces.insert(namespace);
                 let attachee = self.handle(self.tree.object_at(span.start));
-                let ty = member.object.take_in(&b.allocator());
-                member.object = b.call(b.member(ty, "attached"), [attachee]);
+                b.call(b.member(ty, "attached"), [attachee])
             }
-            None => {
+            Attaching::Through(namespace) => {
+                let ty = b.member(b.id(&namespace), &name);
+                self.uses.namespaces.insert(namespace);
+                let Expression::StaticMemberExpression(outer) = &mut inner.object else { unreachable!() };
+                let mut attachee = outer.object.take_in(&b.allocator());
+                self.visit_expression(&mut attachee);
+                b.call(b.member(ty, "attached"), [attachee])
+            }
+            Attaching::Object => {
                 self.uses.origin(&name, &found.origin);
                 let mut attachee = inner.object.take_in(&b.allocator());
                 self.visit_expression(&mut attachee);
-                member.object = b.call(b.member(b.id(&name), "attached"), [attachee]);
+                b.call(b.member(b.id(&name), "attached"), [attachee])
             }
-        }
-        true
+        })
     }
 }
 
@@ -346,7 +405,7 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
         {
             return;
         }
-        if self.type_member(expression) {
+        if self.type_member(expression) || self.attached_object(expression) {
             return;
         }
         match expression {

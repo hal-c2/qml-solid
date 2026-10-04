@@ -736,6 +736,37 @@ T.Control {
     // The attached object goes by the type's own name.
     assert_contains(&code, "ScrollIndicator$vertical={<T.ScrollIndicator");
     assert_contains(&code, "$attach={[T.ScrollIndicator]}");
+    // A type that attaches is still the type where the file is made one.
+    let code = lowered("import QtQuick.Templates as T\nT.ScrollIndicator {}");
+    assert_contains(&code, "Object.setPrototypeOf(Sample, T.ScrollIndicator);");
+}
+
+#[test]
+fn what_a_type_attaches_is_an_object_to_hold() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Templates as T
+Item {
+    id: item
+    property bool pressed: parent.T.SplitHandle.pressed
+    property var held: item.ListView
+    property var kind: T.SplitView
+    property int way: Item.Left
+    function ask(other) {
+        const said = other.ListView
+        return said.isCurrentItem
+    }
+}"#,
+    );
+    // The namespace says which type; the object is what is before it.
+    assert_contains(&code, "T.SplitHandle.attached(item.parent).pressed");
+    // With nothing asked of it, it is the attached object.
+    assert_contains(&code, "ListView.attached(item)");
+    assert_contains(&code, "const said = ListView.attached(other);");
+    // A type of a namespace, and a type's enum, are what they were.
+    assert_contains(&code, "T.SplitView");
+    assert_lacks(&code, "T.SplitView.attached");
+    assert_lacks(&code, "Item.attached");
 }
 
 #[test]
