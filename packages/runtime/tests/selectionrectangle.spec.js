@@ -2,10 +2,10 @@
 // answers for the same QML when a QtTest `TestCase` makes the same moves with
 // its mouse.
 import { test as plain } from "@playwright/test";
-import { expect, open, test } from "./open.js";
+import { act, follow, read, still } from "./follow.js";
+import { expect, test } from "./open.js";
 
-// What the mouse does, or the scene, and the parts of what `read()` answers
-// that it changes: at first, all of them. A move is `[what, x, y, key held]`.
+// A table that is dragged over, and the handles that are.
 const HANDLES = [
   [
     [],
@@ -287,7 +287,7 @@ const HANDLES = [
   ],
 ];
 
-// The same for a table that is asked how it is to select.
+// A table that is asked how it is to select.
 const MODES = [
   [
     [],
@@ -525,43 +525,6 @@ const WARNED = [
   "QML TableView: Cannot start selection: no SelectionModel assigned!",
   "QML SelectionRectangle: the assigned target is not supported by the control",
 ];
-
-const KEYS = { shift: "Shift", ctrl: "Control" };
-
-async function act(page, [what, x, y, held]) {
-  if (what === "step") {
-    return page.evaluate((index) => {
-      window.scene.step(index);
-      window.flush();
-    }, x);
-  }
-  // Time stands still, but for what the test lets pass.
-  if (what === "wait") return page.evaluate((ms) => window.clock.advance(ms), x);
-  if (held) await page.keyboard.down(KEYS[held]);
-  if (what === "press") {
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-  } else if (what === "move") await page.mouse.move(x, y);
-  else await page.mouse.up();
-  if (held) await page.keyboard.up(KEYS[held]);
-}
-
-const read = (page) => page.evaluate(() => window.scene.read());
-
-async function still(page, scene) {
-  await open(page, scene);
-  await page.evaluate(() => window.clock.stop());
-}
-
-async function follow(page, scene, steps) {
-  await still(page, scene);
-  let expected = {};
-  for (const [index, [moves, changed]] of steps.entries()) {
-    for (const move of moves) await act(page, move);
-    expected = { ...expected, ...changed };
-    expect(await read(page), `step ${index}`).toEqual(expected);
-  }
-}
 
 test("a SelectionRectangle selects the cells a drag goes over, and has handles to drag on", async ({ page }) => {
   await follow(page, "selectionrectangle", HANDLES);
