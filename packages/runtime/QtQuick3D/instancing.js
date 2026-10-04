@@ -7,15 +7,18 @@
 // linear light, and the four numbers. What is asked of an entry is read
 // back out of that, so a colour reads as it is in linear light, as in Qt.
 //
-// Not here: a table read from a file (FileInstancing), and the bounds a
-// table gives its shadows.
+// A FileInstancing is one read from a file: Qt's own of numbers as they are
+// kept (`.bin`), or one of XML with an `Instance` for each entry.
+//
+// Not here: the bounds a table gives its shadows, and the `.bin` file Qt
+// reads instead of an XML one that has one beside it, which says the same.
 import { createSignal } from "solid-js";
-import { defineType, derived, effect } from "../object.js";
+import { defineType, derived, effect, located } from "../object.js";
 import { Quaternion, Vector3d, Vector4d } from "../QtQml/values.js";
 import { color, colorValue, rgba } from "../QtQuick/color.js";
 import * as math from "./math.js";
 import { kept, Object3D } from "./Node.js";
-import { linear } from "./scene.js";
+import { file, linear } from "./scene.js";
 
 // How many numbers an entry is.
 export const ENTRY = 20;
@@ -171,6 +174,66 @@ export const InstanceList = defineType("InstanceList", Instancing, {
         enter(data, index, three(entry.position), three(entry.scale), entry.$turn(), entry.color, four(entry.customData));
       });
       return data;
+    };
+  },
+});
+
+// Qt's file of a table as it is kept: `QtIR`, the version, how long an
+// entry is, where the first is and how many there are, then the entries.
+function binary(buffer) {
+  const view = new DataView(buffer);
+  if (buffer.byteLength < 20 || view.getUint32(0, true) !== 0x52497451) return { error: "is not a table of instances" };
+  if (view.getUint16(4, true) > 1) return { error: `is of version ${view.getUint16(4, true)}, which is too new` };
+  const stride = view.getUint32(8, true);
+  const offset = view.getUint32(12, true);
+  const count = view.getUint32(16, true);
+  if (stride !== ENTRY * 4 || buffer.byteLength !== 20 + count * stride) return { error: "is not as long as it says" };
+  return new Float32Array(buffer.slice(offset, offset + count * stride));
+}
+
+// One written as XML: numbers with spaces between them, where those left
+// off the end are nothing.
+const decoder = new TextDecoder();
+function written(buffer) {
+  const table = new DOMParser().parseFromString(decoder.decode(buffer), "application/xml").documentElement;
+  if (table?.localName !== "InstanceTable") return { error: "has no InstanceTable" };
+  const entries = [...table.children].filter((entry) => entry.localName === "Instance");
+  const data = new Float32Array(entries.length * ENTRY);
+  entries.forEach((entry, index) => {
+    const numbers = (name, many, missing) => {
+      const said = entry.getAttribute(name);
+      if (said === null) return missing;
+      const given = said.trim().split(/\s+/).map(Number);
+      return Array.from({ length: many }, (_, at) => given[at] || 0);
+    };
+    const quaternion = numbers("quaternion", 4, null);
+    const turn = quaternion ? [quaternion[3], quaternion[0], quaternion[1], quaternion[2]] : math.fromEuler(...numbers("eulerRotation", 3, ORIGIN));
+    enter(data, index, numbers("position", 3, ORIGIN), numbers("scale", 3, [1, 1, 1]), turn, entry.getAttribute("color") ?? "#ffffff", numbers("custom", 4, [0, 0, 0, 0]));
+  });
+  return data;
+}
+
+const warned = new Set();
+
+export const FileInstancing = defineType("FileInstancing", Instancing, {
+  properties: {
+    source: "",
+    instanceCount: derived((self) => self.$data().length / ENTRY),
+  },
+  setup(self) {
+    // No entries until the file is here, and none of one that is not a
+    // table, which is said once.
+    self.$made = () => {
+      const given = String(self.source ?? "");
+      if (!given) return NOTHING;
+      const url = located(given);
+      const read = file(url, "instances", /\.bin$/.test(new URL(url, location.href).pathname) ? binary : written).state();
+      if (read?.error) {
+        if (!warned.has(url)) console.warn(`FileInstancing: ${url}: ${read.error}`);
+        warned.add(url);
+        return NOTHING;
+      }
+      return read ?? NOTHING;
     };
   },
 });

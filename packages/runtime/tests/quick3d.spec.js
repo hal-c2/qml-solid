@@ -1342,6 +1342,20 @@ test("a table of instances has the entries Qt's has", async ({ page }) => {
   });
 });
 
+test("a FileInstancing has the entries Qt reads of its file", async ({ page }) => {
+  await open(page, "filed3d");
+  // What is left off the end of an entry's numbers is nothing, what is not
+  // an Instance is passed over, and a turn may be a quaternion. The same
+  // table as Qt's `instancer` keeps it is the same entries.
+  const entries = [
+    { position: [0, 200, 0], scale: [0.75, 0.75, 0.75], rotation: [1, 0, 0, 0], color: [1, 0.623, 0.213, 1], data: [20, 20, 0, 0] },
+    { position: [0, -100, 0], scale: [0.5, 2, 0.5], rotation: [1, 0, 0, 0], color: [1, 0, 0, 1], data: [0, 0, 0, 0] },
+    { position: [10, -200, 30], scale: [1, 1, 1], rotation: [0.866, 0, 0, 0.5], color: [0.259, 0, 0, 1], data: [10, 40, 0, 5] },
+    { position: [1, 2, 3], scale: [1, 1, 1], rotation: [0.924, 0, 0, 0.383], color: [1, 1, 1, 0.502], data: [0, 0, 0, 0] },
+  ];
+  near(await page.evaluate(() => window.scene.read()), { count: [4, 4, 0], written: entries, kept: entries });
+});
+
 test("a Model is drawn once for each entry of its table, where Qt draws it", async ({ page }) => {
   const ground = [64, 80, 96];
   const states = [
