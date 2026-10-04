@@ -1475,6 +1475,8 @@ export function draw(scene, canvas, paper) {
     if (environment.depth) gl.enable(gl.DEPTH_TEST);
     else gl.disable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
+    // What is behind the scene was drawn without saying how far it is.
+    gl.depthMask(true);
     gl.disable(gl.BLEND);
     for (const piece of solid) part(piece);
     gl.enable(gl.BLEND);

@@ -1620,3 +1620,19 @@ test("a vector's members are set one by one, and assigning it as one unbinds the
     near(await painted(page, points), points.map(([, colour]) => colour), calls.join(" "), 3);
   }
 });
+
+test("with the surroundings behind them, the nearer of two shapes is over the further", async ({ page }) => {
+  await open(page, "behind3d");
+  const points = [
+    // The nearer square, both where they are, the further one, and the
+    // surroundings at four places.
+    [[50, 50], [255, 0, 0]],
+    [[100, 50], [255, 0, 0]],
+    [[150, 50], [0, 255, 0]],
+    [[10, 10], [208, 0, 0]],
+    [[190, 90], [208, 208, 208]],
+    [[100, 10], [107, 136, 0]],
+    [[30, 85], [122, 122, 122]],
+  ];
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
