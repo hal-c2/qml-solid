@@ -76,7 +76,7 @@
       "qt": {
         "runnable": true
       },
-      "notes": "Three Android apps in one directory. The entry is the one that is plain QML; splashscreen/quick/Splash.qml (a splash Window that loads its own Main.qml) and feature-delivery/fdmaploader/Main.qml (needs MapLoader from C++) are the other two."
+      "notes": "Three Android apps in one directory. The entry is the one that is plain QML; splashscreen/quick/Splash.qml (a splash Window that loads its own Main.qml) and feature-delivery/fdmaploader/Main.qml (its MapLoader from C++ is stood in for; its maps are in the program's resources, at qrc:/images/, which only the built program has) are the other two."
     },
     {
       "id": "calqlatr",
