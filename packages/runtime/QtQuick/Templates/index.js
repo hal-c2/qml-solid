@@ -22,6 +22,7 @@ export { RangeSlider } from "./RangeSlider.js";
 export { ScrollBar } from "./ScrollBar.js";
 export { ScrollIndicator } from "./ScrollIndicator.js";
 export { ScrollView } from "./ScrollView.js";
+export { SelectionRectangle } from "./SelectionRectangle.js";
 export { Slider } from "./Slider.js";
 export { DoubleSpinBox, SpinBox } from "./SpinBox.js";
 export { SplitHandle, SplitView } from "./SplitView.js";
