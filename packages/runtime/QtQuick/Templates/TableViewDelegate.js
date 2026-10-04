@@ -2,7 +2,7 @@
 // views: an ItemDelegate that knows the view it is in and what the view's
 // selection says of its cell.
 import { untrack } from "solid-js";
-import { defineType, derived, effect, instantiate } from "../../object.js";
+import { defineType, derived, instantiate } from "../../object.js";
 import { making } from "../cells.js";
 import { TapHandler } from "../handlers.js";
 import { ItemDelegate } from "./ItemDelegate.js";
@@ -37,19 +37,16 @@ export const TableViewDelegate = defineType("TableViewDelegate", ItemDelegate, {
       Object.defineProperty(props, name, { get: () => cell[name], enumerable: true, configurable: true });
     }
     const tap = instantiate(() => TapHandler({ acceptedModifiers: 0 }), NOTHING, self).object;
-    effect(
-      () => tap.pressed,
-      (pressed) => {
-        if (!navigated(self)) return;
-        untrack(() => {
-          const { x, y } = tap.point.position;
-          if (pressed) self.$handlePress(x, y, null);
-          else if (tap.tapCount > 0) self.$handleRelease(x, y, null);
-          else self.$handleUngrab();
-          if (tap.tapCount > 1 && !pressed) self.doubleClicked();
-        });
-      },
-    );
+    // Heard as Qt's delegate hears it, once the handler has said it: what
+    // the button says of the release comes after.
+    tap.pressedChanged.connect(() => {
+      if (!navigated(self)) return;
+      const { x, y } = tap.point.position;
+      if (tap.pressed) self.$handlePress(x, y, null);
+      else if (tap.tapCount > 0) self.$handleRelease(x, y, null);
+      else self.$handleUngrab();
+      if (tap.tapCount > 1 && !tap.pressed) self.doubleClicked();
+    });
   },
 });
 
