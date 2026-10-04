@@ -60,6 +60,8 @@ pub(crate) fn lower<'a>(
     if is_singleton {
         lower.uses.kernel.insert("$singleton");
         body.push(b.const_(stem, b.call(b.id("$singleton"), [b.id(&name), b.record(enums)])));
+        // `Calendar.December`, of a `Calendar` that is the one `T.Calendar`.
+        body.push(lower.extends(stem, &root));
         body.push(b.export_default(b.id(stem)));
     } else {
         body.push(lower.extends(&name, &root));

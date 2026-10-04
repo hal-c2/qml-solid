@@ -221,17 +221,20 @@ impl<'a> Resolver<'a, '_, '_> {
         match self.types.declared_enum(&kind, member) {
             Some(true) => return Access::Enum,
             Some(false) => return Access::Static,
-            None if self.types.is_singleton(&kind) => return Access::Singleton,
             None => {}
         }
-        let Some(ty) = self.types.base(&kind) else { return Access::Static };
+        // The keys of the type a singleton is are on its name, as they are
+        // on any component's; everything else of it is on the one object.
+        let is_singleton = self.types.is_singleton(&kind);
+        let rest = if is_singleton { Access::Singleton } else { Access::Static };
+        let Some(ty) = self.types.base(&kind) else { return rest };
         if ty.enum_value(member).is_some() {
             return Access::Static;
         }
         if has_enum(ty, member) {
             return Access::Enum;
         }
-        if ty.attaches(member) && !ty.is_singleton { Access::Attached } else { Access::Static }
+        if ty.attaches(member) && !ty.is_singleton && !is_singleton { Access::Attached } else { rest }
     }
 
     /// `Type.member`, when `expression` is exactly that.

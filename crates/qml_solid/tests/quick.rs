@@ -637,10 +637,60 @@ Item {
     let code = lowered("import QtQuick as Q\nQ.Item { }");
     assert_contains(&code, "Object.setPrototypeOf(Sample, Q.Item);");
 
-    // A singleton is an object and not a type of anything.
+    // A singleton is an object, and its name has the keys of its type all
+    // the same: it is the name that is read for them, not the function.
     let files = [("Theme", "pragma Singleton\nimport QtQuick\nQtObject { }")];
     let code = lowered_in(&files, "Theme").unwrap_or_else(|errors| panic!("{errors:?}"));
-    assert_lacks(&code, "setPrototypeOf");
+    assert_contains(&code, "Object.setPrototypeOf(Theme, QtObject);");
+    assert_lacks(&code, "setPrototypeOf(Theme$component");
+}
+
+#[test]
+fn a_singleton_has_the_keys_of_the_type_of_its_root() {
+    let files = [
+        (
+            "Sample",
+            r#"import QtQuick
+Item {
+    property int last: Almanac.December
+    property int march: Almanac.Month.March
+    property int after: Almanac.Era.After
+    property int kind: Solo.Kind.B
+    property int first: Almanac.firstYear
+    function wraps(month) { return month === Almanac.December || month === Solo.B }
+}"#,
+        ),
+        (
+            "Almanac",
+            r#"pragma Singleton
+import QtQuick
+import QtQuick.Templates as T
+T.Calendar {
+    property int firstYear: 1970
+    enum Era { Before, After = 7 }
+}"#,
+        ),
+        ("Base", "import QtQuick\nItem { enum Kind { A, B } }"),
+        ("Solo", "pragma Singleton\nimport QtQuick\nBase { }"),
+    ];
+    // `Calendar.December` of QtQuick.Controls, whose `Calendar` is the one
+    // `T.Calendar`: a key is read off the name, and the object is not made
+    // for it.
+    let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "last={Almanac.December}");
+    assert_contains(&code, "march={Almanac.March}");
+    assert_contains(&code, "after={Almanac.After}");
+    assert_contains(&code, "month === Almanac.December || month === Solo.B");
+    // The keys of a component its root is, too.
+    assert_contains(&code, "kind={Solo.B}");
+    // What is not a key is the object's.
+    assert_contains(&code, "first={Almanac().firstYear}");
+
+    let code = lowered_in(&files, "Almanac").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "const Almanac = $singleton(Almanac$component, {\n\tBefore: 0,\n\tAfter: 7\n});");
+    assert_contains(&code, "Object.setPrototypeOf(Almanac, T.Calendar);");
+    let code = lowered_in(&files, "Solo").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "Object.setPrototypeOf(Solo, Base);");
 }
 
 #[test]

@@ -85,6 +85,29 @@ test("an enum is keys of the type that declares it", async ({ page }) => {
   expect(read).toEqual([0, 2, 10, 20]);
 });
 
+test("a singleton's name has the keys of the type of its root", async ({ page }) => {
+  await open(page, "singletonkeys");
+  const read = await page.evaluate(() => {
+    const { scene } = window;
+    const seen = [scene.read()];
+    for (let i = 0; i < 4; i++) {
+      scene.step(i);
+      window.flush();
+      seen.push(scene.read().slice(0, 2));
+    }
+    return seen;
+  });
+  // Qt 6.11. November 2024, then past December into the next year and back,
+  // as the calendar of Qt's Thermostat steps with `Calendar.December`.
+  expect(read).toEqual([
+    [2024, 10, 11, 2, 0, true, 7, 7, 1970],
+    [2024, 11],
+    [2025, 0],
+    [2024, 11],
+    [2024, 10],
+  ]);
+});
+
 test("a name a component does not have is found in whatever made it", async ({ page }) => {
   await open(page, "scopes");
   expect(await rect(page, "dot")).toEqual({ x: 0, y: 0, width: 200, height: 8 });

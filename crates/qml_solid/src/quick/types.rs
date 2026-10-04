@@ -189,14 +189,22 @@ impl<'p> Types<'p> {
     }
 
     /// What `member` is to the enums a component declares: `Some(true)` an
-    /// enum (`Type.Theme`, of `Type.Theme.Dark`), `Some(false)` a key.
+    /// enum (`Type.Theme`, of `Type.Theme.Dark`), `Some(false)` a key. The
+    /// enums of the component its root is are its own too.
     pub(crate) fn declared_enum(&self, kind: &Kind, member: &str) -> Option<bool> {
-        let Kind::Component(key) = kind else { return None };
-        let shape = self.project.shape(key)?;
-        if shape.enums.values().any(|keys| keys.iter().any(|key| key == member)) {
-            return Some(false);
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            let Kind::Component(key) = kind else { return None };
+            let shape = self.project.shape(&key)?;
+            if shape.enums.values().any(|keys| keys.iter().any(|key| key == member)) {
+                return Some(false);
+            }
+            if shape.enums.contains_key(member) {
+                return Some(true);
+            }
+            kind = self.root(&key, shape)?;
         }
-        shape.enums.contains_key(member).then_some(true)
+        None
     }
 
     /// Whether `name` is what the file imports something `as`.
