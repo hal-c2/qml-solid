@@ -136,6 +136,9 @@ function shares(self, across, down) {
   let found = [];
   let settled = true;
   let again = false;
+  // What waits for the rest to settle may find the control gone by then.
+  let gone = false;
+  onCleanup(() => void (gone = true));
   effect(
     () => {
       const item = self.contentItem;
@@ -147,6 +150,7 @@ function shares(self, across, down) {
         const item = next[0];
         if (item)
           last(() => {
+            if (gone) return;
             see(item);
             settle();
           });
@@ -160,7 +164,7 @@ function shares(self, across, down) {
       share(self, across, down);
       last(() => {
         settled = true;
-        if (!again) return;
+        if (!again || gone) return;
         again = false;
         share(self, across, down);
         settle();
