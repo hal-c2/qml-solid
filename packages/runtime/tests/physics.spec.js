@@ -289,3 +289,68 @@ test("a character falls, walks, climbs and is put somewhere as in Qt", async ({ 
     0.002,
   );
 });
+
+test("a world that looks for what moves too fast holds dice as Qt's does", async ({ page }) => {
+  await begin(page, "physicsdice");
+  const { seen, told, heard, zoned, rest } = await until(page, 140);
+  // Frames 3 to 8. A die made in frame 3 with a density of its own, and
+  // pushed down as it was made, is the world's a frame later and is then
+  // pushed as the 7.75 it weighs: a centimetre a frame, and the pull.
+  near(seen.first, [5, 5, 3.902, 2.706, 1.412, 0.955], "first", 0.002);
+  // Which die heard of what, in which frame, at how many points: once for
+  // each time two came to touch.
+  expect(told).toEqual([
+    [7, "first", "table", 1],
+    [9, "second", "first", 1],
+    [9, "first", "second", 1],
+    [10, "first", "table", 1],
+    [12, "second", "first", 4],
+    [12, "first", "second", 4],
+  ]);
+  expect(heard).toBe(7);
+  // Frame 80: one die on the table that is a mesh, the other on it, both
+  // asleep. Where along the table they came to lie is not the same twice.
+  const [[first, second, ...asleep]] = seen.stack;
+  near([first[1], second[1]], [0.95, 2.843], "stack", 0.005);
+  near([first[0], first[2], second[0], second[2]], [0, 0, 0, 0], "stack", 0.15);
+  expect(asleep).toEqual([true, true]);
+  near(rest.first[1], 0.95, "first", 0.005);
+  expect(rest.sleeping).toBe(true);
+  // Frames 59 to 64: a pull that changes in frame 60 is the next step's.
+  near(seen.faller, [832.151, 826.363, 820.559, 814.738, 808.902, 803.049], "faller", 0.002);
+  // Frames 30, 40, 55, 75 and 100: a ball comes back as high as it fell
+  // from until its material, in frame 50, is told to give nothing back.
+  near(seen.bouncer, [14.243, 19.639, 9.338, 1, 1], "bouncer", 0.002);
+  // A ball two metres a step is thrown back by a plate thinner than itself.
+  near(rest.bullet, [200, 12872.039, 0], "bullet", 0.01);
+  // Such a world does not look at groups: what would pass through lies on.
+  near(rest.ghost, [400, 2, 0], "ghost", 0.002);
+  // A body made in frame 3 inside a trigger is told of when it is the
+  // world's. In frame 75 Qt's trigger says it left, and in the next that
+  // it came in again, having gone nowhere: so does this.
+  expect(zoned).toEqual([
+    [4, "entered", "floater", 1],
+    [75, "exited", "floater", 0],
+    [76, "entered", "floater", 1],
+  ]);
+  expect(seen.count).toEqual([1]);
+});
+
+test("a body that goes is gone from under another, and not from a trigger's count", async ({ page }) => {
+  await begin(page, "physicsgone");
+  const { seen, zoned } = await until(page, 320);
+  // Frames 120 to 125, and 320. A box asleep on another is woken when the
+  // other goes in frame 120, falls from frame 122, and lies on the floor.
+  expect(seen.asleep).toEqual([true]);
+  near(seen.upper, [149.995, 149.995, 149.897, 149.701, 149.407, 149.014, 50], "upper", 0.002);
+  // A body that goes while inside a trigger is not told of as leaving, and
+  // is counted still (frames 60 to 63): the one made after it is the
+  // second, and the trigger is left with one when that has fallen through.
+  expect(seen.count).toEqual([1, 1, 1, 1]);
+  expect(zoned).toEqual([
+    [1, "around", "floater", 1],
+    [44, "entered", "visitor", 1],
+    [184, "entered", "visitor", 2],
+    [243, "exited", "visitor", 1],
+  ]);
+});

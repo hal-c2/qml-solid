@@ -69,6 +69,7 @@ export function begin(sim, body) {
 export function end(sim, body) {
   if (body.controller) {
     sim.actors.delete(body.controller.getActor().ptr);
+    sim.characters.delete(body.controller.ptr);
     body.controller.release();
     body.controller = null;
   }

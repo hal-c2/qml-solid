@@ -253,7 +253,8 @@ export const TriggerBody = defineType("TriggerBody", PhysicsNode, {
 });
 
 // A body came into a trigger, or left it: the trigger tells of it once for
-// each body, however many of its shapes did.
+// each body, however many of its shapes did. A body that is no more while
+// it is inside is not told of as leaving and is counted still, as in Qt.
 export function entered(trigger, other) {
   if (trigger.$inside.has(other)) return;
   trigger.$inside.add(other);
