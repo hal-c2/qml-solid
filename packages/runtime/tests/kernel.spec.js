@@ -1,3 +1,4 @@
+import { test as plain } from "@playwright/test";
 import { expect, open, test } from "./open.js";
 
 // The steps are the ones Qt was taken through with the same scene, and the
@@ -100,4 +101,31 @@ test("what is said of the object a property holds is that object's", async ({ pa
     ["wide", "#ff0000", 5, 4, 80, "back 2,width 4"],
     ["wide", "#ff0000", 2, 10, 30, "back 2,width 4,width 10"],
   ]);
+});
+
+plain("a binding that cannot be evaluated is told of, unless what it met is not made yet", async ({ page }) => {
+  const warnings = [];
+  page.on("console", (message) => {
+    if (message.type() === "warning") warnings.push(message.text());
+  });
+  await open(page, "early");
+  const read = await page.evaluate(() => {
+    const { scene } = window;
+    const seen = [scene.read()];
+    for (let step = 0; step < 2; step++) {
+      scene.step(step);
+      seen.push(scene.read());
+    }
+    return seen;
+  });
+  // Qt's answers. An item may be beside one that is below it; what an alias
+  // was given stays what it was when it cannot be evaluated again.
+  expect(read).toEqual([
+    [300, "", 32, 10, 7, 43],
+    [300, "first", 32, 10, 7, 43],
+    [300, "first", 32, 10, 7, 43],
+  ]);
+  // And Qt's complaints: none of `wide`, which asked an object made after it.
+  expect(new Set(warnings)).toEqual(new Set(["title: TypeError: Cannot read properties of null (reading 'title')"]));
+  expect(warnings.length).toBeGreaterThanOrEqual(2);
 });

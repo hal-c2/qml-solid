@@ -40,11 +40,17 @@ const hidden = (object, key, value) =>
 // declared before anything is created, so a binding may meet one early.
 const pending = new Proxy(Object.create(null), {
   get(_, key, self) {
-    if (typeof key === "string" && key[0] !== "$") self.$track();
+    if (typeof key === "string" && key[0] !== "$") {
+      early++;
+      self.$track();
+    }
     return undefined;
   },
   has: () => false,
 });
+
+// How many times one was read.
+let early = 0;
 
 // The object an `id` names, made before the type that fills it in runs.
 export function $object() {
@@ -175,11 +181,15 @@ export function gather(work) {
 function guarded(key, compute) {
   let last;
   return () => {
+    const before = early;
     try {
       return (last = compute());
     } catch (error) {
       if (!(error instanceof TypeError)) throw error;
-      console.warn(`${key.replaceAll("$", ".")}: ${error}`);
+      // Nothing to tell of what met an object that is not made yet: Qt
+      // evaluates no binding until all of them are, and this one is
+      // evaluated again when that one is.
+      if (early === before) console.warn(`${key.replaceAll("$", ".")}: ${error}`);
       return last;
     }
   };
@@ -840,9 +850,11 @@ function defineAlias(self, name, [target, ...path]) {
   // none is read until then.
   const given = path.length > 0 && name in self.$props;
   const [early, setEarly] = given ? createSignal(true, { ownedWrite: true }) : [];
+  // A binding like any other: one that cannot be evaluated yet is told of.
+  const binding = given ? guarded(name, () => self.$props[name]) : null;
   Object.defineProperty(self, name, {
     get: path.length
-      ? () => (early?.() ? self.$props[name] : holder()?.[last])
+      ? () => (early?.() ? binding() : holder()?.[last])
       : // A Component is what it is from the start; an object, once made.
         () => (target.$type || !target.$track ? target : (target.$track(), null)),
     set(value) {
@@ -862,7 +874,7 @@ function defineAlias(self, name, [target, ...path]) {
     if (aliased) return aliased.bind(self.$props, name);
     // An alias of an alias, or of an object made later: assigned instead.
     createRenderEffect(
-      () => self.$props[name],
+      binding,
       (value) =>
         settled(() => {
           const object = holder();
@@ -894,7 +906,7 @@ function through(holder, props, key, name) {
   // An alias: assigned.
   if (!(rest in target)) return;
   createRenderEffect(
-    () => props[key],
+    guarded(key, () => props[key]),
     (value) => settled(() => void (target[rest] = value)),
   );
 }
