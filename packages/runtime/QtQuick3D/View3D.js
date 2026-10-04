@@ -34,7 +34,7 @@ function found(self) {
       }
     } else if (node.$light) lights.push(node.$light());
     else if (node.$camera) camera ??= node;
-    // What a node draws by itself, after everything else.
+    // What a node draws by itself.
     const paint = node.$paint?.(opacity);
     if (paint) paints.push(paint);
     for (const child of inside(node)) walk(child, opacity);

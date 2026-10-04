@@ -9,10 +9,15 @@
 // Qt: emitting is done once for each time it comes to, and looking at a
 // particle is done from its start alone.
 //
+// The `time` a system is declared with is not its time, in Qt: every
+// system is at nought when it is made, and at the time it is given from
+// when that is first another.
+//
 // Unlike Qt: a time that is set is the system's time at once, where Qt's
 // system comes to it with the next frame. An emitter that is enabled or
 // asked for a burst right after the time was set starts from the new time
-// here, and from the old one in Qt.
+// here, and from the old one in Qt. And `time` reads as what it was
+// declared to be until it is changed, where Qt's reads as nought.
 import { createSignal, onCleanup, untrack } from "solid-js";
 import { defineType, derived, effect, inside, last, QtObject, settle, slot } from "../../object.js";
 import { clock } from "../../QtQuick/animation/clock.js";
@@ -77,14 +82,25 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
     $upTo() {
       this.$made();
       this.$members();
-      void this.time;
+      void this.$time();
       void this.startTime;
       void this.running;
       return untrack(() => this.$sync());
     },
     // Has the emitters emit what the time since it was last here gives.
+    // The time the system is at without `startTime`: nought until `time`
+    // is something else than it was declared to be.
+    $time() {
+      const { time } = this;
+      if (this.$declared === undefined) return 0;
+      if (this.$declared !== null) {
+        if (Object.is(time, this.$declared)) return 0;
+        this.$declared = null;
+      }
+      return time;
+    },
     $sync() {
-      const now = this.time + this.startTime;
+      const now = this.$time() + this.startTime;
       if (!untrack(this.$made)) return now;
       const { emitters } = this.$members();
       for (const emitter of emitters) {
@@ -103,8 +119,11 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
         }
       }
       // A system that is not running and whose time is nought has not
-      // begun: there is nothing in it until its time is something.
-      if (!this.$begun && now === 0 && !this.running) return now;
+      // begun: there is nothing in it until its time is something. One
+      // that was declared with a time has, at nought, as in Qt, which
+      // brings a system to a time whenever its time changes, and whose
+      // setting that time to nought is such a change.
+      if (!this.$begun && now === 0 && !this.running && !this.$timed) return now;
       this.$begun = true;
       if (this.$at === now) return now;
       const since = this.$before;
@@ -140,6 +159,8 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
     const [made, setMade] = createSignal(false, { ownedWrite: true });
     self.$made = made;
     last(() => {
+      self.$declared = self.time;
+      self.$timed = self.$declared !== 0;
       setMade(true);
       settle();
     });

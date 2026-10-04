@@ -35,3 +35,10 @@ async function follow(page, scene, compare = (said, expected, step) => expect(sa
 test("a system has emitted by a time what Qt's has", async ({ page }) => {
   await follow(page, "particles3d");
 });
+
+// A system declared with a time of 1100 is at nought all the same: only
+// its burst at nought is there to begin with, and the first time it is
+// given another time everything since nought comes at once.
+test("a system declared with a time begins at nought, as Qt's does", async ({ page }) => {
+  await follow(page, "particles3dlate");
+});

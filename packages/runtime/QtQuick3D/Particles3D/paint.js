@@ -1,9 +1,9 @@
 // What a View3D draws of a particle system besides its models: the sprites,
 // each a square of `particleScale` times the particle's size with the
 // picture on it, and the lines, each a ribbon along the way a particle
-// came. They are drawn after everything else in the view, with a program
-// of their own: behind what is nearer, and in front of nothing as far as
-// what is drawn later can tell.
+// came. They are drawn among what is seen through in the view, a system
+// as far away as it is itself, with a program of their own: behind what is
+// nearer, and in front of nothing as far as what is drawn later can tell.
 //
 // As Qt draws a sprite: where the particle is in the system is where the
 // middle of the square is, and the square itself is turned as the particle
@@ -16,8 +16,7 @@
 // again each time from where its particle was, a point for each 16 ms of
 // its way that is `lengthDeltaMin` from the last; it is the same line
 // however the system came to its time, where Qt's has a point for each
-// time the system was brought to. And the sprites of a system are drawn
-// after the models that are seen through, whichever is nearer.
+// time the system was brought to.
 import * as math from "../math.js";
 import { LENGTH, random, spread, TABLE, FRAME } from "./core.js";
 import { moved } from "./particles.js";
@@ -54,11 +53,14 @@ void main() {
     return;
   }
   v_at = a_corner + 0.5;
-  vec3 across = turned(a_turn, vec3((a_corner + u_offset) * a_look.x, 0.0));
+  vec3 across = vec3(a_corner * a_look.x, 0.0);
+  // What it is moved aside by is not turned with it.
+  vec3 aside = vec3(u_offset * a_look.x, 0.0);
   vec4 place = u_world * vec4(a_place, 1.0);
-  if (u_mode == 0) place.xyz += across;
+  if (u_mode == 0) place.xyz += turned(a_turn, across) + aside;
   place = u_view * place;
-  if (u_mode == 1) place.xyz += across;
+  // Before the eye it is turned the other way round, as Qt has it.
+  if (u_mode == 1) place.xyz += turned(vec4(a_turn.x, -a_turn.yzw), across) + aside;
   gl_Position = u_projection * place;
 }`;
 
@@ -70,6 +72,7 @@ uniform sampler2D u_table;
 uniform bool u_pictured;
 uniform bool u_tabled;
 uniform bool u_blended;
+uniform bool u_straight;
 uniform float u_frames;
 uniform float u_opacity;
 uniform int u_tonemap;
@@ -122,10 +125,10 @@ void main() {
     tint *= texel;
   }
   float alpha = tint.a * u_opacity;
-  color = vec4(tonemap(tint.rgb) * alpha, alpha);
+  color = vec4(tonemap(tint.rgb) * (u_straight ? 1.0 : alpha), alpha);
 }`;
 
-const UNIFORMS = ["u_world", "u_view", "u_projection", "u_mode", "u_offset", "u_picture", "u_table", "u_pictured", "u_tabled", "u_blended", "u_frames", "u_opacity", "u_tonemap"];
+const UNIFORMS = ["u_world", "u_view", "u_projection", "u_mode", "u_offset", "u_picture", "u_table", "u_pictured", "u_tabled", "u_blended", "u_straight", "u_frames", "u_opacity", "u_tonemap"];
 
 // What one particle is in the row of numbers a sprite is drawn from: where
 // it is, its turn, its colour, its size with how far through its life it
@@ -285,7 +288,9 @@ function sprites(kind, system) {
     blended: Boolean(sequence?.interpolate),
     blend: kind.blendMode,
     mode: kind.billboard ? 1 : 0,
-    offset: [Number(kind.offsetX) || 0, Number(kind.offsetY) || 0],
+    // `offsetX` and `offsetY` are in the particle's own size, which the
+    // square is `particleScale` times.
+    offset: size ? [(Number(kind.offsetX) || 0) / size, (Number(kind.offsetY) || 0) / size] : [0, 0],
     far: sortMode === SortDistance,
   };
 }
@@ -464,7 +469,7 @@ export function painted(system, opacity) {
   }
   if (!kinds.length) return null;
   const world = system.$world();
-  return ({ gl, view, projection, tonemap, bound }) => {
+  const paint = ({ gl, view, projection, tonemap, bound }) => {
     const own = tools(gl);
     if (!own) return;
     const { at } = own;
@@ -488,7 +493,9 @@ export function painted(system, opacity) {
       gl.uniform1i(at.u_pictured, kind.map ? 1 : 0);
       if (kind.map) bound(kind.map);
       else gl.bindTexture(gl.TEXTURE_2D, own.blank);
-      // What is drawn is already times its own alpha.
+      // What is drawn is already times its own alpha, but for what
+      // multiplies: that darkens by its colour however much of it there is.
+      gl.uniform1i(at.u_straight, kind.blend === Multiply ? 1 : 0);
       if (kind.blend === Screen) gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
       else if (kind.blend === Multiply) gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ONE, gl.ONE);
       else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -513,4 +520,7 @@ export function painted(system, opacity) {
       }
     }
   };
+  // Where it is, for the view to draw it after what is farther away.
+  paint.at = world.slice(12, 15);
+  return paint;
 }
