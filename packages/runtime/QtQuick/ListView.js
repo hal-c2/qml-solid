@@ -210,7 +210,12 @@ export const ListView = defineType("ListView", ItemView, {
       let last = -1;
       let end = 0;
       let step = state.avg + spacing;
-      if (count) {
+      if (count && this[span] < 0) {
+        // Less than nothing long: no row is made, and each is taken to be as
+        // long as Qt takes one to be before it has measured any.
+        step = 100 + spacing;
+        end = -spacing;
+      } else if (count) {
         const position = this[vertical ? "contentY" : "contentX"];
         const buffer = Math.max(this.cacheBuffer, 0);
         const from = position - buffer;

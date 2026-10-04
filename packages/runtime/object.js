@@ -481,7 +481,13 @@ class Slot {
   }
 
   own() {
-    if (this.placed !== undefined && !this.over) return this.placed;
+    if (this.placed !== undefined && !this.over) {
+      if (typeof this.placed !== "function") return this.placed;
+      // Placed by what something else is, as wide as a share of its box:
+      // asked each time, and nothing where it has no say.
+      const placed = this.placed();
+      if (placed !== undefined) return placed;
+    }
     if (this.assigned) return this.value;
     let value = this.bound ? this.bound() : this.given;
     if (value === undefined && this.whole) value = slot(this.self, this.whole).get()?.[this.member];
@@ -1059,7 +1065,11 @@ function attach(name, Attached, self) {
     Object.defineProperty(props, key.slice(prefix.length), Object.getOwnPropertyDescriptor(self.$props, key));
   }
   hidden(props, "$attachee", self);
-  return (all[name] = runWithOwner(self.$owner, () => untrack(() => Attached(props))));
+  // It is the object's before it is made: what it tells of once it is, as
+  // `Layout.onRowChanged` of a `Layout.row` that is bound, may ask for it.
+  hidden(props, "$self", (all[name] = $object()));
+  runWithOwner(self.$owner, () => untrack(() => Attached(props)));
+  return all[name];
 }
 
 // What a `Component` is at run time: a function from what its object is
