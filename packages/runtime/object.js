@@ -160,6 +160,10 @@ export function settle() {
   if (!settling) flush();
 }
 
+// Whether a flush is on, where `settle()` settles nothing: for what cannot
+// go on until what it changed has settled.
+export const flushing = () => settling > 0;
+
 // What `work` emits and changes is told of once it is done, what it emitted
 // first: for what Qt tells of before it tells of the change that made it.
 export function gather(work) {

@@ -69,6 +69,7 @@ export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
 export { Repeater } from "./Repeater.js";
 export { Sprite } from "./Sprite.js";
 export { SpriteSequence } from "./SpriteSequence.js";
+export { TableView } from "./TableView.js";
 export { Text } from "./Text.js";
 export { TextEdit, TextInput } from "./TextInput.js";
 export { FontMetrics, TextMetrics } from "./TextMetrics.js";
