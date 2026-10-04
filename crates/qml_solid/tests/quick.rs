@@ -321,11 +321,16 @@ Item {
     Image { source: "https://example.org/a.png" }
     Image { source: icon }
     Loader { source: "Other.qml" }
+    property url folder: "icons/"
+    property url other: Qt.resolvedUrl("images/")
 }"#,
     );
+    // A directory is not for a bundler to take for a file.
+    assert_contains(&code, r#"const $url3 = $url("icons/", import.meta.url);"#);
+    assert_contains(&code, r#"other={$url("images/", import.meta.url)}"#);
     assert_contains(&code, r#"const $url1 = new URL("icons/a.png", import.meta.url).href;"#);
     assert_contains(&code, r#"const $url2 = new URL("images/clock.png", import.meta.url).href;"#);
-    assert_lacks(&code, "$url3");
+    assert_lacks(&code, "$url4");
     assert_contains(&code, "icon={$url1}");
     assert_contains(&code, "<Image source={$url2}></Image><Image source={$url2}></Image>");
     assert_contains(&code, r#"<Image source={"https://example.org/a.png"}>"#);

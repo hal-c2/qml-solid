@@ -728,8 +728,15 @@ impl<'a, 's> Lower<'a, 's> {
             self.module.push(b.import_default(&name, &source));
             return b.id(&name);
         }
-        let url = b.new_(b.id("URL"), [b.string(value), b.import_meta_url()]);
-        self.module.push(b.const_(&name, b.member(url, "href")));
+        // A directory is no asset: a bundler that takes `new URL` for one
+        // gives it back without the slash it ends with.
+        let url = if value.ends_with('/') {
+            self.uses.kernel.insert("$url");
+            b.call(b.id("$url"), [b.string(value), b.import_meta_url()])
+        } else {
+            b.member(b.new_(b.id("URL"), [b.string(value), b.import_meta_url()]), "href")
+        };
+        self.module.push(b.const_(&name, url));
         b.id(&name)
     }
 }
