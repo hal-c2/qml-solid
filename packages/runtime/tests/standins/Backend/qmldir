@@ -1,3 +1,4 @@
 module Backend
 Meter 1.0 Meter.qml
 singleton Engine 1.0 Engine.qml
+singleton Stocks 1.0 Stocks.qml
