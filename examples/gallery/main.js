@@ -41,6 +41,7 @@ async function show(example) {
   const fail = (error) => {
     state.status = "failed";
     state.error ??= String(error?.message ?? error);
+    state.stack ??= error?.stack ?? null;
     about.querySelector("pre").textContent = state.error;
   };
   document.title = example.id;

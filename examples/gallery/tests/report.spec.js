@@ -140,6 +140,8 @@ for (const example of readManifest()) {
       entryCompiles,
       renders,
       error: error ?? (entryCompiles ? null : compiled.errors[example.entry]),
+      // Where the page's own error came from, when it is the one told of.
+      stack: found != null && found === state.error ? (state.stack ?? null) : null,
       reference: example.reference !== null,
       qt: example.qt?.runnable ? null : (example.qt?.reason ?? null),
       pixels: similarity?.pixels ?? null,
