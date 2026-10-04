@@ -1,0 +1,2 @@
+module QtQuick.Studio.Components
+SvgPathItem 1.0 SvgPathItem.qml
