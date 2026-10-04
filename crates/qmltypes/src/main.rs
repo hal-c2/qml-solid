@@ -38,8 +38,9 @@ use qmlfile::QmlFile;
 ///
 /// without the ones the examples define themselves, and with the ones the
 /// styles of Qt Quick Controls import: a style is QML too, compiled as an
-/// example is. What these need comes along; one that is not installed is
-/// reported and left out.
+/// example is. So is what stands in for an example's C++ in
+/// `corpus/standins`, which imports QtWebSockets. What these need comes
+/// along; one that is not installed is reported and left out.
 const MODULES: &[&str] = &[
     "Qt.labs.assetdownloader",
     "Qt.labs.folderlistmodel",
@@ -85,6 +86,7 @@ const MODULES: &[&str] = &[
     "QtQuick3D.Physics",
     "QtQuick3D.Xr",
     "QtSensors",
+    "QtWebSockets",
 ];
 
 /// The module every QML file has without importing it.

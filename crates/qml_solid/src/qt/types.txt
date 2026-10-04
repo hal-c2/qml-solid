@@ -17378,3 +17378,48 @@ module QtSensors
 		prop xRotation double readonly
 		signal yRotationChanged
 		signal xRotationChanged
+module QtWebSockets
+	WebSocket QQmlWebSocket
+	WebSocketServer QQmlWebSocketServer
+	type QQmlWebSocket WebSocket
+		prototype QObject
+		enum Status Connecting Open Closing Closed Error
+		prop url QUrl
+		prop requestedSubprotocols QString list
+		prop status Status readonly
+		prop errorString QString readonly
+		prop active bool
+		prop negotiatedSubprotocol QString readonly
+		signal textMessageReceived message
+		signal binaryMessageReceived message
+		signal statusChanged status
+		signal activeChanged isActive
+		signal errorStringChanged errorString
+		signal urlChanged
+		signal requestedSubprotocolsChanged
+		signal negotiatedSubprotocolChanged
+		signal pong elapsedTime payload
+		method onError
+		method onStateChanged
+		method sendTextMessage
+		method sendBinaryMessage
+		method ping
+	type QQmlWebSocketServer WebSocketServer
+		prototype QObject
+		prop url QUrl readonly
+		prop host QString
+		prop port int
+		prop name QString
+		prop supportedSubprotocols QString list
+		prop errorString QString readonly
+		prop listen bool
+		prop accept bool
+		signal clientConnected webSocket
+		signal errorStringChanged errorString
+		signal urlChanged url
+		signal portChanged port
+		signal nameChanged name
+		signal supportedSubprotocolsChanged supportedProtocols
+		signal hostChanged host
+		signal listenChanged listen
+		signal acceptChanged accept
