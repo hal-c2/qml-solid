@@ -54,7 +54,7 @@ pub struct Enum {
     pub keys: Vec<(String, Option<i64>)>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Property {
     pub name: String,
     pub type_name: String,

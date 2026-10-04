@@ -4,6 +4,7 @@
 // against what the map itself says of where places are.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { test as plain } from "@playwright/test";
 import { expect, open, test } from "./open.js";
 
 const expected = JSON.parse(readFileSync(join(import.meta.dirname, "fixtures/location.json"), "utf8"));
@@ -218,10 +219,23 @@ test("A provider's own server is asked for the tiles of its kind of map", async 
   for (const url of own) expect(url).toMatch(/^http:\/\/tiles\.test\/own\/19\/2619\d\d\/1743\d\d\.png$/);
 });
 
+// The browser tells of each tile it could not have: not this test's concern.
+plain("A map that cannot be reached says nothing of whose it is", async ({ page, baseURL }) => {
+  const host = new URL(baseURL).host;
+  await page.route(
+    (url) => url.host !== host,
+    (route) => route.abort(),
+  );
+  await open(page, "location");
+  await page.waitForTimeout(300);
+  await expect(page.locator("#scene .qq-copyright").last()).toBeHidden();
+});
+
 test("Whose the map is is said in its corner, over its items", async ({ page, baseURL }) => {
   await scene(page, baseURL);
   const notice = page.locator("#scene .qq-copyright").last();
   await expect(notice).toHaveText("Map © OpenStreetMap.org | Data © OpenStreetMap contributors");
+  await expect(notice).toBeVisible();
   const box = await page.evaluate(() => {
     const map = window.objects.map;
     const frame = map.$node.getBoundingClientRect();

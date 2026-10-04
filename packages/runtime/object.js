@@ -340,9 +340,18 @@ export function gather(work) {
 // programs written for it lean on. Only what asking too much of a value
 // throws is taken so: any other error is the runtime's, or of a type it does
 // not have.
+//
+// It is told of once what changed has settled, and not at all where the
+// object ended in the meantime: a delegate whose row went with what it read
+// (`text: list[index].label` under `model: list.length`) is destroyed in Qt
+// before its binding is asked, and here in the same flush as it is.
 function guarded(key, compute) {
   let last;
+  let failed = null;
   return () => {
+    // Evaluated again, so not ended: what cleaned up was this.
+    if (failed) failed.ended = false;
+    failed = null;
     const before = early;
     try {
       return (last = compute());
@@ -351,7 +360,13 @@ function guarded(key, compute) {
       // Nothing to tell of what met an object that is not made yet: Qt
       // evaluates no binding until all of them are, and this one is
       // evaluated again when that one is.
-      if (early === before) console.warn(`${key.replaceAll("$", ".")}: ${error}`);
+      if (early === before) {
+        const failure = (failed = { ended: false });
+        if (getOwner()) onCleanup(() => (failure.ended = true));
+        after(() => {
+          if (!failure.ended) console.warn(`${key.replaceAll("$", ".")}: ${error}`);
+        });
+      }
       return last;
     }
   };
@@ -791,7 +806,7 @@ function defineChange(object, name) {
 
 function changes(self, name) {
   const handler = handlerName(`${name}Changed`);
-  const emit = signal(() => untrack(() => self.$props[handler]));
+  const emit = signal(handling(self, handler));
   const { connect } = emit;
   let watched = false;
   // Nothing watches a property nobody hears of. `first` is told what the
@@ -845,6 +860,21 @@ function defineGroup(Type, proto, name, properties) {
 
 const handlerName = (name) => `on${name[0].toUpperCase()}${name.slice(1)}`;
 
+// The handler a signal runs: what the object was given, or what a state put
+// in its place for as long as the state is the item's.
+const handling = (self, handler) => () =>
+  self.$replaced && handler in self.$replaced ? self.$replaced[handler] : untrack(() => self.$props[handler]);
+
+// Puts `run` in the place of the handler of a signal, `onClicked`; nothing
+// puts the object's own back.
+export function replace(self, handler, run) {
+  if (!self.$replaced) hidden(self, "$replaced", {});
+  if (run) self.$replaced[handler] = run;
+  else delete self.$replaced[handler];
+  // A property's changes are told of from when somebody hears of them.
+  self[handler[2].toLowerCase() + handler.slice(3)].watch?.();
+}
+
 // A signal is the function that emits it: `clicked(mouse)` runs the handler
 // the object was given (`onClicked`) and whatever was connected since.
 export function signal(given) {
@@ -863,7 +893,7 @@ function defineSignal(proto, name) {
   const handler = handlerName(name);
   Object.defineProperty(proto, name, {
     get() {
-      return (this.$signals[name] ??= signal(() => untrack(() => this.$props[handler])));
+      return (this.$signals[name] ??= signal(handling(this, handler)));
     },
     enumerable: true,
     configurable: true,
@@ -909,7 +939,19 @@ export function defineType(name, base, spec = {}) {
   for (const signalName of spec.signals ?? []) defineSignal(proto, signalName);
   if (spec.methods) Object.defineProperties(proto, Object.getOwnPropertyDescriptors(spec.methods));
   if (spec.attached) Type.attached = (self) => attach(name, spec.attached, self);
+  Object.defineProperty(Type, Symbol.hasInstance, { value: isA });
   return Type;
+}
+
+// `item instanceof Shape`: the object is of the type, or of one that extends
+// it. A component (`Tile.qml`) finds this through the type of its root, and
+// its objects are the ones it made.
+function isA(object) {
+  const type = object?.$type;
+  if (!type) return false;
+  if (Object.hasOwn(this, "chain")) return type.chain.includes(this);
+  const made = object.$props.$is;
+  return Array.isArray(made) ? made.includes(this) : made === this;
 }
 
 // What waits for the tree being created: QML makes every object of a
@@ -988,6 +1030,7 @@ function inherit(own, given) {
     const descriptor = Object.getOwnPropertyDescriptor(given, key);
     if (!(key in own)) Object.defineProperty(props, key, descriptor);
     else if (key === "$declare") props.$declare = [own.$declare, given.$declare].flat();
+    else if (key === "$is") props.$is = [own.$is, given.$is].flat();
     else if (key === "$attach" || key === "$made") props[key] = [...new Set([...own[key], ...given[key]])];
     else if (key === "$functions" || key === "$aliases") props[key] = { ...own[key], ...given[key] };
     else if (HANDLER.test(key)) {
@@ -1168,7 +1211,16 @@ function create(Type, props) {
       );
     }
     const destruction = props.Component$onDestruction;
-    if (destruction) onCleanup(() => destruction());
+    if (destruction) {
+      // Told once: when `destroy()` ends the object, or what owns it ends.
+      const tell = () => {
+        if (self.$gone) return;
+        hidden(self, "$gone", true);
+        destruction();
+      };
+      hidden(self, "$destruction", tell);
+      onCleanup(tell);
+    }
     // Whoever read the object before it existed reads it again.
     if (props.$self) self.$touch(next);
     return self;
@@ -1290,7 +1342,8 @@ export function $component(make) {
   make.errorString = () => "";
   make.statusChanged = make.progressChanged = silent;
   make.createObject = (item, properties) => {
-    const { object } = instantiate(make, properties ?? {}, item);
+    const { object, dispose } = instantiate(make, properties ?? {}, item);
+    hidden(object, "$dispose", dispose);
     for (const [name, value] of Object.entries(properties ?? {})) {
       if (name in object) object[name] = value;
     }
@@ -1516,4 +1569,28 @@ export function $signal(initial) {
 
 export const QtObject = defineType("QtObject", null, {
   properties: { objectName: "" },
+  methods: {
+    // Gone once what asked is done, or `delay` milliseconds on: out of what
+    // it is in, and told of its destruction. One that a component made by
+    // `createObject` stops there; what one written in a file does goes on
+    // until what the file made ends.
+    destroy(delay = 0) {
+      if (this.$destroyed) return;
+      hidden(this, "$destroyed", true);
+      setTimeout(() => {
+        (this.parent ?? this.$parent)?.$remove?.(this);
+        this.$destruction?.();
+        this.$dispose?.();
+        flush();
+      }, delay);
+    },
+    // True of everything the object has, as in Qt: a property of its type's
+    // is its own, and so is the handler of a signal.
+    hasOwnProperty(name) {
+      if (typeof name !== "string" || name[0] === "$") return false;
+      if (name in this) return true;
+      const signal = /^on([A-Z])(\w*)$/.exec(name);
+      return signal !== null && typeof this[signal[1].toLowerCase() + signal[2]]?.connect === "function";
+    },
+  },
 });

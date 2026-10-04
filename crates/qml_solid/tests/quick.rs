@@ -53,7 +53,7 @@ Rectangle {
     assert_contains(&code, "const root = $props.$self ?? $object();");
     assert_contains(
         &code,
-        r#"<Rectangle $self={root} $given={$props} width={200} color={"red"} border$width={2} border$color={"black"}>"#,
+        r#"<Rectangle $self={root} $given={$props} $is={Sample} width={200} color={"red"} border$width={2} border$color={"black"}>"#,
     );
     // `parent` is the Text's: an object nothing else names gets a name of ours.
     assert_contains(&code, "const $1 = $object();");
@@ -828,6 +828,14 @@ QtObject {
     assert_contains(&code, "twice={Units().grid * 2}");
     assert_contains(&code, "const Units = $singleton(Units$component, {\n\tSmall: 0,\n\tLarge: 1\n});");
     assert_contains(&code, "export default Units;");
+
+    // One named like the type it is one of leaves the name to the type.
+    let files = [("QtObject", "pragma Singleton\nimport QtQuick\nQtObject { property int grid: 8 }")];
+    let code = lowered_in(&files, "QtObject").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, r#"import { QtObject } from "qml-solid/QtQuick";"#);
+    assert_contains(&code, "const QtObject$singleton = $singleton(QtObject$component, {});");
+    assert_contains(&code, "Object.setPrototypeOf(QtObject$singleton, QtObject);");
+    assert_contains(&code, "export default QtObject$singleton;");
 }
 
 #[test]

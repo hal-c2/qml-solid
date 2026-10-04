@@ -75,7 +75,7 @@ export const Sensor = defineType("Sensor", QtObject, {
     skipDuplicates: false,
     dataRate: 0,
     identifier: derived(() => (backend() ? MOTION : "")),
-    type: derived((self) => self.$type ?? ""),
+    type: derived((self) => self.$sensor ?? ""),
     connectedToBackend: derived(() => backend()),
     availableDataRates: derived(() => []),
     outputRanges: derived(() => []),
@@ -148,7 +148,7 @@ export const Accelerometer = defineType("Accelerometer", Sensor, {
   properties: { accelerationMode: Combined },
   enums: { Combined, Gravity, User },
   setup(self) {
-    self.$type = "QAccelerometer";
+    self.$sensor = "QAccelerometer";
     self.$features = [5, 4];
     self.$reading = AccelerometerReading({});
     self.$read = (event) => {
@@ -165,7 +165,7 @@ export const Accelerometer = defineType("Accelerometer", Sensor, {
 
 export const Gyroscope = defineType("Gyroscope", Sensor, {
   setup(self) {
-    self.$type = "QGyroscope";
+    self.$sensor = "QGyroscope";
     self.$features = [5];
     self.$reading = GyroscopeReading({});
     // A browser names the turns by the angles they change: about the

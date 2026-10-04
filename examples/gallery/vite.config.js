@@ -39,7 +39,8 @@ function examples() {
 function style(importer) {
   const example = readManifest().find(({ directory }) => importer?.startsWith(directory + sep));
   if (!example) return undefined;
-  if (example.qt.style) return example.qt.style;
+  // One of the example's own modules is a style it brings itself.
+  if (example.qt.style) return example.modules?.[example.qt.style] ? join(example.directory, example.modules[example.qt.style]) : example.qt.style;
   const conf = example.qt.controlsConf && join(example.directory, example.qt.controlsConf);
   const chosen = conf && existsSync(conf) ? readFileSync(conf, "utf8").match(/^\s*Style\s*=\s*(\w+)/m)?.[1] : null;
   if (chosen) return chosen === "Default" ? "Basic" : chosen;

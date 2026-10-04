@@ -458,13 +458,13 @@
       "qt": {
         "runnable": true,
         "offline": true,
-        "style": "Basic",
+        "style": "LightningViewerStyle",
         "env": {
           "QT_QUICK_CONTROLS_STYLE": "LightningViewerStyle",
           "QT_QUICK_CONTROLS_FALLBACK_STYLE": "Basic"
         }
       },
-      "notes": "main.cpp sets the example's own LightningViewerStyle as the Controls style: a module with a Button and a RoundButton, and Basic behind it for the rest. Qt's picture has it (`env`); `style`, which the web goes by and which can name only a style of Qt's, names Basic, so there the two buttons are not the example's. The C++ singleton LightningController is stood in for by corpus/standins/lightningviewer, for Qt's picture too; its WebSocket is QtWebSockets'. The picture is taken without a network: the map has no tiles, and no lightning strikes."
+      "notes": "main.cpp sets the example's own LightningViewerStyle as the Controls style: a module with a Button and a RoundButton, and Basic behind it for the rest. `style` names it, and the web takes it from the example's own directory as Qt does (`env` says what falls back). The C++ singleton LightningController is stood in for by corpus/standins/lightningviewer, for Qt's picture too; its WebSocket is QtWebSockets'. The picture is taken without a network: the map has no tiles, and no lightning strikes."
     },
     {
       "id": "maroon",

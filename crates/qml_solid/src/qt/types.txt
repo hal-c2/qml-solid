@@ -575,13 +575,13 @@ module Qt.labs.synchronizer
 		signal valueBounced object property
 		signal valueIgnored object property
 module QtCharts
-	AbstractAxis QAbstractAxis
+	AbstractAxis QAbstractAxis@QtCharts
 	AbstractBarSeries QAbstractBarSeries
-	AbstractSeries QAbstractSeries
+	AbstractSeries QAbstractSeries@QtCharts
 	AreaSeries DeclarativeAreaSeries
-	BarCategoriesAxis QBarCategoryAxis
-	BarCategoryAxis QBarCategoryAxis
-	BarModelMapper QBarModelMapper
+	BarCategoriesAxis QBarCategoryAxis@QtCharts
+	BarCategoryAxis QBarCategoryAxis@QtCharts
+	BarModelMapper QBarModelMapper@QtCharts
 	BarSeries DeclarativeBarSeries
 	BarSet DeclarativeBarSet
 	BoxPlotModelMapper QBoxPlotModelMapper
@@ -593,7 +593,7 @@ module QtCharts
 	CategoryAxis DeclarativeCategoryAxis
 	CategoryRange DeclarativeCategoryRange
 	ChartView DeclarativeChart
-	DateTimeAxis QDateTimeAxis
+	DateTimeAxis QDateTimeAxis@QtCharts
 	DeclarativeAxes DeclarativeAxes
 	HBarModelMapper QHBarModelMapper
 	HBoxPlotModelMapper QHBoxPlotModelMapper
@@ -608,7 +608,7 @@ module QtCharts
 	LogValueAxis QLogValueAxis
 	Margins DeclarativeMargins
 	PercentBarSeries DeclarativePercentBarSeries
-	PieModelMapper QPieModelMapper
+	PieModelMapper QPieModelMapper@QtCharts
 	PieSeries DeclarativePieSeries
 	PieSlice DeclarativePieSlice
 	PolarChartView DeclarativePolarChart
@@ -620,25 +620,25 @@ module QtCharts
 	VCandlestickModelMapper QVCandlestickModelMapper
 	VPieModelMapper QVPieModelMapper
 	VXYModelMapper QVXYModelMapper
-	ValueAxis QValueAxis
-	ValuesAxis QValueAxis
-	XYModelMapper QXYModelMapper
+	ValueAxis QValueAxis@QtCharts
+	ValuesAxis QValueAxis@QtCharts
+	XYModelMapper QXYModelMapper@QtCharts
 	XYPoint DeclarativeXYPoint
-	XYSeries QXYSeries
+	XYSeries QXYSeries@QtCharts
 	type CppQBrush
 		is value
 	type CppQPen
 		is value
 	type DeclarativeAreaSeries AreaSeries
-		prototype QAreaSeries
+		prototype QAreaSeries@QtCharts
 		prop upperSeries DeclarativeLineSeries pointer
 		prop lowerSeries DeclarativeLineSeries pointer
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
-		prop axisAngular QAbstractAxis pointer
-		prop axisRadial QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
+		prop axisAngular QAbstractAxis@QtCharts pointer
+		prop axisRadial QAbstractAxis@QtCharts pointer
 		prop borderWidth double
 		prop brushFilename QString
 		prop brush QBrush
@@ -655,21 +655,21 @@ module QtCharts
 	type DeclarativeAxes DeclarativeAxes
 		prototype QObject
 		is uncreatable
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
 		signal axisXChanged axis
 		signal axisYChanged axis
 		signal axisXTopChanged axis
 		signal axisYRightChanged axis
 	type DeclarativeBarSeries BarSeries
-		prototype QBarSeries
+		prototype QBarSeries@QtCharts
 		default seriesChildren
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
 		prop seriesChildren QObject list readonly
 		signal axisXChanged axis
 		signal axisYChanged axis
@@ -681,7 +681,7 @@ module QtCharts
 		method remove
 		method clear
 	type DeclarativeBarSet BarSet
-		prototype QBarSet
+		prototype QBarSet@QtCharts
 		prop values QVariant list
 		prop borderWidth double
 		prop count int readonly
@@ -698,10 +698,10 @@ module QtCharts
 	type DeclarativeBoxPlotSeries BoxPlotSeries
 		prototype QBoxPlotSeries
 		default seriesChildren
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
 		prop seriesChildren QObject list readonly
 		prop brushFilename QString
 		signal axisXChanged axis
@@ -743,10 +743,10 @@ module QtCharts
 	type DeclarativeCandlestickSeries CandlestickSeries
 		prototype QCandlestickSeries
 		default seriesChildren
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
 		prop seriesChildren QObject list readonly
 		prop brushFilename QString
 		signal axisXChanged axis
@@ -810,7 +810,7 @@ module QtCharts
 		prop margins DeclarativeMargins readonly pointer
 		prop plotArea QRectF
 		prop plotAreaColor QColor
-		prop axes QAbstractAxis list readonly
+		prop axes QAbstractAxis@QtCharts list readonly
 		prop localizeNumbers bool
 		prop locale QLocale
 		signal axisLabelsChanged
@@ -861,10 +861,10 @@ module QtCharts
 	type DeclarativeHorizontalBarSeries HorizontalBarSeries
 		prototype QHorizontalBarSeries
 		default seriesChildren
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
 		prop seriesChildren QObject list readonly
 		signal axisXChanged axis
 		signal axisYChanged axis
@@ -878,10 +878,10 @@ module QtCharts
 	type DeclarativeHorizontalPercentBarSeries HorizontalPercentBarSeries
 		prototype QHorizontalPercentBarSeries
 		default seriesChildren
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
 		prop seriesChildren QObject list readonly
 		signal axisXChanged axis
 		signal axisYChanged axis
@@ -895,10 +895,10 @@ module QtCharts
 	type DeclarativeHorizontalStackedBarSeries HorizontalStackedBarSeries
 		prototype QHorizontalStackedBarSeries
 		default seriesChildren
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
 		prop seriesChildren QObject list readonly
 		signal axisXChanged axis
 		signal axisYChanged axis
@@ -910,15 +910,15 @@ module QtCharts
 		method remove
 		method clear
 	type DeclarativeLineSeries LineSeries
-		prototype QLineSeries
+		prototype QLineSeries@QtCharts
 		default declarativeChildren
 		prop count int readonly
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
-		prop axisAngular QAbstractAxis pointer
-		prop axisRadial QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
+		prop axisAngular QAbstractAxis@QtCharts pointer
+		prop axisRadial QAbstractAxis@QtCharts pointer
 		prop width double
 		prop style Qt::PenStyle
 		prop capStyle Qt::PenCapStyle
@@ -955,10 +955,10 @@ module QtCharts
 	type DeclarativePercentBarSeries PercentBarSeries
 		prototype QPercentBarSeries
 		default seriesChildren
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
 		prop seriesChildren QObject list readonly
 		signal axisXChanged axis
 		signal axisYChanged axis
@@ -970,7 +970,7 @@ module QtCharts
 		method remove
 		method clear
 	type DeclarativePieSeries PieSeries
-		prototype QPieSeries
+		prototype QPieSeries@QtCharts
 		default seriesChildren
 		prop seriesChildren QObject list readonly
 		signal sliceAdded slice
@@ -983,22 +983,22 @@ module QtCharts
 		method remove
 		method clear
 	type DeclarativePieSlice PieSlice
-		prototype QPieSlice
+		prototype QPieSlice@QtCharts
 		prop brushFilename QString
 		signal brushFilenameChanged brushFilename
 		method handleBrushChanged
 	type DeclarativePolarChart PolarChartView
 		prototype DeclarativeChart
 	type DeclarativeScatterSeries ScatterSeries
-		prototype QScatterSeries
+		prototype QScatterSeries@QtCharts
 		default declarativeChildren
 		prop count int readonly
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
-		prop axisAngular QAbstractAxis pointer
-		prop axisRadial QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
+		prop axisAngular QAbstractAxis@QtCharts pointer
+		prop axisRadial QAbstractAxis@QtCharts pointer
 		prop borderWidth double
 		prop declarativeChildren QObject list readonly
 		prop brushFilename QString
@@ -1023,15 +1023,15 @@ module QtCharts
 		method clear
 		method at
 	type DeclarativeSplineSeries SplineSeries
-		prototype QSplineSeries
+		prototype QSplineSeries@QtCharts
 		default declarativeChildren
 		prop count int readonly
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
-		prop axisAngular QAbstractAxis pointer
-		prop axisRadial QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
+		prop axisAngular QAbstractAxis@QtCharts pointer
+		prop axisRadial QAbstractAxis@QtCharts pointer
 		prop width double
 		prop style Qt::PenStyle
 		prop capStyle Qt::PenCapStyle
@@ -1057,10 +1057,10 @@ module QtCharts
 	type DeclarativeStackedBarSeries StackedBarSeries
 		prototype QStackedBarSeries
 		default seriesChildren
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
-		prop axisXTop QAbstractAxis pointer
-		prop axisYRight QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtCharts pointer
+		prop axisY QAbstractAxis@QtCharts pointer
+		prop axisXTop QAbstractAxis@QtCharts pointer
+		prop axisYRight QAbstractAxis@QtCharts pointer
 		prop seriesChildren QObject list readonly
 		signal axisXChanged axis
 		signal axisYChanged axis
@@ -1075,7 +1075,7 @@ module QtCharts
 		prototype QObject
 		prop x double
 		prop y double
-	type QAbstractAxis AbstractAxis
+	type QAbstractAxis@QtCharts AbstractAxis
 		prototype QObject
 		is uncreatable
 		prop visible bool
@@ -1136,7 +1136,7 @@ module QtCharts
 		signal labelsTruncatedChanged labelsTruncated
 		signal truncateLabelsChanged truncateLabels
 	type QAbstractBarSeries AbstractBarSeries
-		prototype QAbstractSeries
+		prototype QAbstractSeries@QtCharts
 		is uncreatable
 		enum LabelsPosition LabelsCenter LabelsInsideEnd LabelsInsideBase LabelsOutsideEnd
 		prop barWidth double
@@ -1159,7 +1159,7 @@ module QtCharts
 		signal labelsPrecisionChanged precision
 		signal barsetsAdded sets
 		signal barsetsRemoved sets
-	type QAbstractSeries AbstractSeries
+	type QAbstractSeries@QtCharts AbstractSeries
 		prototype QObject
 		is uncreatable
 		enum SeriesType SeriesTypeLine SeriesTypeArea SeriesTypeBar SeriesTypeStackedBar SeriesTypePercentBar SeriesTypePie SeriesTypeScatter SeriesTypeSpline SeriesTypeHorizontalBar SeriesTypeHorizontalStackedBar SeriesTypeHorizontalPercentBar SeriesTypeBoxPlot SeriesTypeCandlestick
@@ -1172,11 +1172,80 @@ module QtCharts
 		signal visibleChanged
 		signal opacityChanged
 		signal useOpenGLChanged
+	type QAreaSeries@QtCharts
+		prototype QAbstractSeries@QtCharts
+		prop upperSeries QLineSeries@QtCharts readonly pointer
+		prop lowerSeries QLineSeries@QtCharts readonly pointer
+		prop color QColor
+		prop borderColor QColor
+		prop pointLabelsFormat QString
+		prop pointLabelsVisible bool
+		prop pointLabelsFont QFont
+		prop pointLabelsColor QColor
+		prop pointLabelsClipping bool
+		signal clicked point
+		signal hovered point state
+		signal pressed point
+		signal released point
+		signal doubleClicked point
+		signal selected
+		signal colorChanged color
+		signal borderColorChanged color
+		signal pointLabelsFormatChanged format
+		signal pointLabelsVisibilityChanged visible
+		signal pointLabelsFontChanged font
+		signal pointLabelsColorChanged color
+		signal pointLabelsClippingChanged clipping
+	type QBarCategoryAxis@QtCharts BarCategoriesAxis
+		prototype QAbstractAxis@QtCharts
+		prop categories QString list
+		prop min QString
+		prop max QString
+		prop count int readonly
+		signal categoriesChanged
+		signal minChanged min
+		signal maxChanged max
+		signal rangeChanged min max
+		signal countChanged
+		method clear
+	type QBarModelMapper@QtCharts BarModelMapper
+		prototype QObject
+		is uncreatable
+	type QBarSeries@QtCharts
+		prototype QAbstractBarSeries
+	type QBarSet@QtCharts
+		prototype QObject
+		prop label QString
+		prop pen QPen
+		prop brush QBrush
+		prop labelBrush QBrush
+		prop labelFont QFont
+		prop color QColor
+		prop borderColor QColor
+		prop labelColor QColor
+		signal clicked index
+		signal hovered status index
+		signal pressed index
+		signal released index
+		signal doubleClicked index
+		signal penChanged
+		signal brushChanged
+		signal labelChanged
+		signal labelBrushChanged
+		signal labelFontChanged
+		signal colorChanged color
+		signal borderColorChanged color
+		signal labelColorChanged color
+		signal selectedColorChanged color
+		signal valuesAdded index count
+		signal valuesRemoved index count
+		signal valueChanged index
+		signal selectedBarsChanged indexes
 	type QBoxPlotModelMapper BoxPlotModelMapper
 		prototype QObject
 		is uncreatable
 	type QBoxPlotSeries
-		prototype QAbstractSeries
+		prototype QAbstractSeries@QtCharts
 		prop boxOutlineVisible bool
 		prop boxWidth double
 		prop pen QPen
@@ -1219,7 +1288,7 @@ module QtCharts
 		signal modelReplaced
 		signal seriesReplaced
 	type QCandlestickSeries
-		prototype QAbstractSeries
+		prototype QAbstractSeries@QtCharts
 		prop count int readonly
 		prop maximumColumnWidth double
 		prop minimumColumnWidth double
@@ -1271,7 +1340,7 @@ module QtCharts
 		signal brushChanged
 		signal penChanged
 	type QCategoryAxis
-		prototype QValueAxis
+		prototype QValueAxis@QtCharts
 		enum AxisLabelsPosition AxisLabelsPositionCenter AxisLabelsPositionOnValue
 		prop startValue double
 		prop count int readonly
@@ -1279,6 +1348,17 @@ module QtCharts
 		prop labelsPosition AxisLabelsPosition
 		signal categoriesChanged
 		signal labelsPositionChanged position
+	type QDateTimeAxis@QtCharts DateTimeAxis
+		prototype QAbstractAxis@QtCharts
+		prop tickCount int
+		prop min QDateTime
+		prop max QDateTime
+		prop format QString
+		signal minChanged min
+		signal maxChanged max
+		signal rangeChanged min max
+		signal formatChanged format
+		signal tickCountChanged tick
 	type QGraphicsObject
 		prototype QObject
 		prop parent QGraphicsObject pointer
@@ -1328,7 +1408,7 @@ module QtCharts
 		signal layoutChanged
 		method close
 	type QHBarModelMapper HBarModelMapper
-		prototype QBarModelMapper
+		prototype QBarModelMapper@QtCharts
 		prop series QAbstractBarSeries pointer
 		prop model QAbstractItemModel pointer
 		prop firstBarSetRow int
@@ -1372,8 +1452,8 @@ module QtCharts
 		signal firstSetRowChanged
 		signal lastSetRowChanged
 	type QHPieModelMapper HPieModelMapper
-		prototype QPieModelMapper
-		prop series QPieSeries pointer
+		prototype QPieModelMapper@QtCharts
+		prop series QPieSeries@QtCharts pointer
 		prop model QAbstractItemModel pointer
 		prop valuesRow int
 		prop labelsRow int
@@ -1386,8 +1466,8 @@ module QtCharts
 		signal firstColumnChanged
 		signal columnCountChanged
 	type QHXYModelMapper HXYModelMapper
-		prototype QXYModelMapper
-		prop series QXYSeries pointer
+		prototype QXYModelMapper@QtCharts
+		prop series QXYSeries@QtCharts pointer
 		prop model QAbstractItemModel pointer
 		prop xRow int
 		prop yRow int
@@ -1428,8 +1508,10 @@ module QtCharts
 		signal markerShapeChanged shape
 		signal attachedToChartChanged attachedToChart
 		signal interactiveChanged interactive
+	type QLineSeries@QtCharts
+		prototype QXYSeries@QtCharts
 	type QLogValueAxis LogValueAxis
-		prototype QAbstractAxis
+		prototype QAbstractAxis@QtCharts
 		prop min double
 		prop max double
 		prop labelFormat QString
@@ -1448,10 +1530,86 @@ module QtCharts
 		is value
 	type QPercentBarSeries
 		prototype QAbstractBarSeries
+	type QPieModelMapper@QtCharts PieModelMapper
+		prototype QObject
+		is uncreatable
+	type QPieSeries@QtCharts
+		prototype QAbstractSeries@QtCharts
+		prop horizontalPosition double
+		prop verticalPosition double
+		prop size double
+		prop startAngle double
+		prop endAngle double
+		prop count int readonly
+		prop sum double readonly
+		prop holeSize double
+		signal added slices
+		signal removed slices
+		signal clicked slice
+		signal hovered slice state
+		signal pressed slice
+		signal released slice
+		signal doubleClicked slice
+		signal countChanged
+		signal sumChanged
+	type QPieSlice@QtCharts
+		prototype QObject
+		enum LabelPosition LabelOutside LabelInsideHorizontal LabelInsideTangential LabelInsideNormal
+		prop label QString
+		prop value double
+		prop labelVisible bool
+		prop labelPosition LabelPosition
+		prop exploded bool
+		prop pen QPen
+		prop borderColor QColor
+		prop borderWidth int
+		prop brush QBrush
+		prop color QColor
+		prop labelBrush QBrush
+		prop labelColor QColor
+		prop labelFont QFont
+		prop labelArmLengthFactor double
+		prop explodeDistanceFactor double
+		prop percentage double readonly
+		prop startAngle double readonly
+		prop angleSpan double readonly
+		signal clicked
+		signal hovered state
+		signal pressed
+		signal released
+		signal doubleClicked
+		signal labelChanged
+		signal valueChanged
+		signal labelVisibleChanged
+		signal penChanged
+		signal brushChanged
+		signal labelBrushChanged
+		signal labelFontChanged
+		signal percentageChanged
+		signal startAngleChanged
+		signal angleSpanChanged
+		signal colorChanged
+		signal borderColorChanged
+		signal borderWidthChanged
+		signal labelColorChanged
+	type QScatterSeries@QtCharts
+		prototype QXYSeries@QtCharts
+		enum MarkerShape MarkerShapeCircle MarkerShapeRectangle MarkerShapeRotatedRectangle MarkerShapeTriangle MarkerShapeStar MarkerShapePentagon
+		prop color QColor
+		prop borderColor QColor
+		prop markerShape MarkerShape
+		prop markerSize double
+		prop brush QBrush
+		signal colorChanged color
+		signal borderColorChanged color
+		signal markerShapeChanged shape
+		signal markerSizeChanged size
+	type QSplineSeries@QtCharts
+		prototype QLineSeries@QtCharts
 	type QStackedBarSeries
 		prototype QAbstractBarSeries
 	type QVBarModelMapper VBarModelMapper
-		prototype QBarModelMapper
+		prototype QBarModelMapper@QtCharts
 		prop series QAbstractBarSeries pointer
 		prop model QAbstractItemModel pointer
 		prop firstBarSetColumn int
@@ -1495,8 +1653,8 @@ module QtCharts
 		signal firstSetColumnChanged
 		signal lastSetColumnChanged
 	type QVPieModelMapper VPieModelMapper
-		prototype QPieModelMapper
-		prop series QPieSeries pointer
+		prototype QPieModelMapper@QtCharts
+		prop series QPieSeries@QtCharts pointer
 		prop model QAbstractItemModel pointer
 		prop valuesColumn int
 		prop labelsColumn int
@@ -1509,8 +1667,8 @@ module QtCharts
 		signal firstRowChanged
 		signal rowCountChanged
 	type QVXYModelMapper VXYModelMapper
-		prototype QXYModelMapper
-		prop series QXYSeries pointer
+		prototype QXYModelMapper@QtCharts
+		prop series QXYSeries@QtCharts pointer
 		prop model QAbstractItemModel pointer
 		prop xColumn int
 		prop yColumn int
@@ -1522,6 +1680,70 @@ module QtCharts
 		signal yColumnChanged
 		signal firstRowChanged
 		signal rowCountChanged
+	type QValueAxis@QtCharts ValueAxis
+		prototype QAbstractAxis@QtCharts
+		enum TickType TicksDynamic TicksFixed
+		prop tickCount int
+		prop min double
+		prop max double
+		prop labelFormat QString
+		prop minorTickCount int
+		prop tickAnchor double
+		prop tickInterval double
+		prop tickType TickType
+		signal minChanged min
+		signal maxChanged max
+		signal rangeChanged min max
+		signal tickCountChanged tickCount
+		signal minorTickCountChanged tickCount
+		signal labelFormatChanged format
+		signal tickIntervalChanged interval
+		signal tickAnchorChanged anchor
+		signal tickTypeChanged type
+		method applyNiceNumbers
+	type QXYModelMapper@QtCharts XYModelMapper
+		prototype QObject
+		is uncreatable
+	type QXYSeries@QtCharts XYSeries
+		prototype QAbstractSeries@QtCharts
+		is uncreatable
+		enum PointConfiguration Color Size Visibility LabelVisibility LabelFormat
+		prop pointsVisible bool
+		prop color QColor
+		prop selectedColor QColor
+		prop pointLabelsFormat QString
+		prop pointLabelsVisible bool
+		prop pointLabelsFont QFont
+		prop pointLabelsColor QColor
+		prop pointLabelsClipping bool
+		prop bestFitLineVisible bool
+		prop bestFitLineColor QColor
+		signal clicked point
+		signal hovered point state
+		signal pressed point
+		signal released point
+		signal doubleClicked point
+		signal pointReplaced index
+		signal pointRemoved index
+		signal pointAdded index
+		signal colorChanged color
+		signal selectedColorChanged color
+		signal pointsReplaced
+		signal pointLabelsFormatChanged format
+		signal pointLabelsVisibilityChanged visible
+		signal pointLabelsFontChanged font
+		signal pointLabelsColorChanged color
+		signal pointLabelsClippingChanged clipping
+		signal pointsRemoved index count
+		signal penChanged pen
+		signal selectedPointsChanged
+		signal lightMarkerChanged lightMarker
+		signal selectedLightMarkerChanged selectedLightMarker
+		signal bestFitLineVisibilityChanged visible
+		signal bestFitLinePenChanged pen
+		signal bestFitLineColorChanged color
+		signal pointsConfigurationChanged configuration
+		signal markerSizeChanged size
 module QtCore
 	BluetoothPermission QQmlBluetoothPermission
 	CalendarPermission QQmlCalendarPermission
@@ -1632,15 +1854,15 @@ module QtCore
 module QtGraphs
 	Abstract3DAxis QAbstract3DAxis
 	Abstract3DSeries QAbstract3DSeries
-	AbstractAxis QAbstractAxis
+	AbstractAxis QAbstractAxis@QtGraphs
 	AbstractDataProxy QAbstractDataProxy
-	AreaSeries QAreaSeries
+	AreaSeries QAreaSeries@QtGraphs
 	Bar3DSeries QQuickGraphsBar3DSeries
-	BarCategoryAxis QBarCategoryAxis
+	BarCategoryAxis QBarCategoryAxis@QtGraphs
 	BarDataProxy QBarDataProxy
-	BarModelMapper QBarModelMapper
-	BarSeries QBarSeries
-	BarSet QBarSet
+	BarModelMapper QBarModelMapper@QtGraphs
+	BarSeries QBarSeries@QtGraphs
+	BarSet QBarSet@QtGraphs
 	Bars3D QQuickGraphsBars
 	Bars3DNode QQuickGraphsBarsNode
 	Category3DAxis QCategory3DAxis
@@ -1650,7 +1872,7 @@ module QtGraphs
 	Custom3DVolume QCustom3DVolume
 	CustomSeries QCustomSeries
 	CustomSeriesData QCustomSeriesData
-	DateTimeAxis QDateTimeAxis
+	DateTimeAxis QDateTimeAxis@QtGraphs
 	GraphPointAnimation QGraphPointAnimation
 	GraphTransition QGraphTransition
 	Graphs3D QtGraphs3D
@@ -1662,33 +1884,33 @@ module QtGraphs
 	ItemModelBarDataProxy QItemModelBarDataProxy
 	ItemModelScatterDataProxy QItemModelScatterDataProxy
 	ItemModelSurfaceDataProxy QItemModelSurfaceDataProxy
-	LineSeries QLineSeries
+	LineSeries QLineSeries@QtGraphs
 	LogValue3DAxisFormatter QLogValue3DAxisFormatter
-	PieModelMapper QPieModelMapper
-	PieSeries QPieSeries
-	PieSlice QPieSlice
+	PieModelMapper QPieModelMapper@QtGraphs
+	PieSeries QPieSeries@QtGraphs
+	PieSlice QPieSlice@QtGraphs
 	QBar3DSeries QBar3DSeries
 	QScatter3DSeries QScatter3DSeries
 	QSpline3DSeries QSpline3DSeries
 	QSurface3DSeries QSurface3DSeries
-	QXYSeries QXYSeries
+	QXYSeries QXYSeries@QtGraphs
 	Scatter3D QQuickGraphsScatter
 	Scatter3DNode QQuickGraphsScatterNode
 	Scatter3DSeries QQuickGraphsScatter3DSeries
 	ScatterDataProxy QScatterDataProxy
-	ScatterSeries QScatterSeries
+	ScatterSeries QScatterSeries@QtGraphs
 	Scene3D Q3DScene
 	Spline3DSeries QQuickGraphsSpline3DSeries
 	SplineControlAnimation QSplineControlAnimation
-	SplineSeries QSplineSeries
+	SplineSeries QSplineSeries@QtGraphs
 	Surface3D QQuickGraphsSurface
 	Surface3DNode QQuickGraphsSurfaceNode
 	Surface3DSeries QQuickGraphsSurface3DSeries
 	SurfaceDataProxy QSurfaceDataProxy
 	Value3DAxis QValue3DAxis
 	Value3DAxisFormatter QValue3DAxisFormatter
-	ValueAxis QValueAxis
-	XYModelMapper QXYModelMapper
+	ValueAxis QValueAxis@QtGraphs
+	XYModelMapper QXYModelMapper@QtGraphs
 	XYPoint QXYPoint
 	graphsline QGraphsLine
 	legendData QLegendData
@@ -1808,13 +2030,81 @@ module QtGraphs
 		method setPaused
 		method stop
 		method setCurrentTime
+	type QAbstractAxis@QtGraphs AbstractAxis
+		prototype QObject
+		is uncreatable
+		enum AxisType Value BarCategory DateTime
+		prop visible bool
+		prop lineVisible bool
+		prop labelsVisible bool
+		prop labelsAngle double
+		prop labelDelegate QQmlComponent pointer
+		prop gridVisible bool
+		prop subGridVisible bool
+		prop titleText QString
+		prop titleColor QColor
+		prop titleVisible bool
+		prop titleFont QFont
+		prop alignment Qt::Alignment
+		prop textElideMode Qt::TextElideMode
+		prop color QColor
+		prop subColor QColor
+		signal visibleChanged visible
+		signal lineVisibleChanged visible
+		signal labelsVisibleChanged visible
+		signal labelsAngleChanged angle
+		signal labelDelegateChanged
+		signal gridVisibleChanged visible
+		signal subGridVisibleChanged visible
+		signal titleTextChanged title
+		signal titleColorChanged color
+		signal titleVisibleChanged visible
+		signal titleFontChanged font
+		signal alignmentChanged alignment
+		signal textElideModeChanged elideMode
+		signal subColorChanged newColor
+		signal colorChanged newColor
+		signal update
+		signal rangeChanged min max
 	type QAbstractDataProxy AbstractDataProxy
 		prototype QObject
 		is uncreatable
 		enum DataType None Bar Scatter Surface
 		prop type QAbstractDataProxy::DataType readonly
-	type QAreaSeries AreaSeries
-		prototype QAbstractSeries
+	type QAbstractSeries@QtGraphs
+		prototype QObject
+		default seriesChildren
+		enum SeriesType Line Area Bar Pie Scatter Spline Custom
+		prop name QString
+		prop visible bool
+		prop selectable bool
+		prop hoverable bool
+		prop opacity double
+		prop valuesMultiplier double
+		prop type SeriesType readonly
+		prop seriesChildren QObject list readonly
+		prop legendData QLegendData list readonly
+		prop hovered bool readonly
+		prop axisX QAbstractAxis@QtGraphs pointer
+		prop axisY QAbstractAxis@QtGraphs pointer
+		prop zValue int
+		signal update
+		signal nameChanged
+		signal visibleChanged
+		signal selectableChanged
+		signal hoverableChanged
+		signal opacityChanged
+		signal valuesMultiplierChanged
+		signal legendDataChanged
+		signal hoverEnter seriesName position value
+		signal hoverExit seriesName position
+		signal hover seriesName position value
+		signal hoveredChanged hovered
+		signal axisXChanged newAxis
+		signal axisYChanged newAxis
+		signal zValueChanged z
+	type QAreaSeries@QtGraphs AreaSeries
+		prototype QAbstractSeries@QtGraphs
 		default seriesChildren
 		prop color QColor
 		prop selectedColor QColor
@@ -1822,8 +2112,8 @@ module QtGraphs
 		prop selectedBorderColor QColor
 		prop borderWidth double
 		prop selected bool
-		prop upperSeries QXYSeries pointer
-		prop lowerSeries QXYSeries pointer
+		prop upperSeries QXYSeries@QtGraphs pointer
+		prop lowerSeries QXYSeries@QtGraphs pointer
 		prop gradient QQuickShapeGradient pointer
 		prop selectedGradient QQuickShapeGradient pointer
 		signal colorChanged newColor
@@ -1869,8 +2159,8 @@ module QtGraphs
 		signal rowAxisChanged axis
 		signal valueAxisChanged axis
 		signal columnAxisChanged axis
-	type QBarCategoryAxis BarCategoryAxis
-		prototype QAbstractAxis
+	type QBarCategoryAxis@QtGraphs BarCategoryAxis
+		prototype QAbstractAxis@QtGraphs
 		enum LabelPosition Center OnValue
 		prop categories QString list
 		prop min QString
@@ -1905,9 +2195,9 @@ module QtGraphs
 		signal rowCountChanged count
 		signal colCountChanged count
 		signal seriesChanged series
-	type QBarModelMapper BarModelMapper
+	type QBarModelMapper@QtGraphs BarModelMapper
 		prototype QObject
-		prop series QBarSeries pointer
+		prop series QBarSeries@QtGraphs pointer
 		prop model QAbstractItemModel pointer
 		prop firstBarSetSection qlonglong
 		prop lastBarSetSection qlonglong
@@ -1924,8 +2214,8 @@ module QtGraphs
 		method onValuesAdded
 		method onBarLabelChanged
 		method onBarValueChanged
-	type QBarSeries BarSeries
-		prototype QAbstractSeries
+	type QBarSeries@QtGraphs BarSeries
+		prototype QAbstractSeries@QtGraphs
 		default seriesChildren
 		enum LabelsPosition Center InsideEnd InsideBase OutsideEnd
 		enum BarsType Groups Stacked StackedPercent
@@ -1941,7 +2231,7 @@ module QtGraphs
 		prop labelsAngle double
 		prop labelsPrecision int
 		prop barDelegate QQmlComponent pointer
-		prop barSets QBarSet list readonly
+		prop barSets QBarSet@QtCharts list readonly
 		signal updatedBars
 		signal seriesColorsChanged
 		signal borderColorsChanged
@@ -1981,7 +2271,7 @@ module QtGraphs
 		method at
 		method find
 		method removeMultiple
-	type QBarSet BarSet
+	type QBarSet@QtGraphs BarSet
 		prototype QObject
 		prop label QString
 		prop color QColor
@@ -2108,7 +2398,7 @@ module QtGraphs
 		signal sliceFrameGapsChanged values
 		signal sliceFrameThicknessesChanged values
 	type QCustomSeries CustomSeries
-		prototype QAbstractSeries
+		prototype QAbstractSeries@QtGraphs
 		default seriesChildren
 		prop delegate QQmlComponent pointer
 		signal delegateChanged
@@ -2121,8 +2411,8 @@ module QtGraphs
 	type QCustomSeriesData CustomSeriesData
 		prototype QObject
 		prop data QVariantMap
-	type QDateTimeAxis DateTimeAxis
-		prototype QAbstractAxis
+	type QDateTimeAxis@QtGraphs DateTimeAxis
+		prototype QAbstractAxis@QtGraphs
 		prop min QDateTime
 		prop max QDateTime
 		prop labelFormat QString
@@ -2261,8 +2551,8 @@ module QtGraphs
 		prop shadowXOffset double
 		prop shadowYOffset double
 		prop shadowSmoothing double
-		prop axisX QAbstractAxis pointer
-		prop axisY QAbstractAxis pointer
+		prop axisX QAbstractAxis@QtGraphs pointer
+		prop axisY QAbstractAxis@QtGraphs pointer
 		prop orientation Qt::Orientation
 		prop zoomStyle ZoomStyle
 		prop panStyle PanStyle
@@ -2451,8 +2741,8 @@ module QtGraphs
 		prop color QColor
 		prop borderColor QColor
 		prop label QString
-	type QLineSeries LineSeries
-		prototype QXYSeries
+	type QLineSeries@QtGraphs LineSeries
+		prototype QXYSeries@QtGraphs
 		enum LineStyle Straight StepLeft StepRight StepCenter
 		enum StrokeStyle SolidLine DashLine
 		prop width double
@@ -2478,9 +2768,9 @@ module QtGraphs
 		signal baseChanged base
 		signal autoSubGridChanged enabled
 		signal edgeLabelsVisibleChanged enabled
-	type QPieModelMapper PieModelMapper
+	type QPieModelMapper@QtGraphs PieModelMapper
 		prototype QObject
-		prop series QPieSeries pointer
+		prop series QPieSeries@QtGraphs pointer
 		prop model QAbstractItemModel pointer
 		prop valuesSection qlonglong
 		prop labelsSection qlonglong
@@ -2496,8 +2786,8 @@ module QtGraphs
 		signal orientationChanged
 		method onSliceLabelChanged
 		method onSliceValueChanged
-	type QPieSeries PieSeries
-		prototype QAbstractSeries
+	type QPieSeries@QtGraphs PieSeries
+		prototype QAbstractSeries@QtGraphs
 		default seriesChildren
 		enum LabelVisibility None First Even Odd
 		prop horizontalPosition double
@@ -2537,7 +2827,7 @@ module QtGraphs
 		method replace
 		method removeMultiple
 		method take
-	type QPieSlice PieSlice
+	type QPieSlice@QtGraphs PieSlice
 		prototype QObject
 		default sliceChildren
 		enum LabelPosition Outside InsideHorizontal InsideTangential InsideNormal
@@ -2559,7 +2849,7 @@ module QtGraphs
 		prop subSlicesCount qlonglong readonly
 		prop subSlicesSum double readonly
 		prop subSlicesRatio double
-		prop sliceChildren QPieSlice list readonly
+		prop sliceChildren QPieSlice@QtGraphs list readonly
 		signal labelChanged
 		signal labelVisibleChanged
 		signal labelFontChanged
@@ -3069,8 +3359,8 @@ module QtGraphs
 		signal itemsInserted startIndex count
 		signal itemCountChanged count
 		signal seriesChanged series
-	type QScatterSeries ScatterSeries
-		prototype QXYSeries
+	type QScatterSeries@QtGraphs ScatterSeries
+		prototype QXYSeries@QtGraphs
 	type QSpline3DSeries QSpline3DSeries
 		prototype QScatter3DSeries
 		is uncreatable
@@ -3089,8 +3379,8 @@ module QtGraphs
 	type QSplineControlAnimation SplineControlAnimation
 		prototype QXYSeriesAnimation
 		method valueUpdated
-	type QSplineSeries SplineSeries
-		prototype QXYSeries
+	type QSplineSeries@QtGraphs SplineSeries
+		prototype QXYSeries@QtGraphs
 		prop width double
 		prop capStyle Qt::PenCapStyle
 		prop optimized bool
@@ -3159,8 +3449,8 @@ module QtGraphs
 	type QValue3DAxisFormatter Value3DAxisFormatter
 		prototype QObject
 		method markDirtyNoLabelChange
-	type QValueAxis ValueAxis
-		prototype QAbstractAxis
+	type QValueAxis@QtGraphs ValueAxis
+		prototype QAbstractAxis@QtGraphs
 		prop min double
 		prop max double
 		prop labelFormat QString
@@ -3192,9 +3482,9 @@ module QtGraphs
 		prop duration int
 		prop easingCurve QEasingCurve
 		signal valueChanged value
-	type QXYModelMapper XYModelMapper
+	type QXYModelMapper@QtGraphs XYModelMapper
 		prototype QObject
-		prop series QXYSeries pointer
+		prop series QXYSeries@QtGraphs pointer
 		prop model QAbstractItemModel pointer
 		prop xSection qlonglong
 		prop ySection qlonglong
@@ -3212,8 +3502,8 @@ module QtGraphs
 		prototype QObject
 		prop x double
 		prop y double
-	type QXYSeries QXYSeries
-		prototype QAbstractSeries
+	type QXYSeries@QtGraphs QXYSeries
+		prototype QAbstractSeries@QtGraphs
 		default seriesChildren
 		is uncreatable
 		prop color QColor

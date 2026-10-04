@@ -85,7 +85,10 @@ pub(crate) enum ImportKind {
     Always,
     /// `default import`: as `import` unless one of the optional imports is
     /// chosen in its place. This is how `QtQuick.Controls` has a style: its
-    /// `Button` is `QtQuick.Controls.Basic`'s.
+    /// `Button` is `QtQuick.Controls.Basic`'s. Qt itself loads no such
+    /// import; the module's plugin does, having a choice to make. One that
+    /// has none (`QtQuick.VectorImage` names `QtQuick.Shapes` so) is not
+    /// followed: `Shape` is no type until `QtQuick.Shapes` is imported.
     Default,
     /// `optional import`: what may be chosen at run time in place of the
     /// default (`QtQuick.Controls.Material`). Not followed; a file that wants
@@ -108,9 +111,14 @@ impl Module {
         if let Some(index) = self.exports.get(name) {
             return Some(&table().types[*index]);
         }
+        let chooses = self.imports.iter().any(|import| import.kind == ImportKind::Optional);
         self.imports
             .iter()
-            .filter(|import| import.kind != ImportKind::Optional)
+            .filter(|import| match import.kind {
+                ImportKind::Always => true,
+                ImportKind::Default => chooses,
+                ImportKind::Optional => false,
+            })
             .find_map(|import| module(import.module)?.find(name, seen))
     }
 }

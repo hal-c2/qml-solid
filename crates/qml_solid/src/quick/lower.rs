@@ -10,7 +10,7 @@
 //!
 //! export default function Sample($props) {
 //!   const root = $props.$self ?? $object();
-//!   return <Item $self={root} $given={$props} width={200}><Text text={root.width}/>{$props.children}</Item>;
+//!   return <Item $self={root} $given={$props} $is={Sample} width={200}><Text text={root.width}/>{$props.children}</Item>;
 //! }
 //! ```
 //!
@@ -75,8 +75,9 @@ impl Uses {
 /// What an object is to the code around it.
 enum Role<'r> {
     /// The root of the file's component or of an inline one: what an
-    /// instance sets is set on it.
-    Root,
+    /// instance sets is set on it. With the component's name: the object
+    /// is one of its.
+    Root(&'r str),
     /// The root of a template: the object a delegate makes, given `data`.
     Template(&'r str),
     Plain,
@@ -176,7 +177,7 @@ impl<'a, 's> Lower<'a, 's> {
         let outer_keys = std::mem::take(&mut self.keys);
         let outer_enums = std::mem::take(&mut self.enums);
         self.open();
-        let element = self.element(root, Role::Root);
+        let element = self.element(root, Role::Root(name));
         let frame = self.close();
         self.frames = outer_frames;
         self.keys = outer_keys;
@@ -270,7 +271,10 @@ impl<'a, 's> Lower<'a, 's> {
         };
         built.attributes.push(b.attr("$self", b.id(handle)));
         match &role {
-            Role::Root => built.attributes.push(b.attr("$given", b.id("$props"))),
+            Role::Root(name) => {
+                built.attributes.push(b.attr("$given", b.id("$props")));
+                built.attributes.push(b.attr("$is", b.id(name)));
+            }
             Role::Source { target, property } => {
                 self.uses.handles.insert((*target).to_string());
                 built.attributes.push(b.attr("$target", b.id(target)));
@@ -284,7 +288,7 @@ impl<'a, 's> Lower<'a, 's> {
             built.attributes.push(b.attr("$context", b.id(&scope)));
             self.uses.handles.insert(scope);
         }
-        if !matches!(role, Role::Root) {
+        if !matches!(role, Role::Root(_)) {
             self.uses.kernel.insert("$object");
             let made = b.const_(handle, b.call(b.id("$object"), []));
             self.frame().push(made);

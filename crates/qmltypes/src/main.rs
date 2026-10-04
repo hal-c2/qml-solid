@@ -254,6 +254,11 @@ fn newest(sources: &BTreeMap<String, Source>) -> (u32, u32) {
 /// the Basic style both have `QQuickOverlay`). The descriptions differ only in
 /// what they export, so one is kept and it exports what all of them do. Kept
 /// is one whose own module exports it, of those the one that says most.
+///
+/// Descriptions that differ in more are of classes that share a name and no
+/// more: QtCharts and QtGraphs each have a `QAbstractAxis`. Each is kept,
+/// named with its module (`QAbstractAxis@QtGraphs`), and what a module says
+/// of the name is said of its own.
 fn classes(sources: &BTreeMap<String, Source>) -> Modules {
     let mut modules: Modules = sources
         .iter()
@@ -262,38 +267,77 @@ fn classes(sources: &BTreeMap<String, Source>) -> Modules {
         })
         .collect();
 
-    let mut described: BTreeMap<&str, Vec<(&str, &Class)>> = BTreeMap::new();
+    let same = |one: &Class, other: &Class| {
+        one.prototype == other.prototype && one.properties == other.properties
+    };
+    let mut described: BTreeMap<&str, Vec<Vec<(&str, &Class)>>> = BTreeMap::new();
     for (uri, source) in sources {
         for class in &source.classes {
-            described.entry(&class.name).or_default().push((uri, class));
+            let kinds = described.entry(&class.name).or_default();
+            match kinds.iter_mut().find(|kind| same(kind[0].1, class)) {
+                Some(kind) => kind.push((uri, class)),
+                None => kinds.push(vec![(uri, class)]),
+            }
+        }
+    }
+
+    let mut kept: Vec<(&str, Class)> = Vec::new();
+    // What a module means by a name that several classes have.
+    let mut own: BTreeMap<&str, BTreeMap<&str, String>> = BTreeMap::new();
+    for (name, kinds) in &described {
+        for descriptions in kinds {
+            let rank = |(uri, class): &(&str, &Class)| {
+                (class.exports.keys().any(|(module, _)| module == uri), class.members())
+            };
+            // `max_by_key` takes the last of equals; the first is wanted.
+            let (home, described) =
+                descriptions.iter().rev().max_by_key(|description| rank(description)).expect("one");
+            let mut class = (*described).clone();
+            if kinds.len() > 1 {
+                class.name = format!("{name}@{home}");
+            }
+            for (uri, other) in descriptions {
+                if kinds.len() > 1 {
+                    own.entry(uri).or_default().insert(name, class.name.clone());
+                }
+                class.aliases.extend(other.aliases.iter().cloned());
+                for (export, version) in &other.exports {
+                    let known = class.exports.entry(export.clone()).or_default();
+                    *known = (*known).max(*version);
+                }
+            }
+            kept.push((home, class));
+        }
+    }
+
+    for (home, class) in &mut kept {
+        let links =
+            [&mut class.prototype, &mut class.extension, &mut class.attached, &mut class.element];
+        let types = class.properties.iter_mut().map(|property| &mut property.type_name);
+        for link in links.into_iter().flatten().chain(types) {
+            if let Some(class) = own.get(home).and_then(|own| own.get(link.as_str())) {
+                link.clone_from(class);
+            }
         }
     }
     // Of two classes with one name the newer is the type: `TextInput` was
     // `QQuickPre64TextInput` until 6.4.
     let mut names: BTreeMap<(&str, &str), ((u32, u32), &str)> = BTreeMap::new();
-    for (name, descriptions) in described {
-        let rank = |(uri, class): &(&str, &Class)| {
-            (class.exports.keys().any(|(module, _)| module == uri), class.members())
-        };
-        // `max_by_key` takes the last of equals; the first is wanted.
-        let (home, kept) =
-            descriptions.iter().rev().max_by_key(|description| rank(description)).expect("one");
-        let mut class = (*kept).clone();
-        for (_, other) in &descriptions {
-            class.aliases.extend(other.aliases.iter().cloned());
-            for ((module, exported), version) in &other.exports {
-                let known = names.entry((module, exported)).or_insert((*version, name));
-                if *version >= known.0 {
-                    *known = (*version, name);
-                }
+    for (_, class) in &kept {
+        for ((module, exported), version) in &class.exports {
+            let known = names.entry((module, exported)).or_insert((*version, &class.name));
+            if *version >= known.0 {
+                *known = (*version, &class.name);
             }
         }
-        modules.get_mut(*home).expect("read").classes.insert(name.to_string(), class);
     }
     for ((module, exported), (_, class)) in names {
         if let Some(module) = modules.get_mut(module) {
             module.exports.insert(exported.to_string(), class.to_string());
         }
+    }
+    for (home, class) in kept {
+        modules.get_mut(home).expect("read").classes.insert(class.name.clone(), class);
     }
     modules
 }
