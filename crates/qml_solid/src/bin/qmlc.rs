@@ -64,6 +64,11 @@ fn is_source(name: &str) -> bool {
 /// The QML files in `directory` and under it, by their path from `base`:
 /// what a path put together when the program runs may name.
 fn qml_files(directory: &Path, base: &Path, found: &mut Vec<String>) {
+    walk(directory, base, &|name| name.ends_with(".qml"), found);
+}
+
+/// The files in `directory` and under it that `wanted` takes the name of.
+fn walk(directory: &Path, base: &Path, wanted: &dyn Fn(&str) -> bool, found: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(directory) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -71,9 +76,9 @@ fn qml_files(directory: &Path, base: &Path, found: &mut Vec<String>) {
         let name = name.to_string_lossy();
         if path.is_dir() {
             if is_source(&name) {
-                qml_files(&path, base, found);
+                walk(&path, base, wanted, found);
             }
-        } else if name.ends_with(".qml") {
+        } else if wanted(&name) {
             found.push(relative(base, &path));
         }
     }
@@ -236,15 +241,20 @@ fn main() -> ExitCode {
         let is_script = path.extension().is_some_and(|extension| extension == "js");
         options.name = stem.to_string();
         options.project = (!alone && !is_script).then(|| project(path, root.as_deref(), &with));
+        let directory = match path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => Path::new("."),
+        };
         options.files = (!alone).then(|| {
-            let directory = match path.parent() {
-                Some(parent) if !parent.as_os_str().is_empty() => parent,
-                _ => Path::new("."),
-            };
             let mut files = Vec::new();
             qml_files(directory, directory, &mut files);
             files.sort();
             files
+        });
+        options.pictures = (!alone).then(|| {
+            let mut pictures = Vec::new();
+            walk(directory, directory, &|name| !name.ends_with(".qml"), &mut pictures);
+            pictures
         });
         let result = if is_script {
             compile_script(&source, &options).map(|output| output.code)

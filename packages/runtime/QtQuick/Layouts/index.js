@@ -293,11 +293,15 @@ const linear = {
   },
 };
 
-// The children a layout places: all but those that hide themselves.
+// The children a layout places: all but those that hide themselves, and a
+// Repeater, which is there only to make the others. (An item with no size
+// has its cell all the same.)
+const laidOut = (child) => shown(child) && !child.$repeat;
+
 function line(self, down) {
   const cells = [];
   for (const child of self.children) {
-    if (!shown(child)) continue;
+    if (!laidOut(child)) continue;
     const index = cells.length;
     cells.push(cell(child, Layout.attached(child), down ? 0 : index, down ? index : 0, 1, 1));
   }
@@ -357,7 +361,7 @@ export const GridLayout = defineType("GridLayout", GridLayoutBase, {
       // The next cell: its column, then its row.
       const at = [0, 0];
       for (const child of this.children) {
-        if (!shown(child)) continue;
+        if (!laidOut(child)) continue;
         const info = Layout.attached(child);
         let row = -1;
         let column = -1;

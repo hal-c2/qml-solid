@@ -122,8 +122,9 @@ impl<'a> Resolver<'a, '_, '_> {
             return self.types.is_singleton(&kind).then(|| b.call(b.id(name), []));
         }
 
-        let scope = tree.object_at(span.start);
-        let mut context = tree.objects[scope].context;
+        let inside = tree.object_at(span.start);
+        let scope = tree.scope_at(span.start);
+        let mut context = tree.objects[inside].context;
         // What the delegates the expression is in are given, innermost first.
         // What that is depends on the model, which only the running program
         // has: a name an object further out has may be a role further in.
@@ -179,7 +180,7 @@ impl<'a> Resolver<'a, '_, '_> {
         if read.is_none() && self.dynamic.contains(name) {
             // An id of another component: of the one that made this one, if
             // the program is right, which only running it tells.
-            let scope = tree.scope_of(scope);
+            let scope = tree.scope_of(inside);
             self.uses.kernel.insert("$lookup");
             read = Some(b.call(b.id("$lookup"), [b.id(&scope), b.string(name)]));
             self.uses.handles.insert(scope);
@@ -248,7 +249,7 @@ impl<'a> Resolver<'a, '_, '_> {
             Access::Enum => *expression = b.id(name),
             Access::Singleton => member.object = b.call(b.id(name), []),
             Access::Attached => {
-                let scope = self.tree.object_at(span.start);
+                let scope = self.tree.scope_at(span.start);
                 let attachee = self.handle(scope);
                 member.object = b.call(b.member(b.id(name), "attached"), [attachee]);
             }
@@ -343,7 +344,7 @@ impl<'a> Resolver<'a, '_, '_> {
             Attaching::Here(namespace) => {
                 let ty = b.member(b.id(&namespace), &name);
                 self.uses.namespaces.insert(namespace);
-                let attachee = self.handle(self.tree.object_at(span.start));
+                let attachee = self.handle(self.tree.scope_at(span.start));
                 b.call(b.member(ty, "attached"), [attachee])
             }
             Attaching::Through(namespace) => {
