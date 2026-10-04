@@ -5,7 +5,7 @@
 //
 // A ModelParticle3D draws a model for each, a SpriteParticle3D a picture
 // that faces the eye or lies in the system's plane, a LineParticle3D a
-// ribbon along the way each one came.
+// ribbon along the way each one came (`paint.js`).
 //
 // Not here: a sprite's `lights`, `castsReflections` and a particle's
 // `hasTransparency` are kept and do nothing, and so is all of
@@ -194,6 +194,10 @@ export const Particle3D = defineType("Particle3D", Object3D, {
       this.$next = 0;
       this.$kept = 0;
       this.$last = 0;
+      // And the lines there were of it, where it is one of lines.
+      this.$trails = [];
+      this.$fading = [];
+      this.$traced = undefined;
     },
   },
   setup(self) {

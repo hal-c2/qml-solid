@@ -73,7 +73,6 @@ export const TARGET = 16;
 export const MAGNITUDE = 19;
 export const SHAPE = 20;
 export const FRAME = 24;
-export const TABLE = 25;
 export const LENGTH = 26;
 export const WANDER = 27;
 export const ATTRACT = 34;

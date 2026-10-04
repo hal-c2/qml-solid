@@ -122,8 +122,10 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
       // begun: there is nothing in it until its time is something. One
       // that was declared with a time has, at nought, as in Qt, which
       // brings a system to a time whenever its time changes, and whose
-      // setting that time to nought is such a change.
-      if (!this.$begun && now === 0 && !this.running && !this.$timed) return now;
+      // setting that time to nought is such a change. So has one with an
+      // affector in it: an affector that comes to a system has Qt bring
+      // the system to its time again.
+      if (!this.$begun && now === 0 && !this.running && !this.$timed && !this.$members().affectors.length) return now;
       this.$begun = true;
       if (this.$at === now) return now;
       const since = this.$before;

@@ -12,14 +12,14 @@
 // is) or before the eye (`billboard`). Its colour is taken as it is for
 // light and goes through the view's tone mapping.
 //
-// Unlike Qt: a line is not kept from one moment to the next but found
-// again each time from where its particle was, a point for each 16 ms of
-// its way that is `lengthDeltaMin` from the last; it is the same line
-// however the system came to its time, where Qt's has a point for each
-// time the system was brought to.
+// And a line: it is kept from one time the system is brought to to the
+// next, a point of it put down where the particle is each time it has come
+// far enough from the last, so what a line is depends on the times the
+// system went through, as it does in Qt. Its sums are Qt's. Unlike Qt, a
+// line is only kept while a view draws it: one that nothing looked at
+// begins where it is first seen.
 import * as math from "../math.js";
-import { LENGTH, random, spread, TABLE, FRAME } from "./core.js";
-import { moved } from "./particles.js";
+import { LENGTH, random, FRAME } from "./core.js";
 
 const VERTEX = `#version 300 es
 layout(location = 0) in vec2 a_corner;
@@ -34,6 +34,8 @@ uniform int u_mode;
 out vec2 v_at;
 out vec4 v_color;
 out vec4 v_look;
+flat out float v_row;
+uniform float u_facing;
 
 vec3 turned(vec4 q, vec3 v) {
   return v + 2.0 * cross(q.yzw, cross(q.yzw, v) + q.x * v);
@@ -43,15 +45,24 @@ void main() {
   v_color = a_color;
   v_look = a_look;
   if (u_mode == 2) {
-    // A ribbon's corners are where the eye sees them already.
+    // A point of a line, to one side of it by half its width: across the
+    // line in the system, or across what the eye sees of that.
     v_at = a_corner;
-    gl_Position = u_projection * vec4(a_place, 1.0);
+    v_row = fract(sin(a_look.x * 12.9898) * 43758.5453);
+    vec4 seen = u_view * u_world * vec4(a_place + (1.0 - u_facing) * a_turn.xyz * a_turn.w, 1.0);
+    vec3 across = (transpose(inverse(u_view * u_world)) * vec4(a_turn.xyz, 0.0)).xyz;
+    across.z = 0.0;
+    // Qt's own sum, which makes nothing of a point that has no way across
+    // it, whichever way it is to face: nor is anything drawn that has such a
+    // point for a corner, as a line's first is until it has a second.
+    seen.xyz += normalize(across) * a_turn.w * u_facing;
+    gl_Position = u_projection * seen;
     return;
   }
   v_at = a_corner + 0.5;
   // Which row of the colour table is its: Qt's own sum, of how many are
   // drawn before it.
-  v_look.z = fract(sin(float(gl_InstanceID) * 12.9898) * 43758.5453);
+  v_row = fract(sin(float(gl_InstanceID) * 12.9898) * 43758.5453);
   vec3 across = vec3(a_corner * a_look.x, 0.0);
   vec4 place = u_world * vec4(a_place, 1.0);
   if (u_mode == 0) place.xyz += turned(a_turn, across);
@@ -76,6 +87,7 @@ uniform int u_tonemap;
 in vec2 v_at;
 in vec4 v_color;
 in vec4 v_look;
+flat in float v_row;
 out vec4 color;
 
 vec3 toLinear(vec3 c) {
@@ -114,7 +126,7 @@ void main() {
   if (u_tabled) {
     // The nearest of the table, and none from over its edge.
     ivec2 size = textureSize(u_table, 0);
-    vec4 texel = texelFetch(u_table, min(ivec2(vec2(fract(v_look.y), v_look.z) * vec2(size)), size - 1), 0);
+    vec4 texel = texelFetch(u_table, min(ivec2(vec2(fract(v_look.y), v_row) * vec2(size)), size - 1), 0);
     tint *= vec4(toLinear(texel.rgb), texel.a);
   }
   if (u_pictured) {
@@ -129,16 +141,18 @@ void main() {
   color = vec4(tonemap(tint.rgb) * (u_straight ? 1.0 : alpha), alpha);
 }`;
 
-const UNIFORMS = ["u_world", "u_view", "u_projection", "u_mode", "u_picture", "u_table", "u_pictured", "u_tabled", "u_straight", "u_frames", "u_blend", "u_opacity", "u_tonemap"];
+const UNIFORMS = ["u_world", "u_view", "u_projection", "u_mode", "u_facing", "u_picture", "u_table", "u_pictured", "u_tabled", "u_straight", "u_frames", "u_blend", "u_opacity", "u_tonemap"];
 
 // What one particle is in the row of numbers a sprite is drawn from: where
 // it is, its turn, its colour, and its size with how far through its life
 // it is, a place for the row of the colour table that is its own and how
 // far through the frames of its picture it is.
 const EACH = 15;
-// And one corner of a ribbon: where in the picture, where before the eye,
-// the colour, and how far through its life the particle is with its row.
-const CORNER = 13;
+// And one corner of a ribbon: where in the picture, where the point of the
+// line is, the way across it with how far that way the corner is, the
+// colour, and which point it is with how far through its life and through
+// the frames of its picture the particle is.
+const CORNER = 17;
 
 // The program and what it draws from, once for each context there is.
 const made = new WeakMap();
@@ -187,7 +201,8 @@ function tools(gl) {
     gl.vertexAttribDivisor(location, 1);
   });
 
-  // Ribbons: three corners to a triangle, each with all that is its own.
+  // Ribbons: two corners to a point of a line, each with all that is its
+  // own, one strip of triangles through them all.
   const ribbons = gl.createVertexArray();
   gl.bindVertexArray(ribbons);
   const corners = gl.createBuffer();
@@ -195,8 +210,9 @@ function tools(gl) {
   [
     [0, 2, 0],
     [1, 3, 2],
-    [3, 4, 5],
-    [4, 4, 9],
+    [2, 4, 5],
+    [3, 4, 9],
+    [4, 4, 13],
   ].forEach(([location, count, offset]) => {
     gl.enableVertexAttribArray(location);
     gl.vertexAttribPointer(location, count, gl.FLOAT, false, CORNER * FLOAT, offset * FLOAT);
@@ -223,7 +239,7 @@ const Reverse = 1;
 const Alternate = 2;
 const AlternateReverse = 3;
 const SingleFrame = 4;
-const Relative = 1;
+const Absolute = 0;
 const Fill = 2;
 
 const single = Math.fround;
@@ -327,147 +343,294 @@ function sprites(kind, system) {
   };
 }
 
-const STEP = 0.016;
+const unit = (value) => Math.min(1, Math.max(0, value));
+const minus = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+// A way of length one, or none where there is no way: `QVector3D::normalized`.
+const along = (way) => {
+  const long = Math.hypot(...way);
+  return long > 1e-6 ? way.map((value) => value / long) : [0, 0, 0];
+};
 
-// The lines there are of a kind: for each particle the points of its way,
-// from where it is back to where it was, with how wide the ribbon is and
-// how much of it is seen at each.
+// The way a line faces from how its particle is turned: across that and
+// the way the line goes is the way it is wide. Qt's own sum, which has one
+// that is not turned face the other way from one that is turned by nothing
+// to speak of.
+function faced([pitch, yaw]) {
+  const x = (pitch * Math.PI) / 180;
+  const y = (yaw * Math.PI) / 180;
+  if (Math.abs(x) <= 1e-5 && Math.abs(y) <= 1e-5) return [0, 0, -1];
+  return [Math.sin(y), -Math.sin(x) * Math.cos(y), Math.cos(x) * Math.cos(y)];
+}
+
+// A point of a line that has not been put down, and a particle there is
+// nothing of.
+const point = () => ({ position: [0, 0, 0], size: 0, color: [0, 0, 0, 0], tangent: [0, 0, 0], binormal: [0, 0, 0], length: 0 });
+const NONE = Object.freeze({ position: [0, 0, 0], rotation: [0, 0, 0], color: [0, 0, 0, 0], size: 0, age: 0, frame: -1 });
+
+// Puts down where a particle is as a point of its line, if it has come far
+// enough from the last: `lengthDeltaMin`, or as far as leaves the line its
+// `length` over all its pieces. A line of one piece has its one point
+// behind the particle instead, as far as that, on the way back to where
+// the point was.
+function put(trail, head, segments, apart) {
+  let at = trail.current;
+  const before = trail.count ? trail.points[at] : null;
+  if (before && segments > 1) {
+    const far = Math.hypot(...minus(before.position, head.position));
+    if (far < (trail.limit >= 0 ? trail.limit / (segments - 1) : apart)) return;
+  }
+  if (trail.count < segments) trail.count++;
+  if (before) at = (at + 1) % segments;
+  trail.current = at;
+  const here = trail.points[at];
+  const normal = faced(head.rotation);
+  here.color = head.color;
+  here.size = head.size;
+  if (before && segments === 1) {
+    const way = minus(before.position, head.position);
+    const far = Math.hypot(...way);
+    const back = along(way);
+    const behind = trail.limit >= 0 ? trail.limit : apart;
+    here.position = head.position.map((value, axis) => value + behind * back[axis]);
+    here.length += far;
+    here.tangent = back;
+    here.binormal = cross(normal, back);
+  } else {
+    here.position = [...head.position];
+    here.length = 0;
+  }
+  if (before && before !== here) {
+    const way = minus(before.position, head.position);
+    const far = Math.hypot(...way);
+    before.tangent = way.map((value) => value / far);
+    here.length = far + before.length;
+    here.binormal = cross(normal, before.tangent);
+    before.binormal = trail.count === 1 ? here.binormal : along(before.binormal.map((value, axis) => value + here.binormal[axis]));
+  }
+}
+
+// The points a line is drawn through: where its particle is, and the points
+// that were put down from the last back to the first, one more than it has
+// pieces. What is left of them when the line is shorter has no width. Each
+// has how far along the line it is, for the picture: from where the system
+// began (`Absolute`), from the particle back (`Relative`), or as a share of
+// the whole (`Fill`).
+function through(head, trail, alpha, segments, width, mode) {
+  const { points, limit } = trail;
+  let at = trail.current;
+  const way = minus(points[at].position, head.position);
+  const partial = Math.hypot(...way);
+  const first = {
+    position: head.position,
+    size: head.size * width,
+    color: [head.color[0], head.color[1], head.color[2], head.color[3] * alpha],
+    binormal: cross(faced(head.rotation), along(way)),
+    length: 0,
+  };
+  let from = points[at].length + partial;
+  let scale = -1;
+  if (mode === Absolute) {
+    first.length = from;
+    from = 0;
+  }
+  if (mode === Fill) {
+    if (limit > 0) scale = -1 / limit;
+    else {
+      const oldest = (at + 1 + segments - trail.count) % segments;
+      let whole = points[at].length - points[oldest].length;
+      if (trail.count < segments) whole += partial;
+      if (Math.abs(whole) > 1e-5) scale = -1 / whole;
+    }
+  }
+  const found = [first];
+  let good = first;
+  let goodAt = 0;
+  let last = first;
+  let index = 0;
+  let whole = 0;
+  let before = points[at].length + partial;
+  for (; index < trail.count && (limit < 0 || whole < limit); index++) {
+    const one = points[at];
+    if (one.size * width > 0) {
+      last = {
+        position: [...one.position],
+        size: one.size * width,
+        color: [one.color[0], one.color[1], one.color[2], one.color[3] * alpha],
+        binormal: one.binormal,
+        length: (from - one.length) * scale,
+      };
+      if (limit >= 0) {
+        // No further than the line may be long: its last piece is cut short.
+        let piece = before - one.length;
+        before = one.length;
+        if (whole + piece > limit) {
+          const over = whole + piece - limit;
+          last.position = last.position.map((value, axis) => value - one.tangent[axis] * over);
+          last.length -= over * scale;
+          piece -= over;
+        }
+        whole += piece;
+      }
+      good = last;
+      goodAt = at;
+    } else last = { ...good, size: 0 };
+    found.push(last);
+    at = at ? at - 1 : segments - 1;
+  }
+  for (; index < segments; index++) found.push((last = { ...good, size: 0, length: 0 }));
+  // A line with all its pieces and no `length` ends as far short of its
+  // first point as the particle is past its last, so that it is as long
+  // from one moment to the next.
+  if (good === last && limit < 0 && segments > 1) {
+    good.position = good.position.map((value, axis) => value - points[goodAt].tangent[axis] * partial);
+    if (mode !== Fill) good.length -= partial * scale;
+  }
+  return found;
+}
+
+// The lines there are of a kind at `now`, each as the points it is drawn
+// through. Coming to a time that is not the one it was last at puts down
+// what there is to put down for each particle; one whose life is over is
+// still to be seen for `eolFadeOutDuration`, where it was, going.
 function lines(kind, system, now) {
   const picture = kind.sprite;
   const map = picture?.$texture?.() ?? null;
-  if (picture && !map) return null;
   const table = kind.colorTable?.$texture?.() ?? null;
   const alive = kind.$alive();
   const seed = system.$seed();
-  const affecting = system.$affecting(kind);
   const width = Number(kind.particleScale) || 0;
-  const most = Math.max(1, Math.floor(kind.segmentCount));
+  const segments = Math.max(1, Math.floor(kind.segmentCount));
   const apart = Math.max(0, Number(kind.lengthDeltaMin) || 0);
-  const { length, lengthVariation, alphaFade, scaleMultiplier, texcoordMode, eolFadeOutDuration } = kind;
-  const multiplier = Number(kind.texcoordMultiplier) || 0;
-  const found = [];
-  const one = (datum, seconds, size, alpha) => {
-    // How long it may be at most.
-    const limit = length > 0 ? Math.max(0, length + lengthVariation * spread(seed, datum.index, LENGTH)) : Infinity;
-    const current = {};
-    moved(datum, seconds, affecting, current);
-    const points = [[current.x, current.y, current.z]];
-    let last = points[0];
-    let whole = 0;
-    // A particle that goes backwards came the other way.
-    const back = datum.reversed ? STEP : -STEP;
-    for (let then = seconds + back; points.length <= most && whole < limit; then += back) {
-      const first = then <= 0 || then * 1000 >= datum.life;
-      moved(datum, first ? (datum.reversed ? datum.life / 1000 : 0) : then, affecting, current);
-      const far = Math.hypot(current.x - last[0], current.y - last[1], current.z - last[2]);
-      if (far >= apart || (first && far > 0)) {
-        let next = [current.x, current.y, current.z];
-        // No further than it may be long: the last piece is cut short.
-        if (whole + far > limit) {
-          const share = (limit - whole) / far;
-          next = next.map((value, axis) => last[axis] + (value - last[axis]) * share);
-        }
-        whole += Math.min(far, limit - whole);
-        points.push((last = next));
-      }
-      if (first) break;
-    }
-    if (points.length < 2) return;
-    found.push({
-      datum,
-      points,
-      whole,
-      size,
-      color: [datum.r / 255, datum.g / 255, datum.b / 255, alpha],
-      through: datum.life > 0 ? Math.min(1, (seconds * 1000) / datum.life) : 0,
-      row: table ? random(seed, datum.index, TABLE) : 0,
-    });
-  };
-  for (const each of ordered(kind, alive)) one(each.datum, (each.datum.reversed ? each.datum.life - each.age : each.age) / 1000, each.scale * width, each.a / 255);
-  // One whose life is over is still to be seen for a while, going.
-  if (eolFadeOutDuration > 0) {
-    const time = Math.fround(now / 1000);
-    for (const datum of kind.$data) {
-      if (!datum || time <= datum.end) continue;
-      const over = (time - datum.end) * 1000;
-      if (over >= eolFadeOutDuration) continue;
-      const scale = datum.reversed ? datum.from : datum.to;
-      one(datum, datum.reversed ? 0 : datum.life / 1000, scale * width, (datum.a / 255) * (1 - over / eolFadeOutDuration));
-    }
+  const { length, lengthVariation, texcoordMode } = kind;
+  const eol = Math.max(0, Math.floor(kind.eolFadeOutDuration));
+  const sequence = map ? kind.spriteSequence : null;
+  const frames = sequence ? Math.max(1, Math.floor(sequence.frameCount)) : 1;
+  const aside = [Number(kind.offsetX) || 0, Number(kind.offsetY) || 0];
+  const time = Math.fround(now / 1000);
+  if (kind.$pieces !== segments) {
+    kind.$trails = [];
+    kind.$fading = [];
+    kind.$pieces = segments;
+    kind.$traced = undefined;
   }
+  const trails = kind.$trails;
+  if (kind.$traced !== now && system.$begun) {
+    kind.$traced = now;
+    const here = new Map();
+    for (const one of alive) here.set(one.place, one);
+    const data = kind.$data;
+    for (let place = 0; place < data.length; place++) {
+      const datum = data[place];
+      if (!datum) continue;
+      let trail = trails[place];
+      // A particle that has taken the place of another begins a line.
+      if (trail?.datum !== datum) {
+        trail = trails[place] = {
+          datum,
+          head: trail?.head ?? NONE,
+          count: 0,
+          current: 0,
+          limit: length > 0 ? Math.max(0, length + lengthVariation * (random(seed, datum.index, LENGTH) - 0.5)) : -1,
+          shown: true,
+          points: Array.from({ length: segments }, point),
+        };
+      }
+      const one = here.get(place);
+      if (!one) {
+        if (time > datum.end && trail.head.age > 0 && eol > 0 && trail.count > 0) {
+          kind.$fading.push({ head: trail.head, begin: time, end: time + eol * 0.001, count: trail.count, current: trail.current, limit: trail.limit, points: trail.points });
+          // And is no line any more, as in Qt, should the time go back to
+          // when the particle was.
+          trail.points = Array.from({ length: segments }, point);
+          trail.limit = -1;
+          trail.shown = false;
+        }
+        trail.count = 0;
+        trail.current = 0;
+        if (trail.head.size > 0) trail.head = NONE;
+        continue;
+      }
+      const head = {
+        position: [one.x + aside[0] * one.scale, one.y + aside[1] * one.scale, one.z],
+        rotation: one.aligned ? math.toEuler(one.turn) : [one.rx, one.ry, one.rz],
+        color: [datum.r / 255, datum.g / 255, datum.b / 255, one.a / 255],
+        size: one.scale,
+        age: datum.life > 0 ? unit((one.seconds * 1000) / datum.life) : 0,
+        frame: sequence ? frame(sequence, seed, datum, one.seconds) : 0,
+      };
+      const moved = head.size > 0 || trail.head.size > 0;
+      trail.head = head;
+      if (moved) put(trail, head, segments, apart);
+    }
+    kind.$fading = kind.$fading.filter((gone) => time >= gone.begin && time < gone.end);
+  }
+  // A picture that is not here yet is waited for.
+  if (picture && !map) return null;
+  const found = [];
+  for (const trail of trails) if (trail?.count && trail.shown) found.push({ points: through(trail.head, trail, 1, segments, width, texcoordMode), head: trail.head });
+  for (const gone of kind.$fading) found.push({ points: through(gone.head, gone, 1 - ((time - gone.begin) * 1000) / eol, segments, width, texcoordMode), head: gone.head });
   if (!found.length) return null;
+  // How much of the picture there is to a length of line: as wide as the
+  // line is to one picture, or the whole of it once; times the picture's
+  // height to its width, as Qt has it, whichever.
+  const element = map?.element;
+  const high = element ? element.naturalHeight || element.videoHeight || element.height : 0;
+  const broad = element ? element.naturalWidth || element.videoWidth || element.width : 0;
+  const multiplier = Number(kind.texcoordMultiplier) || 0;
   return {
     lines: found,
     map,
     table,
     blend: kind.blendMode,
-    fade: 1 - Math.min(1, Math.max(0, Number(alphaFade) || 0)),
-    grow: Number(scaleMultiplier) || 0,
-    texcoord: texcoordMode,
-    multiplier,
-    far: kind.sortMode === SortDistance,
+    fade: 1 - unit(Number(kind.alphaFade) || 0),
+    grow: Math.min(2, Math.max(0, Number(kind.scaleMultiplier) || 0)),
+    stretch: (texcoordMode === Fill ? frames : width !== 0 ? frames / width : 0) * multiplier * (high > 0 && broad > 0 ? high / broad : 1),
+    frames,
+    blended: Boolean(sequence?.interpolate),
+    facing: kind.billboard ? 1 : 0,
   };
 }
 
-// The corners of the ribbons of a kind as the eye sees them: each piece of
-// a line two triangles, as wide as the line is there and across both the
-// way the line goes and the way the eye looks.
-function ribbons(kind, world, view, flat) {
-  const all = math.multiply(view, world);
-  let total = 0;
-  for (const line of kind.lines) total += line.points.length - 1;
-  const corners = new Float32Array(total * 6 * CORNER);
+// The corners of the ribbons of a kind: two to each point of each line, one
+// to each side, in one strip, with corners said twice between one line and
+// the next so that nothing is drawn from the one to the other. Each point
+// is as wide and as much to be seen as the one before it times
+// `scaleMultiplier` and one less `alphaFade`.
+function ribbons(kind) {
+  const each = kind.lines[0].points.length;
+  const corners = new Float32Array(kind.lines.length * (each + 1) * 2 * CORNER);
   let at = 0;
-  const way = kind.far ? away(world, view) : null;
-  const far = (line) => way[0] * line.points[0][0] + way[1] * line.points[0][1] + way[2] * line.points[0][2];
-  const lines = way ? [...kind.lines].sort((a, b) => far(b) - far(a)) : kind.lines;
-  for (const line of lines) {
-    const seen = line.points.map((point) => math.point(all, ...point));
-    const count = seen.length;
-    const sides = [];
-    let along = 0;
-    let size = line.size;
-    let alpha = line.color[3];
-    for (let index = 0; index < count; index++) {
-      const here = seen[index];
-      const before = seen[Math.max(0, index - 1)];
-      const after = seen[Math.min(count - 1, index + 1)];
-      const way = [after[0] - before[0], after[1] - before[1], after[2] - before[2]];
-      // The eye looks down its z, or from where it is at the point.
-      const look = flat ? [0, 0, -1] : here;
-      let across = [way[1] * look[2] - way[2] * look[1], way[2] * look[0] - way[0] * look[2], way[0] * look[1] - way[1] * look[0]];
-      const wide = Math.hypot(...across);
-      across = wide > 0 ? across.map((value) => (value / wide) * size * 0.5) : [0, 0, 0];
-      if (index > 0) along += Math.hypot(here[0] - seen[index - 1][0], here[1] - seen[index - 1][1], here[2] - seen[index - 1][2]);
-      const where = kind.texcoord === Fill ? (index / (count - 1)) * kind.multiplier : kind.texcoord === Relative ? (line.size > 0 ? along / line.size : 0) * kind.multiplier : along * kind.multiplier;
-      sides.push({ left: [here[0] + across[0], here[1] + across[1], here[2] + across[2]], right: [here[0] - across[0], here[1] - across[1], here[2] - across[2]], where, alpha });
-      size *= kind.grow;
-      alpha *= kind.fade;
-    }
-    const corner = (side, edge) => {
-      corners[at] = side.where;
-      corners[at + 1] = edge;
-      corners.set(edge ? side.left : side.right, at + 2);
-      corners[at + 5] = line.color[0];
-      corners[at + 6] = line.color[1];
-      corners[at + 7] = line.color[2];
-      corners[at + 8] = side.alpha;
-      corners[at + 9] = 0;
-      corners[at + 10] = line.through;
-      corners[at + 11] = line.row;
-      corners[at + 12] = 0;
-      at += CORNER;
-    };
-    for (let index = 0; index + 1 < count; index++) {
-      const a = sides[index];
-      const b = sides[index + 1];
-      corner(a, 0);
-      corner(a, 1);
-      corner(b, 0);
-      corner(b, 0);
-      corner(a, 1);
-      corner(b, 1);
-    }
+  let number = 0;
+  const corner = (one, head, index, side, wide, alpha) => {
+    corners[at] = one.length * kind.stretch;
+    corners[at + 1] = side;
+    corners.set(one.position, at + 2);
+    corners.set(one.binormal, at + 5);
+    corners[at + 8] = (side - 0.5) * wide;
+    corners[at + 9] = one.color[0];
+    corners[at + 10] = one.color[1];
+    corners[at + 11] = one.color[2];
+    corners[at + 12] = alpha;
+    corners[at + 13] = number + index;
+    corners[at + 14] = head.age;
+    corners[at + 16] = head.frame;
+    at += CORNER;
+  };
+  for (const { points, head } of kind.lines) {
+    let grown = 1;
+    let faded = 1;
+    points.forEach((one, index) => {
+      const wide = one.size * grown;
+      const alpha = one.color[3] * faded;
+      if (index === 0) corner(one, head, index, 0, wide, alpha);
+      corner(one, head, index, 0, wide, alpha);
+      corner(one, head, index, 1, wide, alpha);
+      if (index === each - 1) corner(one, head, index, 1, wide, alpha);
+      grown *= kind.grow;
+      faded *= kind.fade;
+    });
+    number += each;
   }
   return corners;
 }
@@ -541,19 +704,18 @@ export function painted(system, opacity) {
       if (kind.blend === Screen) gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
       else if (kind.blend === Multiply) gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ONE, gl.ONE);
       else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.uniform1f(at.u_frames, kind.frames);
+      gl.uniform1f(at.u_blend, kind.blended ? 1 : 0);
       if (kind.lines) {
-        const corners = ribbons(kind, world, view, projection[11] === 0);
+        const corners = ribbons(kind);
         gl.uniform1i(at.u_mode, 2);
-        gl.uniform1f(at.u_frames, 1);
-        gl.uniform1f(at.u_blend, 0);
+        gl.uniform1f(at.u_facing, kind.facing);
         gl.bindVertexArray(own.ribbons);
         gl.bindBuffer(gl.ARRAY_BUFFER, own.corners);
         gl.bufferData(gl.ARRAY_BUFFER, corners, gl.DYNAMIC_DRAW);
-        gl.drawArrays(gl.TRIANGLES, 0, corners.length / CORNER);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, corners.length / CORNER);
       } else {
         gl.uniform1i(at.u_mode, kind.mode);
-        gl.uniform1f(at.u_frames, kind.frames);
-        gl.uniform1f(at.u_blend, kind.blended ? 1 : 0);
         gl.bindVertexArray(own.squares);
         gl.bindBuffer(gl.ARRAY_BUFFER, own.rows);
         gl.bufferData(gl.ARRAY_BUFFER, kind.far ? farthest(kind, away(world, view)) : kind.rows, gl.DYNAMIC_DRAW);
