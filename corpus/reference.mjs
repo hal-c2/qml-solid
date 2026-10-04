@@ -13,7 +13,8 @@
 // Qt draws them with OpenGL, as it does on a desktop, in a compositor that has
 // no screen (`sway`, headless): shader effects are in the picture. Without
 // one it is the offscreen platform, which draws in software and leaves them
-// out.
+// out. Modules of Qt that are not the system's are found the way Qt finds
+// them: QML_IMPORT_PATH, QT_PLUGIN_PATH and LD_LIBRARY_PATH are passed on.
 //
 // `corpus/reference/reference.json` records when each picture was taken: an
 // example that shows the time of day is compared at that same moment.
@@ -174,6 +175,8 @@ function place(directory, copy, path) {
   return join(copy, path);
 }
 
+const elsewhere = ["QML_IMPORT_PATH", "QT_PLUGIN_PATH", "LD_LIBRARY_PATH"];
+
 function capture(example, display) {
   const directory = join(examples, example.dir);
   const scratch = mkdtempSync(join(tmpdir(), `qml-reference-${example.id}-`));
@@ -211,6 +214,27 @@ function capture(example, display) {
     // picture is of the example with the same types the web gives it.
     const standins = join(corpus, "standins", example.id);
     if (existsSync(standins)) importPaths.push(standins);
+    // A module of the example's whose `qmldir` its build writes gets one
+    // here: its files, and what stands in for its C++, which those files
+    // name without importing anything.
+    for (const [uri, path] of Object.entries(example.modules ?? {})) {
+      const [module, standin] = [join(directory, path), join(standins, ...uri.split("."))];
+      if (uri.includes("*") || existsSync(join(module, "qmldir"))) continue;
+      const qmldir = place(directory, copy, join(path, "qmldir"));
+      const lines = [`module ${uri}`];
+      for (const name of readdirSync(module)) {
+        if (!/^[A-Z]\w*\.qml$/.test(name)) continue;
+        const singleton = /^\s*pragma\s+Singleton\b/m.test(readFileSync(join(module, name), "utf8"));
+        lines.push(`${singleton ? "singleton " : ""}${name.slice(0, -4)} 1.0 ${name}`);
+      }
+      if (existsSync(join(standin, "qmldir"))) {
+        for (const name of readdirSync(standin)) {
+          if (name !== "qmldir") symlinkSync(join(standin, name), join(dirname(qmldir), name));
+        }
+        lines.push(...readFileSync(join(standin, "qmldir"), "utf8").split("\n").filter((line) => line.trim() && !line.startsWith("module ")));
+      }
+      if (lines.length > 1) writeFileSync(qmldir, lines.join("\n") + "\n");
+    }
 
     const png = join(scratch, "reference.png");
     const harness = example.root === "Window" ? windowHarness : itemHarness;
@@ -239,6 +263,7 @@ function capture(example, display) {
       ...(display
         ? { QT_QPA_PLATFORM: "wayland", WAYLAND_DISPLAY: display.socket, QT_WAYLAND_DISABLE_WINDOWDECORATION: "1" }
         : { QT_QPA_PLATFORM: `offscreen:configfile=${join(scratch, "screen.json")}` }),
+      ...Object.fromEntries(elsewhere.filter((name) => process.env[name]).map((name) => [name, process.env[name]])),
       QT_FORCE_STDERR_LOGGING: "1",
       QT_SCALE_FACTOR: "1",
       QML_DISABLE_DISK_CACHE: "1",

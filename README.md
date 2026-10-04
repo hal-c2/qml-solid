@@ -73,7 +73,8 @@ distribution packages apart from Qt itself (Charts, Graphs, Quick 3D, Location,
 Sensors, Timeline). Where those are not installed with the rest, `mise run
 types -- --qt /usr/lib/qt6/qml --qt elsewhere/lib/qt6/qml` reads them from
 wherever their packages were unpacked; a table made without them loses their
-types.
+types. `mise run reference` finds them as Qt does, by `QML_IMPORT_PATH`,
+`QT_PLUGIN_PATH` and `LD_LIBRARY_PATH`.
 
 `qml-solid/vite` is a Vite plugin that runs `qmlc` on `.qml` imports and on the
 scripts they import:
