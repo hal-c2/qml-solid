@@ -11,7 +11,7 @@
     "imports": "every other module its QML files import",
     "cpp": "what it needs from C++ of its own",
     "volatile": "why its picture is not the same twice: time, animation, network",
-    "qt": "`runnable`: the `qml` tool of the Qt installed here renders it, or `reason` why not. For the run: `style` or `controlsConf` (the Controls style its main.cpp or resources choose), `env` (environment its main.cpp sets), `module` (the URI its files import it by), `properties` (initial properties main.cpp sets), `offline`, `settle` (ms before the picture, default 1500)"
+    "qt": "`runnable`: the `qml` tool of the Qt installed here renders it, or `reason` why not. For the run: `style` or `controlsConf` (the Controls style its main.cpp or resources choose), `env` (environment its main.cpp sets), `module` (the URI its files import it by), `properties` (initial properties main.cpp sets), `offline`, `settle` (ms before the picture, default 1500), `shaders` (the shader sources its build compiles, in `dir`)"
   },
   "root": "qtdoc/examples",
   "screen": {
@@ -428,9 +428,9 @@
       "rootType": "ApplicationWindow",
       "load": "QQmlApplicationEngine::loadFromModule(\"LightningViewerModule\", \"Main\")",
       "window": {
-        "width": 1050,
-        "height": 580,
-        "from": "LightningViewConfig.appWidth/appHeight (a singleton, computed from Screen) set in Component.onCompleted; this is its value on a 1920x1080 screen, not verified in Qt",
+        "width": 1280,
+        "height": 720,
+        "from": "LightningViewConfig.appWidth/appHeight (a singleton, computed from Screen: this is its value on a 1920x1080 screen), which Main.qml takes in Component.onCompleted when the window is under 200x200 by then. An unsized window is, except on Wayland, where Qt starts one at 500x500 and the example keeps that; imposed so that the picture does not depend on it",
         "imposed": true
       },
       "importPaths": [
@@ -456,10 +456,15 @@
         "LightningViewerModule: LightningController (singleton; a WebSocket client)"
       ],
       "qt": {
-        "runnable": false,
+        "runnable": true,
+        "offline": true,
         "style": "Basic",
-        "reason": "QtLocation is not installed. main.cpp sets the example's own LightningViewerStyle as the Controls style: a module with a Button and a RoundButton, and Basic behind it for the rest. `style` can name only a style of Qt's, so it names Basic, and the two buttons are not the example's. The C++ singleton LightningController is stood in for by corpus/standins/lightningviewer; its WebSocket is QtWebSockets'."
-      }
+        "env": {
+          "QT_QUICK_CONTROLS_STYLE": "LightningViewerStyle",
+          "QT_QUICK_CONTROLS_FALLBACK_STYLE": "Basic"
+        }
+      },
+      "notes": "main.cpp sets the example's own LightningViewerStyle as the Controls style: a module with a Button and a RoundButton, and Basic behind it for the rest. Qt's picture has it (`env`); `style`, which the web goes by and which can name only a style of Qt's, names Basic, so there the two buttons are not the example's. The C++ singleton LightningController is stood in for by corpus/standins/lightningviewer, for Qt's picture too; its WebSocket is QtWebSockets'. The picture is taken without a network: the map has no tiles, and no lightning strikes."
     },
     {
       "id": "maroon",
@@ -608,7 +613,8 @@
       ],
       "cpp": [],
       "qt": {
-        "runnable": true
+        "runnable": true,
+        "shaders": ["resources/shaders/gneiss.frag"]
       },
       "notes": "main.cpp is optional (it says so). The picture is the welcome slide show (resources/welcome.pdf through the PDF image plugin) over an empty surface; after it the example shows the pictures folder, which the reference run has none of."
     },

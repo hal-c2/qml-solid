@@ -5,17 +5,24 @@
 //   corpus/reference.mjs [ID...]      # default: every example Qt can run
 //
 // The examples are run with the plain `qml` tool (no C++ of their own: the QML
-// in `corpus/standins/<id>` stands in for it where there is some), on the
-// offscreen platform, each in a small harness that loads the entry file, lets
-// it settle and saves what it painted. Which examples that works for, and the
-// window each gets, is in `corpus/examples.json`.
+// in `corpus/standins/<id>` stands in for it where there is some), each in a
+// small harness that loads the entry file, lets it settle and saves what it
+// painted. Which examples that works for, and the window each gets, is in
+// `corpus/examples.json`.
+//
+// Qt draws them with OpenGL, as it does on a desktop, in a compositor that has
+// no screen (`sway`, headless): shader effects are in the picture. Without
+// one it is the offscreen platform, which draws in software and leaves them
+// out. Modules of Qt that are not the system's are found the way Qt finds
+// them: QML_IMPORT_PATH, QT_PLUGIN_PATH and LD_LIBRARY_PATH are passed on.
 //
 // `corpus/reference/reference.json` records when each picture was taken: an
 // example that shows the time of day is compared at that same moment.
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const corpus = dirname(fileURLToPath(import.meta.url));
@@ -30,10 +37,32 @@ if (!qml) {
   process.exit(1);
 }
 
+// Qt's shader compiler is not on the path where Qt keeps its own tools.
+const qsb = process.env.QSB ?? ["qsb", "/usr/lib/qt6/bin/qsb", "/usr/lib/qt6/libexec/qsb"].find((tool) => spawnSync(tool, ["--help"]).status === 0) ?? "qsb";
+
 // The screen the examples see, which the gallery's browser is given too:
-// several lay themselves out by `Screen`, and the offscreen platform's own is
-// 800x800.
+// several lay themselves out by `Screen`.
 const { screen } = manifest;
+
+// The compositor's windows float at the size they ask for, undecorated, on an
+// output that is that screen.
+async function compose(directory) {
+  const config = join(directory, "sway.conf");
+  writeFileSync(
+    config,
+    [`output HEADLESS-1 resolution ${screen.width}x${screen.height} scale 1`, 'for_window [app_id=".*"] floating enable', "default_border none", ""].join("\n"),
+  );
+  const environment = { PATH: process.env.PATH, HOME: directory, XDG_RUNTIME_DIR: directory, WLR_BACKENDS: "headless", WLR_LIBINPUT_NO_DEVICES: "1" };
+  const sway = spawn("sway", ["-c", config], { env: environment, stdio: "ignore" });
+  const gone = new Promise((done) => sway.once("error", done).once("exit", done));
+  for (let waited = 0; waited < 5000; waited += 50) {
+    const socket = readdirSync(directory).find((name) => /^wayland-\d+$/.test(name));
+    if (socket) return { socket, stop: () => (sway.kill(), gone) };
+    if (await Promise.race([gone.then(() => true), wait(50)])) break;
+  }
+  sway.kill();
+  return null;
+}
 
 // The harness for an entry whose root is an Item: what `QQuickView` with
 // `SizeRootObjectToView` shows, on the view's white.
@@ -66,12 +95,14 @@ Window {
 // `QQmlApplicationEngine` would, and its whole scene (for an ApplicationWindow
 // that includes the header, the footer and the popups) is grabbed. A grab
 // leaves out the window's own colour, so it is laid over that colour in this
-// harness's window and grabbed again.
+// harness's window and grabbed again. Only one of the two windows shows at a
+// time: a compositor tells a window that is behind another of nothing, and Qt
+// does not draw one that is told nothing.
 const windowHarness = ({ entry, width, height, impose, properties, settle, png }) => `
 import QtQuick
 Window {
     id: harness
-    visible: true
+    visible: false
     property var target: null
     property var grab: null
     Rectangle {
@@ -113,6 +144,8 @@ Window {
                 root = root.parent
             root.grabToImage(function (result) {
                 harness.grab = result
+                target.visible = false
+                harness.visible = true
                 console.log("reference:" + JSON.stringify({ at: Date.now(), width: root.width, height: root.height }))
                 scene.source = result.url
             })
@@ -128,7 +161,23 @@ Window {
 }
 `;
 
-function capture(example) {
+// A place in the copy for a file the example's directory has not got: the
+// directories down to it are the copy's own, of links to what is there.
+function place(directory, copy, path) {
+  const names = path.split("/");
+  for (let depth = 1; depth < names.length; depth += 1) {
+    const [original, linked] = [directory, copy].map((root) => join(root, ...names.slice(0, depth)));
+    if (!lstatSync(linked).isSymbolicLink()) continue;
+    rmSync(linked);
+    mkdirSync(linked);
+    for (const name of readdirSync(original)) symlinkSync(join(original, name), join(linked, name));
+  }
+  return join(copy, path);
+}
+
+const elsewhere = ["QML_IMPORT_PATH", "QT_PLUGIN_PATH", "LD_LIBRARY_PATH"];
+
+function capture(example, display) {
   const directory = join(examples, example.dir);
   const scratch = mkdtempSync(join(tmpdir(), `qml-reference-${example.id}-`));
   try {
@@ -152,6 +201,12 @@ function capture(example) {
       const lines = readFileSync(join(directory, "qmldir"), "utf8").split("\n");
       writeFileSync(join(copy, "qmldir"), lines.filter((line) => !/^(prefer|typeinfo)\b/.test(line)).join("\n"));
     }
+    // The shaders its build compiles are compiled here, next to their
+    // sources, where the QML names them.
+    for (const shader of example.qt.shaders ?? []) {
+      const built = spawnSync(qsb, ["--qt6", ...(shader.endsWith(".vert") ? ["-b"] : []), "-o", `${place(directory, copy, shader)}.qsb`, join(directory, shader)], { encoding: "utf8" });
+      if (built.status !== 0) return { ok: false, why: `qsb: ${built.error?.message ?? built.stderr}`, warnings: [] };
+    }
     const entry = join(copy, example.entry);
     const importPaths = (example.importPaths ?? []).map((path) => resolve(copy, path));
     if (example.qt.module) importPaths.push(join(scratch, "modules"));
@@ -159,6 +214,27 @@ function capture(example) {
     // picture is of the example with the same types the web gives it.
     const standins = join(corpus, "standins", example.id);
     if (existsSync(standins)) importPaths.push(standins);
+    // A module of the example's whose `qmldir` its build writes gets one
+    // here: its files, and what stands in for its C++, which those files
+    // name without importing anything.
+    for (const [uri, path] of Object.entries(example.modules ?? {})) {
+      const [module, standin] = [join(directory, path), join(standins, ...uri.split("."))];
+      if (uri.includes("*") || existsSync(join(module, "qmldir"))) continue;
+      const qmldir = place(directory, copy, join(path, "qmldir"));
+      const lines = [`module ${uri}`];
+      for (const name of readdirSync(module)) {
+        if (!/^[A-Z]\w*\.qml$/.test(name)) continue;
+        const singleton = /^\s*pragma\s+Singleton\b/m.test(readFileSync(join(module, name), "utf8"));
+        lines.push(`${singleton ? "singleton " : ""}${name.slice(0, -4)} 1.0 ${name}`);
+      }
+      if (existsSync(join(standin, "qmldir"))) {
+        for (const name of readdirSync(standin)) {
+          if (name !== "qmldir") symlinkSync(join(standin, name), join(dirname(qmldir), name));
+        }
+        lines.push(...readFileSync(join(standin, "qmldir"), "utf8").split("\n").filter((line) => line.trim() && !line.startsWith("module ")));
+      }
+      if (lines.length > 1) writeFileSync(qmldir, lines.join("\n") + "\n");
+    }
 
     const png = join(scratch, "reference.png");
     const harness = example.root === "Window" ? windowHarness : itemHarness;
@@ -181,13 +257,19 @@ function capture(example) {
       XDG_CONFIG_HOME: join(home, ".config"),
       XDG_DATA_HOME: join(home, ".local/share"),
       XDG_CACHE_HOME: join(home, ".cache"),
-      XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR ?? scratch,
+      XDG_RUNTIME_DIR: display?.directory ?? process.env.XDG_RUNTIME_DIR ?? scratch,
       LANG: "en_US.UTF-8",
       TZ: "UTC",
-      QT_QPA_PLATFORM: `offscreen:configfile=${join(scratch, "screen.json")}`,
+      ...(display
+        ? { QT_QPA_PLATFORM: "wayland", WAYLAND_DISPLAY: display.socket, QT_WAYLAND_DISABLE_WINDOWDECORATION: "1" }
+        : { QT_QPA_PLATFORM: `offscreen:configfile=${join(scratch, "screen.json")}` }),
+      ...Object.fromEntries(elsewhere.filter((name) => process.env[name]).map((name) => [name, process.env[name]])),
       QT_FORCE_STDERR_LOGGING: "1",
       QT_SCALE_FACTOR: "1",
       QML_DISABLE_DISK_CACHE: "1",
+      // Glyphs as the font's rasterizer draws them, which is how a browser's
+      // are drawn; laid out where Qt lays them out either way.
+      QML_DISABLE_DISTANCEFIELD: "1",
       ...(example.qt.style ? { QT_QUICK_CONTROLS_STYLE: example.qt.style } : {}),
       ...(example.qt.controlsConf ? { QT_QUICK_CONTROLS_CONF: resolve(directory, example.qt.controlsConf) } : {}),
       ...(example.qt.env ?? {}),
@@ -221,6 +303,11 @@ if (unknown.length) {
   process.exit(1);
 }
 const index = existsSync(indexFile) ? JSON.parse(readFileSync(indexFile, "utf8")) : {};
+const runtime = mkdtempSync(join(tmpdir(), "qml-reference-"));
+chmodSync(runtime, 0o700);
+const composed = spawnSync("sway", ["--version"]).status === 0 ? await compose(runtime) : null;
+const display = composed && { directory: runtime, socket: composed.socket };
+if (!display) console.log("no headless `sway`: drawn in software, without shader effects");
 let failed = 0;
 for (const example of manifest.examples) {
   if (wanted.length ? !wanted.includes(example.id) : !example.qt.runnable) continue;
@@ -228,7 +315,7 @@ for (const example of manifest.examples) {
     console.log(`${example.id}: not run, ${example.qt.reason}`);
     continue;
   }
-  const result = capture(example);
+  const result = capture(example, display);
   for (const warning of result.warnings) console.log(`  ${warning}`);
   if (!result.ok) {
     failed += 1;
@@ -245,4 +332,6 @@ if (existsSync(output)) {
   const sorted = Object.fromEntries(Object.entries(index).sort(([a], [b]) => a.localeCompare(b)));
   writeFileSync(indexFile, JSON.stringify(sorted, null, 2) + "\n");
 }
+await composed?.stop();
+rmSync(runtime, { recursive: true, force: true });
 process.exit(failed ? 1 : 0);

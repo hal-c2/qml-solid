@@ -39,6 +39,8 @@ pub(crate) struct Paths {
     /// The QML files in the module's directory and under it, by their path
     /// from it. None when nobody looked: then a path is taken at its word.
     pub known: Option<Vec<String>>,
+    /// The other files there, likewise.
+    pub pictures: Option<Vec<String>>,
     /// The files imported: `$file1` is the first.
     named: Vec<String>,
     /// The paths each table has: `$files1` is the first.
@@ -48,9 +50,29 @@ pub(crate) struct Paths {
 /// What `Qt.createComponent` and `Qt.resolvedUrl` are called on.
 const QT: &str = "Qt";
 
+/// The formats Qt reads a picture in, in the order it tries them for a
+/// source with no suffix.
+const FORMATS: [&str; 24] = [
+    "bmp", "cur", "gif", "icns", "ico", "jfif", "jp2", "jpeg", "jpg", "mng", "pbm", "pdf", "pgm", "png", "ppm", "svg",
+    "svgz", "tga", "tif", "tiff", "wbmp", "webp", "xbm", "xpm",
+];
+
 impl Paths {
     fn exists(&self, path: &str) -> bool {
         self.known.as_ref().is_some_and(|known| known.iter().any(|file| file == path))
+    }
+
+    /// `images/logo` where there is no such file but `images/logo.png`: the
+    /// picture Qt finds for it, which is the first there is of the formats it
+    /// reads.
+    pub(crate) fn picture(&self, path: &str) -> Option<String> {
+        let pictures = self.pictures.as_ref()?;
+        let plain = path.strip_prefix("./").unwrap_or(path);
+        let has = |file: &str| pictures.iter().any(|picture| picture == file);
+        if plain.starts_with("../") || plain.rsplit('/').next()?.contains('.') || has(plain) {
+            return None;
+        }
+        FORMATS.iter().find(|format| has(&format!("{plain}.{format}"))).map(|format| format!("{path}.{format}"))
     }
 
     /// `$file1`: the default export of the file at `path`.

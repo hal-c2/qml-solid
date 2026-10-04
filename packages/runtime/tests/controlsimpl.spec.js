@@ -74,3 +74,20 @@ test("a tint and a padding follow what they are of", async ({ page }) => {
   await page.evaluate(() => window.scene.change(2));
   expect(await pixels(page, [[85, 25]])).toEqual(["255 255 255"]);
 });
+
+test("a blend is opaque, but for the colour at either end", async ({ page }) => {
+  await open(page, "colorblend");
+  expect(await page.evaluate(() => window.scene.read())).toEqual([
+    "#00000000",
+    "#5f5f5f",
+    "#800000ff",
+    "#800000ff",
+    "#80ff0000",
+    "#ff0000",
+    "#cfcfcf",
+    "#030405",
+    "#58585a",
+    "#e6e6e6",
+    "#1058c3",
+  ]);
+});

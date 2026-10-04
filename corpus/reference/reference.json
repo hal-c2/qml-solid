@@ -1,71 +1,76 @@
 {
   "alarms": {
-    "capturedAt": 1791022002480,
+    "capturedAt": 1791129956509,
     "width": 400,
     "height": 500
   },
   "android": {
-    "capturedAt": 1791022004169,
+    "capturedAt": 1791129958237,
     "width": 360,
     "height": 640
   },
   "calqlatr": {
-    "capturedAt": 1791022005869,
+    "capturedAt": 1791129959979,
     "width": 320,
     "height": 480
   },
   "clocks": {
-    "capturedAt": 1791022007555,
+    "capturedAt": 1791129961668,
     "width": 640,
     "height": 320
   },
   "coffee": {
-    "capturedAt": 1791022009147,
+    "capturedAt": 1791129963438,
     "width": 1000,
     "height": 600
   },
   "hangman": {
-    "capturedAt": 1791062338850,
+    "capturedAt": 1791129965172,
     "width": 320,
     "height": 480
   },
+  "lightningviewer": {
+    "capturedAt": 1791129966948,
+    "width": 1280,
+    "height": 720
+  },
   "maroon": {
-    "capturedAt": 1791022010857,
+    "capturedAt": 1791129968652,
     "width": 320,
     "height": 480
   },
   "mediaplayer": {
-    "capturedAt": 1791062896903,
+    "capturedAt": 1791129970782,
     "width": 1200,
     "height": 780
   },
   "photosurface": {
-    "capturedAt": 1791022012558,
+    "capturedAt": 1791129972619,
     "width": 1024,
     "height": 600
   },
   "qtjennydemo": {
-    "capturedAt": 1791104686147,
+    "capturedAt": 1791129974385,
     "width": 360,
     "height": 640
   },
   "rssnews": {
-    "capturedAt": 1791022014264,
+    "capturedAt": 1791129976125,
     "width": 800,
     "height": 480
   },
   "samegame": {
-    "capturedAt": 1791022015853,
+    "capturedAt": 1791129977673,
     "width": 320,
     "height": 480
   },
   "thermostat": {
-    "capturedAt": 1791022017488,
+    "capturedAt": 1791129979400,
     "width": 1440,
     "height": 1080
   },
   "todolist": {
-    "capturedAt": 1791022019255,
+    "capturedAt": 1791129981254,
     "width": 360,
     "height": 800
   }

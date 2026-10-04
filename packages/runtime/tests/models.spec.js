@@ -61,7 +61,8 @@ test("a ListModel is changed by its methods and through its elements", async ({ 
   ]);
 });
 
-test("a Repeater's items are its parent's children, after it and in the order of the rows", async ({ page }) => {
+// As Qt has them: `a r0 r1 r2 repeater b`.
+test("a Repeater's items are its parent's children, before it and in the order of the rows", async ({ page }) => {
   await open(page, "models");
   const read = await page.evaluate(() => {
     const { root, before, after, byList } = window.objects;
@@ -70,7 +71,7 @@ test("a Repeater's items are its parent's children, after it and in the order of
     const nodes = [...root.$node.children];
     return {
       count: byList.count,
-      order: [children.indexOf(before) < at, children[at + 1] === byList.itemAt(0), children[at + 4] === after],
+      order: [children.indexOf(before) === at - 4, children[at - 3] === byList.itemAt(0), children[at + 1] === after],
       parent: byList.itemAt(1).parent === root,
       dom: [0, 1, 2].map((index) => nodes.indexOf(byList.itemAt(index).$node) - nodes.indexOf(byList.$node)),
       none: byList.itemAt(3),
@@ -81,7 +82,7 @@ test("a Repeater's items are its parent's children, after it and in the order of
     count: 3,
     order: [true, true, true],
     parent: true,
-    dom: [1, 2, 3],
+    dom: [-3, -2, -1],
     none: null,
     log: ["added 0 apple", "added 1 pear", "added 2 plum"],
   });
@@ -121,7 +122,7 @@ test("a delegate is given its index, its roles, the row as `model` and nothing e
 test("rows inserted, moved, changed and removed keep the delegates of the others", async ({ page }) => {
   await open(page, "models");
   const read = await page.evaluate(() => {
-    const { fruit, byList, made, log, root, after } = window.objects;
+    const { fruit, byList, made, log, root } = window.objects;
     const [apple, pear, plum] = [0, 1, 2].map((index) => byList.itemAt(index));
     log.length = 0;
     fruit.insert(1, { name: "fig", cost: 1 });
@@ -131,7 +132,7 @@ test("rows inserted, moved, changed and removed keep the delegates of the others
     fruit.setProperty(2, "cost", 5);
     const changed = [apple.cost, apple.height];
     fruit.remove(0, 2);
-    const removed = [byList.count, byList.itemAt(0) === apple, apple.index, root.children.indexOf(after) - root.children.indexOf(byList)];
+    const removed = [byList.count, byList.itemAt(0) === apple, apple.index, root.children.indexOf(byList) - root.children.indexOf(apple)];
     fruit.clear();
     return { inserted, moved, changed, removed, made: made.byList, count: byList.count, log };
   });
@@ -139,7 +140,7 @@ test("rows inserted, moved, changed and removed keep the delegates of the others
     inserted: [true, true, 2, 60, "fig"],
     moved: [true, true, true, 60, 1],
     changed: [5, 60],
-    removed: [2, true, 0, 3],
+    removed: [2, true, 0, 2],
     // Three to begin with and the one inserted.
     made: 4,
     count: 0,

@@ -102,10 +102,6 @@ struct Built<'a> {
     made: Vec<String>,
 }
 
-/// The properties of `PropertyChanges` itself; any other name is a property
-/// of its target.
-const CHANGES: &[&str] = &["target", "explicit", "restoreEntryValues"];
-
 pub(crate) struct Lower<'a, 's> {
     b: B<'a>,
     tree: &'s Tree<'a>,
@@ -509,7 +505,7 @@ impl<'a, 's> Lower<'a, 's> {
             return;
         }
         let span = binding.name.span;
-        let changes = self.is_class(index, "QQuickPropertyChanges") && !CHANGES.contains(&path[0]);
+        let changes = self.is_class(index, "QQuickPropertyChanges") && !scope::CHANGES.contains(&path[0]);
         if path[0].starts_with(|c: char| c.is_ascii_uppercase()) && !(changes && path[0] != "Component") {
             return self.attached(&path, binding.value, built, span);
         }
@@ -854,6 +850,8 @@ impl<'a, 's> Lower<'a, 's> {
         if value.is_empty() || is_absolute(value) {
             return expression;
         }
+        let picture = self.uses.paths.picture(value);
+        let value = picture.as_deref().unwrap_or(value);
         // A QML file is the component it was compiled to, and what that
         // makes finds names where the path is written.
         let scope =

@@ -180,15 +180,15 @@ function transform(self) {
   return css;
 }
 
-// The items inside one, in order. A child may stand for others that follow
-// it (`$siblings`): a Repeater's are its parent's children.
+// The items inside one, in order. A child may stand for others that come
+// before it (`$siblings`): a Repeater's are its parent's children.
 function children(self) {
   self.$track();
   const all = self.$extra ? [...self.$static, ...self.$extra] : self.$static;
   const items = [];
   for (const child of all) {
-    if (child.$node) items.push(child);
     if (child.$siblings) items.push(...child.$siblings());
+    if (child.$node) items.push(child);
   }
   return items;
 }

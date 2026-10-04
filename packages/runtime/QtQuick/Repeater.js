@@ -8,7 +8,7 @@ const WRITABLE = { ownedWrite: true };
 const next = (version) => version + 1;
 
 // The items in the order of their rows: what `Item` puts in the parent's
-// `children` after the Repeater.
+// `children` before the Repeater.
 function ordered(self) {
   const { rows } = self.$repeat;
   const items = [];
