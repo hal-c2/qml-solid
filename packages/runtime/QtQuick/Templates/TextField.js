@@ -30,5 +30,7 @@ export const TextField = defineType("TextField", TextInput, {
       });
     },
   },
-  setup,
+  setup(self) {
+    setup(self);
+  },
 });

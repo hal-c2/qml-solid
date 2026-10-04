@@ -119,8 +119,9 @@ export const methods = {
   },
 };
 
-export function setup(self) {
-  backed(self);
+// `around` is what a field's background fills when that is not the field.
+export function setup(self, around) {
+  backed(self, around);
   const [hovers$, hover$] = createSignal(false, { ownedWrite: true });
   self.$field = {
     hovers: hovers$,

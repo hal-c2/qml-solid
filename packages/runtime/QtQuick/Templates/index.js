@@ -26,5 +26,6 @@ export { StackView } from "./StackView.js";
 export { SwipeView } from "./SwipeView.js";
 export { Switch } from "./Switch.js";
 export { TabBar } from "./TabBar.js";
+export { TextArea } from "./TextArea.js";
 export { TextField } from "./TextField.js";
 export { MenuSeparator, ToolSeparator } from "./ToolSeparator.js";

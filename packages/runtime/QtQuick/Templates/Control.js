@@ -32,8 +32,9 @@ export function keeps(self, read) {
 // A background is as big as what it is behind, less the insets, unless it
 // says how big it is or where it is itself. Qt leaves one that does alone
 // until the control is given an inset. What it said is asked once: what is
-// given here would count as said.
-function behind(self, item) {
+// given here would count as said. `around` is what it is as big as: the
+// Flickable a text area is scrolled by, where its background is put.
+function behind(self, item, around) {
   if (!item) return null;
   item.$own ??= untrack(() => ({
     across: !sized(item, "width") && item.x === 0,
@@ -47,8 +48,8 @@ function behind(self, item) {
     item.$own.down || inset("topInset") || inset("bottomInset"),
     self.leftInset,
     self.topInset,
-    self.width - self.leftInset - self.rightInset,
-    self.height - self.topInset - self.bottomInset,
+    around.width - self.leftInset - self.rightInset,
+    around.height - self.topInset - self.bottomInset,
   ];
 }
 
@@ -68,9 +69,9 @@ function spread(box) {
 
 // What a type with a `background` does about it: Control, and Label, which
 // is no control.
-export function backed(self) {
+export function backed(self, around) {
   keeps(self, () => [self.background]);
-  effect(() => behind(self, self.background), spread);
+  effect(() => behind(self, self.background, around?.() ?? self), spread);
 }
 
 // Where what is inside the padding is put.

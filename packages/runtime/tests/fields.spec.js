@@ -22,8 +22,8 @@ test("a TextField is as big as its style says, behind it a background, and says 
   await stages(page, TEXTFIELD);
 });
 
-// Where the fields are in the scene.
-const at = { field: [10, 10] };
+// Where the fields are in their scenes.
+const at = { field: [10, 10], area: [10, 10], flick: [10, 100] };
 const move = (page, name, x, y) => page.mouse.move(at[name][0] + x, at[name][1] + y);
 
 async function press(page, name, x, y, button = "left") {
@@ -112,4 +112,71 @@ test("a TextField hovers where it is asked to, and Tab says why focus came and w
   await page.keyboard.press("Shift+Tab");
   expect(await take(page)).toEqual(["reason 2"]);
   expect(await state(page, "field.activeFocus", "field.focusReason", "bare.focusReason")).toEqual([true, 2, 2]);
+});
+
+// prettier-ignore
+const TEXTAREA = [
+  [[60,44,60,44,40,32,2],[60,20,0,0,60,44,-1,true],["hint","#80ff0000",false,false,7,true,false],[0,14,0,14,16,32,true],["","#000000","#000000",false,true,7],[true,0,0,120,104,48,104],[48,104,0,0,4,4],[true,0,1,120,59,-1],[true,0,0,154,64,154,64],[154,64,0,0,154,64],[]],
+  [[63,28,63,28,0,16,1],[60,20,3,2,60,26,-1,true],["hint","#80ff0000",false,false,7,true,false],[0,14,0,14,16,32,true],["","#000000","#000000",false,true,7],[true,0,0,120,104,48,104],[48,104,0,0,4,4],[true,0,1,120,59,-1],[true,0,0,154,64,154,64],[154,64,0,0,154,64],[]],
+  [[84,44,100,44,68,32,2],[60,20,3,2,97,42,-1,true],["hint","#80ff0000",false,false,7,true,false],[0,14,0,14,16,32,true],["","#000000","#000000",false,true,7],[true,0,0,120,104,48,104],[48,104,0,0,4,4],[true,0,1,120,59,-1],[true,0,0,154,64,154,64],[154,64,0,0,154,64],[]],
+  [[84,44,100,44,68,32,2],[60,20,3,2,97,42,-1,true],["hint","#80ff0000",false,false,7,true,false],[0,14,0,14,16,32,true],["","#000000","#000000",false,true,7],[true,0,0,120,104,48,104],[48,104,0,44,28,84],[true,0,1,120,59,-1],[true,0,0,154,64,154,64],[154,64,55,0,154,64],[]],
+  [[84,44,100,44,68,32,2],[60,20,3,2,97,42,-1,true],["hint","#80ff0000",false,false,7,true,false],[0,14,0,14,16,32,true],["","#000000","#000000",false,true,7],[true,0,0,120,104,48,104],[48,104,0,16,12,20],[true,0,1,120,59,-1],[true,0,0,154,64,154,64],[154,64,8,14,154,64],[]],
+  [[84,44,100,44,68,32,2],[60,20,3,2,97,42,-1,true],["hint","#80ff0000",false,false,7,true,false],[0,14,0,14,16,32,true],["","#000000","#000000",false,true,7],[true,0,0,264,60,264,40],[264,40,0,0,4,4],[true,0,1,120,59,-1],[true,0,0,154,64,154,64],[154,64,8,14,154,64],[]],
+  [[84,44,100,44,68,32,2],[60,20,3,2,97,42,-1,true],["hint","#80ff0000",false,false,7,true,false],[0,14,0,14,16,32,true],["","#000000","#000000",false,true,7],[true,0,0,264,60,264,40],[264,40,0,0,4,4],[true,0,1,120,59,-1],[true,0,0,154,64,154,64],[154,64,8,14,154,64],[]],
+  [[84,44,100,44,68,32,2],[60,20,3,2,97,42,-1,true],["hint","#80ff0000",false,false,7,true,false],[0,14,0,14,16,32,true],["","#000000","#000000",false,true,7],[true,0,0,200,150,168,56],[168,56,0,0,4,4],[true,0,1,200,149,-1],[true,0,0,154,120,154,64],[154,64,0,0,154,64],[]],
+  [[84,44,100,44,68,32,2],[60,20,3,2,97,42,-1,true],["hint","#80ff0000",false,false,1,true,true],[0,14,0,14,16,32,true],["","#000000","#000000",false,true,7],[true,0,0,200,150,168,56],[168,56,0,0,4,4],[true,0,1,200,149,-1],[true,0,0,154,120,154,64],[154,64,0,0,154,64],["reason 1"]],
+];
+
+test("a TextArea is as big as its style says, and a Flickable it is attached to scrolls it", async ({ page }) => {
+  await open(page, "textarea");
+  await stages(page, TEXTAREA);
+});
+
+test("a TextArea says when it is pressed, held and let go, and hovers", async ({ page }) => {
+  await still(page, "textarea");
+  await press(page, "area", 20, 15);
+  expect(await take(page)).toEqual(["pressed 20,15 1 1 false", "reason 0"]);
+  await release(page);
+  expect(await take(page)).toEqual(["released 20,15 1 0 false"]);
+  expect(await state(page, "area.activeFocus", "area.focusReason", "area.cursorPosition")).toEqual([true, 0, 1]);
+
+  await press(page, "area", 30, 12);
+  expect(await take(page)).toEqual(["pressed 30,12 1 1 false"]);
+  await advance(page, 1000);
+  expect(await take(page)).toEqual(["held 30,12 1 1 true"]);
+  await release(page);
+  expect(await take(page)).toEqual(["released 30,12 1 0 false"]);
+
+  // Beside the text, on the padding.
+  await press(page, "area", 4, 40);
+  expect(await take(page)).toEqual(["pressed 4,40 1 1 false"]);
+  await release(page);
+  expect(await take(page)).toEqual(["released 4,40 1 0 false"]);
+  expect(await state(page, "area.activeFocus", "area.focusReason")).toEqual([true, 0]);
+
+  await page.evaluate(() => (window.scene.area.hoverEnabled = true));
+  await move(page, "area", 20, 20);
+  expect(await take(page)).toEqual(["hovered true"]);
+  await page.mouse.move(300, 250);
+  expect(await take(page)).toEqual(["hovered false"]);
+});
+
+test("the Flickable a TextArea is attached to goes where the cursor does", async ({ page }) => {
+  await open(page, "textarea");
+  const where = () => state(page, "flicked.cursorPosition", "flick.contentX", "flick.contentY");
+  await press(page, "flick", 22, 10);
+  await page.mouse.up();
+  expect(await state(page, "flicked.activeFocus")).toEqual([true]);
+  expect(await where()).toEqual([2, 0, 0]);
+  for (let count = 0; count < 3; count++) await page.keyboard.press("ArrowDown");
+  await expect.poll(where).toEqual([16, 0, 12]);
+  for (let count = 0; count < 2; count++) await page.keyboard.press("ArrowDown");
+  await expect.poll(where).toEqual([26, 0, 44]);
+  // A line more, and there is more to scroll over.
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("x");
+  await expect.poll(where).toEqual([28, 0, 60]);
+  expect(await state(page, "flick.contentHeight", "flicked.height", "flicked.lineCount")).toEqual([120, 120, 7]);
+  await page.keyboard.press("Control+Home");
+  await expect.poll(where).toEqual([0, 0, 0]);
 });
