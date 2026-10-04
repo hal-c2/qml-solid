@@ -7,7 +7,7 @@
 // a Behavior, and reads as what the transition's animations show until they
 // are done.
 import { createEffect, createMemo, createRoot, createSignal, runWithOwner, untrack } from "solid-js";
-import { contents, defineType, flush, group, QtObject, slot, whenComplete } from "../object.js";
+import { contents, defineType, flush, group, QtObject, replace, slot, whenComplete } from "../object.js";
 import { follow, parallel } from "./animation/Animation.js";
 import { drain, later } from "./animation/clock.js";
 import { display, Property } from "./animation/property.js";
@@ -119,7 +119,7 @@ function reverting(states, revert) {
 
 const same = (action, revert) =>
   action.event
-    ? action.event === revert.event && action.target === revert.target
+    ? action.event === revert.event && action.target === revert.target && action.name === revert.name
     : !revert.event && action.property.is(revert.property.object, revert.property.key);
 
 // Where an item's top left corner is in the scene, transforms aside.
@@ -163,6 +163,15 @@ const events = {
   script: {
     perform(action) {
       action.run?.();
+    },
+  },
+  // `onClicked: ...` among a state's changes: what the signal runs for as
+  // long as the state is the item's, in the place of the item's own.
+  handler: {
+    revert: (action) => ({ event: "handler", target: action.target, name: action.name, saved: action.target.$replaced?.[action.name] }),
+    undo: (revert) => ({ event: "handler", target: revert.target, name: revert.name, run: revert.saved }),
+    perform(action) {
+      replace(action.target, action.name, action.run);
     },
   },
   // The lines themselves are changes like any other; this is for where they
@@ -587,9 +596,19 @@ export const PropertyChanges = defineType("PropertyChanges", QtObject, {
         let object = where ? where() : target;
         if (object != null && type) object = type.attached?.(object);
         if (object == null) continue;
-        const property = new Property(object, name);
-        if (!property.valid) continue;
         const given = where ? value : () => value(target);
+        const property = new Property(object, name);
+        if (!property.valid) {
+          // A handler is what the lines of it do, or the function they are.
+          const heard = /^on([A-Z_])(\w*)$/.exec(name);
+          if (!heard || typeof object[heard[1].toLowerCase() + heard[2]]?.connect !== "function") continue;
+          const run = (...args) => {
+            const made = given();
+            if (typeof made === "function") made(...args);
+          };
+          actions.push({ event: "handler", target: object, name, run });
+          continue;
+        }
         actions.push(binding(states, this, property, given, memos, index, restoring, explicit));
       }
     },

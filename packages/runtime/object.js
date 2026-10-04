@@ -785,7 +785,7 @@ function defineChange(object, name) {
 
 function changes(self, name) {
   const handler = handlerName(`${name}Changed`);
-  const emit = signal(() => untrack(() => self.$props[handler]));
+  const emit = signal(handling(self, handler));
   const { connect } = emit;
   let watched = false;
   // Nothing watches a property nobody hears of. `first` is told what the
@@ -839,6 +839,21 @@ function defineGroup(Type, proto, name, properties) {
 
 const handlerName = (name) => `on${name[0].toUpperCase()}${name.slice(1)}`;
 
+// The handler a signal runs: what the object was given, or what a state put
+// in its place for as long as the state is the item's.
+const handling = (self, handler) => () =>
+  self.$replaced && handler in self.$replaced ? self.$replaced[handler] : untrack(() => self.$props[handler]);
+
+// Puts `run` in the place of the handler of a signal, `onClicked`; nothing
+// puts the object's own back.
+export function replace(self, handler, run) {
+  if (!self.$replaced) hidden(self, "$replaced", {});
+  if (run) self.$replaced[handler] = run;
+  else delete self.$replaced[handler];
+  // A property's changes are told of from when somebody hears of them.
+  self[handler[2].toLowerCase() + handler.slice(3)].watch?.();
+}
+
 // A signal is the function that emits it: `clicked(mouse)` runs the handler
 // the object was given (`onClicked`) and whatever was connected since.
 export function signal(given) {
@@ -857,7 +872,7 @@ function defineSignal(proto, name) {
   const handler = handlerName(name);
   Object.defineProperty(proto, name, {
     get() {
-      return (this.$signals[name] ??= signal(() => untrack(() => this.$props[handler])));
+      return (this.$signals[name] ??= signal(handling(this, handler)));
     },
     enumerable: true,
     configurable: true,
