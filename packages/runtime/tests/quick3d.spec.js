@@ -1468,4 +1468,125 @@ test("the round shapes Qt has of its own are Qt's, with a picture where Qt has i
     [[352, 148], [255, 255, 0], "pole", 460.53, [0.874, 0.977], [2.5, 49.337, -2.5], [0.069, 0.996, -0.065]],
   ];
   near(await painted(page, places), places.map(([, colour]) => colour), "painted", 3);
+  near(
+    await page.evaluate(() => window.scene.read()),
+    places.map(([, , hit, distance, uv, local, normal]) => ({ hit, distance, uv, local, normal })),
+  );
+});
+
+test("a View3D finds what Qt finds at a place and along a ray", async ({ page }) => {
+  const nothing = { hit: null, type: 0, distance: 0, uv: [0, 0], scene: [0, 0, 0], local: [0, 0, 0], normal: [0, 0, 0], sceneNormal: [0, 0, 0], instance: -1, item: false };
+  // What was met: how far off, where in the shape's picture, where in the
+  // scene and in the model's own space, which way the triangle faces in
+  // each, and which entry of a table it is.
+  const met = (hit, distance, uv, scene, local, normal, sceneNormal, instance = 0) => ({ hit, type: 1, distance, uv, scene, local, normal, sceneNormal, instance, item: false });
+  const cube = met("cube", 469.28, [0.244, 0.614], [-80, 0, 30.72], [-25.6, 11.374, 50], [0, 0, 1], [0.94, -0.684, 1.628]);
+  const behind = met("behind", 700, [0.5, 0.5], [-80, 0, -200], [0, 0, 0], [0, 0, 1], [0, 0, 1]);
+  // Flat on: the cube, the rectangle behind it beside it, the globe
+  // through the pane, nothing where a rectangle faces away, the one not
+  // shown and the one shown through wholly, each entry of a table, and
+  // nothing at the edge and outside the view. Which way a triangle faces
+  // in the scene is longer than one as the model is smaller than its
+  // shape. Last, the strip that is not shown, of a shape nothing shown is
+  // picked by: the box round it.
+  const flat = [
+    cube,
+    met("behind", 700, [0.167, 0.083], [-120, -50, -200], [-33.333, -41.667, 0], [0, 0, 1], [0, 0, 1]),
+    met("globe", 451.273, [0.52, 0.539], [76, 36, 48.727], [6, 6, 48.727], [0.063, 0.094, 0.994], [0.063, 0.094, 0.994]),
+    nothing,
+    met("unseen", 500, [0.5, 0.5], [0, -60, 0], [0, 0, 0], [0, 0, 1], [0, 0, 1]),
+    met("faint", 500, [0.5, 0.5], [0, 10, 0], [0, 0, 0], [0, 0, 1], [0, 0, 1]),
+    met("many", 500, [0.5, 0.5], [-100, 80, 0], [0, 0, 0], [0, 0, 1], [0, 0, 1]),
+    met("many", 500, [0.5, 0.5], [100, 80, 0], [0, 0, 0], [0, 0, 1], [0, 0, 1], 1),
+    nothing,
+    nothing,
+    nothing,
+    met("cube", 476.624, [0.594, 0.747], [-60, 10, 23.376], [9.388, 24.676, 50], [0, 0, 1], [0.94, -0.684, 1.628]),
+    met("behind", 700, [1, 0.583], [-20, 10, -200], [50, 8.333, 0], [0, 0, 1], [0, 0, 1]),
+    nothing,
+    met("hidden", 500, [0.5, 0.562], [100, -50, 0], [0, 112.5, 0], [0, 0, 0], [0, 0, 0]),
+  ];
+  // With everything shown and for picking, the pane is before the globe
+  // and the strip is met at its triangles.
+  const shown = flat.map((found, index) => ({ 2: met("pane", 400, [0.7, 0.7], [76, 36, 100], [20, 20, 0], [0, 0, 1], [0, 0, 1]), 14: met("hidden", 500, [0.5, 0.562], [100, -50, 0], [0, 112.5, 0], [0, 0, 1], [0, 0, 1]) })[index] ?? found);
+  // Through a camera with depth, from where the camera is.
+  const deep = [
+    nothing,
+    nothing,
+    nothing,
+    nothing,
+    nothing,
+    met("globe", 365.35, [0.392, 0.418], [40, 17.402, 37.142], [-30, -12.598, 37.142], [-0.612, -0.278, 0.74], [-0.612, -0.278, 0.74]),
+    nothing,
+    nothing,
+    nothing,
+    nothing,
+    nothing,
+    met("cube", 382.365, [0.086, 0.851], [-84.972, 17.866, 41.1], [-41.427, 35.14, 50], [0, 0, 1], [0.94, -0.684, 1.628]),
+    met("faint", 405.414, [0.243, 0.622], [-6.428, 13.041, 0], [-25.712, 12.165, 0], [0, 0, 1], [0, 0, 1]),
+    met("globe", 363.821, [0.545, 0.699], [81.129, 58.905, 38.513], [11.129, 28.905, 38.513], [0.256, 0.561, 0.787], [0.256, 0.561, 0.787]),
+    nothing,
+  ];
+  // Along a ray of the scene's own, whichever camera there is: the cube
+  // from before it, and from its left its far side and then the globe.
+  const ray = met("cube", 265.077, [0.209, 0.747], [-80, 10, 34.923], [-29.102, 24.676, 50], [0, 0, 1], [0.94, -0.684, 1.628]);
+  const rays = [met("cube", 87.751, [0.882, 0.453], [-112.249, 5, -10], [-38.214, -4.723, -50], [0, 0, -1], [-0.94, 0.684, -1.628]), met("globe", 228.604, [0.212, 0.331], [28.604, 5, -10], [-41.396, -25, -10], [-0.834, -0.508, -0.214], [-0.834, -0.508, -0.214])];
+  // What is found at every twentieth pixel, by the first letter of its
+  // name and the entry of its table.
+  const states = [
+    [[], { picks: flat, all: [cube, behind], swept: [
+        "..m0.........m1..",
+        "..m0.......ggm1..",
+        "bbbbbbb..gggg..",
+        "bbccccb..gggg..",
+        "bbccccbf.gggg..",
+        "bccccbb...gg...",
+        "bccccbb.....h..",
+        "bbbbbbbu....h..",
+        ".......u....h..",
+        "............h..",
+      ] }],
+    [["shown"], { picks: shown, all: [cube, behind], swept: [
+        "..m0.........m1..",
+        "..m0.......ggm1..",
+        "bbbbbbb..gggg..",
+        "bbccccb..gppg..",
+        "bbccccbf.gggg..",
+        "bccccbb...gg...",
+        "bccccbb.....hs.",
+        "bbbbbbbu....hs.",
+        ".......u....hs.",
+        "............hs.",
+      ] }],
+    [["deep"], { picks: deep, all: [], swept: [
+        "...............",
+        "...............",
+        "...............",
+        ".....bbgg......",
+        "....ccfgg......",
+        "....cc.........",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+      ] }],
+    [["deep", "shown"], { picks: deep, all: [], swept: [
+        "...............",
+        "...............",
+        "...............",
+        ".....bbgg......",
+        "....ccfgp......",
+        "....cc.........",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+      ] }],
+  ];
+  for (const [calls, found] of states) {
+    await open(page, "picked3d");
+    for (const call of calls) await page.evaluate((name) => window.scene[name](), call);
+    const read = await page.evaluate(() => window.scene.read());
+    near(read, { ...found, none: 0, ray, rays }, calls.join(" "));
+  }
 });

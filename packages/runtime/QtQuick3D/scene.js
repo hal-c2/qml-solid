@@ -720,6 +720,10 @@ export const OrthographicCamera = defineType("OrthographicCamera", Camera, {
       return math.ortho(-across, across, -down, down, this.clipNear, this.clipFar);
     },
   },
+  setup(self) {
+    // It sees along one way from everywhere across it.
+    self.$flat = true;
+  },
 });
 
 export const FrustumCamera = defineType("FrustumCamera", PerspectiveCamera, {
