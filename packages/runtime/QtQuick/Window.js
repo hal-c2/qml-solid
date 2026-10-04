@@ -9,7 +9,7 @@
 // A Window is not an item. Its items are the children of its `contentItem`,
 // which is what `parent` is for them (as in Qt).
 import { createSignal, onCleanup, runWithOwner, untrack } from "solid-js";
-import { contents, defineType, derived, effect, flush, inside, onChange, QtObject, slot } from "../object.js";
+import { $string, contents, defineType, derived, effect, flush, inside, onChange, QtObject, slot } from "../object.js";
 import { application, listen, singleton } from "../QtQml/application.js";
 import { enums } from "../QtQml/namespace.js";
 import { colorValue, css } from "./color.js";
@@ -179,7 +179,7 @@ export const Window = defineType("Window", QtObject, {
     // window's QML binds.
     visibility: AutomaticVisibility,
     color: "white",
-    title: "",
+    title: $string,
     opacity: 1,
     flags: enums.WindowType.Window,
     modality: enums.WindowModality.NonModal,

@@ -1,6 +1,6 @@
 // TextMetrics, FontMetrics: how big a string is in a font, for whoever lays
 // something out around it.
-import { defineType, derived, QtObject } from "../object.js";
+import { $string, defineType, derived, QtObject } from "../object.js";
 import { lazy } from "./compute.js";
 import { advance, describe, elided, font, fonts, inked, letters, metrics } from "./font.js";
 
@@ -29,7 +29,7 @@ const text = (self) => String(self.text ?? "");
 export const TextMetrics = defineType("TextMetrics", QtObject, {
   properties: {
     font,
-    text: "",
+    text: $string,
     elide: 3,
     elideWidth: 0,
     advanceWidth: derived((self) => advance(face(self), text(self))),

@@ -24,8 +24,10 @@ pub(crate) struct Tree<'a> {
     /// What a PropertyChanges or an AnchorChanges changes, and the object it
     /// is written in: Qt evaluates it as a binding of the target's.
     changes: Vec<(Span, usize)>,
-    /// The id each of them names as its `target`.
+    /// The id each of them, or a Connections, names as its `target`.
     targets: HashMap<usize, &'a str>,
+    /// The PropertyChanges among them: what one changes is given its target.
+    given: HashSet<usize>,
 }
 
 pub(crate) struct Object<'a> {
@@ -74,6 +76,7 @@ impl<'a> Tree<'a> {
                 by_start: HashMap::new(),
                 changes: Vec::new(),
                 targets: HashMap::new(),
+                given: HashSet::new(),
             },
             types,
             errors,
@@ -103,25 +106,40 @@ impl<'a> Tree<'a> {
     /// the one it is written in, or for what a state changes, the target
     /// (`anchors.bottom: parent.bottom` is the bottom of the target's parent).
     /// A target that is not named by its id is known only to the running
-    /// program, and the names are then those of where it is written.
+    /// program: see [`Tree::aimed`].
     pub(crate) fn scope_at(&self, offset: u32) -> usize {
         let written = self.object_at(offset);
-        let changed = self
-            .changes
-            .iter()
-            .any(|(span, owner)| *owner == written && span.start <= offset && offset < span.end);
-        if !changed {
+        if !self.changed(written, offset) {
             return written;
         }
-        let Some(id) = self.targets.get(&written) else { return written };
-        let mut context = Some(self.objects[written].context);
+        self.target(written).unwrap_or(written)
+    }
+
+    fn changed(&self, written: usize, offset: u32) -> bool {
+        self.changes.iter().any(|(span, owner)| *owner == written && span.start <= offset && offset < span.end)
+    }
+
+    /// Whether `offset` is in what a PropertyChanges changes of a target it
+    /// does not name by its id (`target: view.currentItem`). Qt evaluates it
+    /// as a binding of the target's all the same, so a name is the target's
+    /// if the target has it, which only the running program can tell.
+    pub(crate) fn aimed(&self, offset: u32) -> bool {
+        let written = self.object_at(offset);
+        self.given.contains(&written) && self.changed(written, offset) && self.target(written).is_none()
+    }
+
+    /// The object a PropertyChanges or a Connections names as its `target`,
+    /// when it names it by its id.
+    pub(crate) fn target(&self, owner: usize) -> Option<usize> {
+        let id = self.targets.get(&owner)?;
+        let mut context = Some(self.objects[owner].context);
         while let Some(at) = context {
             if let Some(target) = self.objects.iter().position(|object| object.context == at && object.handle == *id) {
-                return target;
+                return Some(target);
             }
             context = self.contexts[at].outer;
         }
-        written
+        None
     }
 
     /// The name of the binding that holds the context of the component the
@@ -188,6 +206,17 @@ impl<'a> Tree<'a> {
             return Some(Vec::new());
         }
         types.signal(object.kind.as_ref()?, name)
+    }
+
+    /// The property whose value the object's signal `name` carries to its
+    /// handlers: [`types::carried`].
+    pub(crate) fn carried<'n>(&self, types: Types<'_>, index: usize, name: &'n str) -> Option<&'n str> {
+        let object = &self.objects[index];
+        let property = name.strip_suffix("Changed")?;
+        if object.declared.contains_key(name) || object.declared.contains_key(property) {
+            return None;
+        }
+        types.carried(object.kind.as_ref()?, name)
     }
 
     /// What the property a binding names is, through the groups on the way:
@@ -350,10 +379,15 @@ impl<'a> Analysis<'a, '_, '_> {
                 !CHANGES.contains(&path[0]) && !(path.len() > 1 && self.tree.ids.contains(path[0]))
             }
             Some("QQuickAnchorChanges") => path[0] == "anchors",
+            // Its handlers are of its target's signals.
+            Some("QQmlConnections") => false,
             _ => return,
         };
         if changes {
             self.tree.changes.push((binding.span, owner));
+            if class == Some("QQuickPropertyChanges") {
+                self.tree.given.insert(owner);
+            }
         } else if let (["target"], QmlBindingValue::Expression(oxc_ast::ast::Expression::Identifier(id))) =
             (path, &binding.value)
         {

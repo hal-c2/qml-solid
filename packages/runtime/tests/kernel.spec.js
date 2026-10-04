@@ -137,3 +137,10 @@ test("what an object is made with is not a change, unless it was a binding", asy
   // not kept here.)
   expect((await page.evaluate(() => window.scene.seen)).sort()).toEqual(["availability 1", "bound 2", "height 200"]);
 });
+
+test("what a type of a namespace attaches is asked of the object in a script", async ({ page }) => {
+  await open(page, "attachedname");
+  // Qt 6.11: the bar the Flickable was given, from itself and from an object
+  // inside it, a quarter of the content in view, and no bar across.
+  expect(await page.evaluate(() => window.scene.read())).toEqual([true, "bar", true, true, 0.25, null]);
+});

@@ -265,17 +265,29 @@ const GridLayoutBase = defineType("GridLayoutBase", Layout, {
       // A layout with no size leaves its children where they are.
       if (!(width >= 0 && height >= 0)) return null;
       // A mirrored layout runs the other way from the one it was asked for.
-      return arrange(measured, width, height, mirrored(this) !== (this.layoutDirection === RightToLeft));
+      const arranged = arrange(measured, width, height, mirrored(this) !== (this.layoutDirection === RightToLeft));
+      // Which of the items are the size they are to be, as this is worked
+      // out: by the time they are placed they may be another.
+      arranged.fits = untrack(() =>
+        arranged.cells.map(({ item }, index) => item.width === arranged.width[index] && item.height === arranged.height[index]),
+      );
+      return arranged;
     },
     $place(arranged) {
       if (!arranged) return;
-      const { cells, x, y, width, height } = arranged;
+      const { cells, x, y, width, height, fits } = arranged;
       for (let index = 0; index < cells.length; index++) {
         const item = cells[index].item;
         slot(item, "x").place(x[index]);
         slot(item, "y").place(y[index]);
-        slot(item, "width").place(width[index]);
-        slot(item, "height").place(height[index]);
+        // An item that is the size it is to be is not given one, as in Qt:
+        // it goes on taking its size from what it holds, as a Loader does
+        // from its item.
+        const wide = slot(item, "width");
+        const tall = slot(item, "height");
+        if (fits[index] && wide.placed === undefined && tall.placed === undefined) continue;
+        wide.place(width[index]);
+        tall.place(height[index]);
       }
     },
   },

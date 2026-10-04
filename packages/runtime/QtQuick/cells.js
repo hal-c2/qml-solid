@@ -36,9 +36,9 @@ function kindOf(source) {
 export const tabular = (source) => kindOf(source) === TABLE;
 export const indexed = (source) => kindOf(source) === TABLE || kindOf(source) === LIST;
 
-// The cell a delegate is being made for. What a view requires of a delegate
-// type Qt has in C++ (`tableView`, `headerView`) is not in the QML for the
-// compiler to bind: the type takes it from here as it is made.
+// The cell a delegate is being made for. The compiler binds what a delegate
+// requires of it; a delegate type Qt has in C++ (`TableViewDelegate`) that
+// is made without those bindings takes its cell from here as it is made.
 let made = null;
 export const making = () => made;
 export function make(cell, work) {
@@ -96,6 +96,17 @@ const Cell = Object.create(null, {
     },
   },
   editing: { value: false },
+  // What Qt's views set on a delegate that requires them.
+  tableView: {
+    get() {
+      return this.$view;
+    },
+  },
+  headerView: {
+    get() {
+      return this.$view.$header ? this.$view : undefined;
+    },
+  },
 });
 
 // What a cell reads of one role, which a model may say alone has changed.

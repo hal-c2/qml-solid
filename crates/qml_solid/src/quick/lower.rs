@@ -10,7 +10,7 @@
 //!
 //! export default function Sample($props) {
 //!   const root = $props.$self ?? $object();
-//!   return <Item $self={root} $given={$props} width={200}><Text text={root.width}/>{$props.children}</Item>;
+//!   return <Item $self={root} $given={$props} $is={Sample} width={200}><Text text={root.width}/>{$props.children}</Item>;
 //! }
 //! ```
 //!
@@ -22,13 +22,15 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use oxc_allocator::{ArenaBox, ArenaVec};
 use oxc_ast::ast::*;
+use oxc_ast_visit::Visit;
 use oxc_parser::qml::ast::*;
 use oxc_span::Span;
 
 use super::{
+    names,
     paths::{Paths, is_absolute, is_resolved},
     scope::{self, Tree},
-    types::{self, Found, Kind, Member, Origin, Property, Types},
+    types::{self, Member, Origin, Property, Types},
 };
 use crate::{Error, build::B, qt};
 
@@ -73,8 +75,9 @@ impl Uses {
 /// What an object is to the code around it.
 enum Role<'r> {
     /// The root of the file's component or of an inline one: what an
-    /// instance sets is set on it.
-    Root,
+    /// instance sets is set on it. With the component's name: the object
+    /// is one of its.
+    Root(&'r str),
     /// The root of a template: the object a delegate makes, given `data`.
     Template(&'r str),
     Plain,
@@ -174,7 +177,7 @@ impl<'a, 's> Lower<'a, 's> {
         let outer_keys = std::mem::take(&mut self.keys);
         let outer_enums = std::mem::take(&mut self.enums);
         self.open();
-        let element = self.element(root, Role::Root);
+        let element = self.element(root, Role::Root(name));
         let frame = self.close();
         self.frames = outer_frames;
         self.keys = outer_keys;
@@ -268,7 +271,10 @@ impl<'a, 's> Lower<'a, 's> {
         };
         built.attributes.push(b.attr("$self", b.id(handle)));
         match &role {
-            Role::Root => built.attributes.push(b.attr("$given", b.id("$props"))),
+            Role::Root(name) => {
+                built.attributes.push(b.attr("$given", b.id("$props")));
+                built.attributes.push(b.attr("$is", b.id(name)));
+            }
             Role::Source { target, property } => {
                 self.uses.handles.insert((*target).to_string());
                 built.attributes.push(b.attr("$target", b.id(target)));
@@ -282,7 +288,7 @@ impl<'a, 's> Lower<'a, 's> {
             built.attributes.push(b.attr("$context", b.id(&scope)));
             self.uses.handles.insert(scope);
         }
-        if !matches!(role, Role::Root) {
+        if !matches!(role, Role::Root(_)) {
             self.uses.kernel.insert("$object");
             let made = b.const_(handle, b.call(b.id("$object"), []));
             self.frame().push(made);
@@ -537,7 +543,28 @@ impl<'a, 's> Lower<'a, 's> {
                         .unwrap_or_default(),
                     (_, None) => Vec::new(),
                 };
-                self.handler(binding.value, &parameters, span)
+                let carried = match (path.len(), held) {
+                    (1, _) => self.tree.carried(self.types, index, &signal),
+                    (_, Some(held)) => types::carried(held, &signal),
+                    (_, None) => None,
+                };
+                // `onTextChanged: note(text)` names the argument or the
+                // property, which are the same: only a script that names
+                // the argument is given it.
+                let takes = match &binding.value {
+                    QmlBindingValue::Expression(
+                        Expression::FunctionExpression(_) | Expression::ArrowFunctionExpression(_),
+                    ) => true,
+                    value => parameters.first().is_some_and(|name| mentions(value, name)),
+                };
+                let mut handler = self.handler(binding.value, &parameters, span);
+                if let Some(property) = carried.filter(|_| takes) {
+                    let mut told = vec![self.tree.objects[index].handle.as_str()];
+                    told.extend(&path[..path.len() - 1]);
+                    told.push(property);
+                    self.told(&mut handler, &told);
+                }
+                handler
             }
             None => {
                 let property = self.tree.property(self.types, index, &path).unwrap_or_default();
@@ -630,12 +657,15 @@ impl<'a, 's> Lower<'a, 's> {
         } else {
             (None, path)
         };
+        // A target only the running program knows is given to what is
+        // changed of it, for the names that are its own.
+        let given: &[&str] = if self.tree.aimed(span.start) { &[names::TARGET] } else { &[] };
         let value = match value {
-            QmlBindingValue::Expression(expression) => b.arrow(&[], expression),
-            QmlBindingValue::Statement(statement) => b.arrow_block(&[], self.worth(statement)),
+            QmlBindingValue::Expression(expression) => b.arrow(given, expression),
+            QmlBindingValue::Statement(statement) => b.arrow_block(given, self.worth(statement)),
             value => {
                 let value = self.value(value, Property::default());
-                b.arrow(&[], value)
+                b.arrow(given, value)
             }
         };
         let mut entry = vec![b.string(&path.join(".")), value];
@@ -673,7 +703,14 @@ impl<'a, 's> Lower<'a, 's> {
             }
             return;
         }
-        built.properties.push((name.to_string(), default_of(b, &declared, type_name.is_list)));
+        let initial = match typed(&declared, type_name.is_list) {
+            Some(kind) => {
+                self.uses.kernel.insert(kind);
+                b.id(kind)
+            }
+            None => default_of(b, &declared, type_name.is_list),
+        };
+        built.properties.push((name.to_string(), initial));
         if property.is_required {
             built.required.push(name.to_string());
         }
@@ -716,10 +753,19 @@ impl<'a, 's> Lower<'a, 's> {
     fn function(&mut self, mut function: ArenaBox<'a, Function<'a>>, index: usize, built: &mut Built<'a>) {
         let Some(name) = function.id.as_ref().map(|id| id.name.to_string()) else { return };
         function.r#type = FunctionType::FunctionExpression;
-        let expression = Expression::FunctionExpression(function);
+        let mut expression = Expression::FunctionExpression(function);
         // In a `Connections`, `function onClicked() { }` is a handler of its
         // target's signal.
-        if self.is_class(index, "QQmlConnections") && types::handled(&name).is_some() {
+        if self.is_class(index, "QQmlConnections")
+            && let Some(signal) = types::handled(&name)
+        {
+            let tree = self.tree;
+            // What the signal carries is known of a target named by its id.
+            if let Some(target) = tree.target(index)
+                && let Some(property) = tree.carried(self.types, target, &signal)
+            {
+                self.told(&mut expression, &[tree.objects[target].handle.as_str(), property]);
+            }
             built.attributes.push(self.b.attr(&name, expression));
         } else {
             built.functions.push((name, expression));
@@ -757,6 +803,27 @@ impl<'a, 's> Lower<'a, 's> {
                 b.void_0()
             }
         }
+    }
+
+    /// `(text = label.text) => ...`: a handler of a change Qt tells with what
+    /// the property now is. The runtime tells of a property's change and of
+    /// nothing more, so the argument is the property when nothing is given;
+    /// a signal the runtime emits itself gives what it carries.
+    fn told(&mut self, handler: &mut Expression<'a>, path: &[&str]) {
+        let b = self.b;
+        let parameters = match handler {
+            Expression::ArrowFunctionExpression(arrow) => &mut arrow.params,
+            Expression::FunctionExpression(function) => &mut function.params,
+            _ => return,
+        };
+        let Some(parameter) = parameters.items.first_mut() else { return };
+        if parameter.initializer.is_some() || !matches!(parameter.pattern, BindingPattern::BindingIdentifier(_)) {
+            return;
+        }
+        let Some((object, rest)) = path.split_first() else { return };
+        self.uses.handles.insert((*object).to_string());
+        let value = rest.iter().fold(b.id(object), |value, name| b.member(value, name));
+        parameter.initializer = Some(ArenaBox::new_in(value, &b.allocator()));
     }
 
     fn statements(&self, statement: Statement<'a>) -> ArenaVec<'a, Statement<'a>> {
@@ -806,24 +873,37 @@ impl<'a, 's> Lower<'a, 's> {
     fn key(&mut self, expression: Expression<'a>) -> Expression<'a> {
         let b = self.b;
         let Expression::StaticMemberExpression(member) = &expression else { return expression };
-        // `ListView.SnapMode.SnapOneItem`: the key by the name of its enum.
-        let (object, scope) = match &member.object {
-            Expression::StaticMemberExpression(scope) => (&scope.object, Some(scope.property.name.as_str())),
-            object => (object, None),
-        };
-        let Expression::Identifier(object) = object else { return expression };
-        let (name, key) = (object.name.as_str(), member.property.name.as_str());
-        let is_key = key.starts_with(|c: char| c.is_ascii_uppercase())
-            && match self.types.find(&[name]) {
-                Some(Found { kind: Kind::Qt(ty), origin: Origin::Module(_) }) => {
-                    ty.enum_value(key).is_some_and(|value| {
-                        let enumeration = value.enumeration;
-                        scope.is_none_or(|scope| scope == enumeration.name || Some(scope) == enumeration.alias)
-                    })
+        let key = member.property.name.as_str();
+        let mut path = Vec::new();
+        let mut object = &member.object;
+        loop {
+            match object {
+                Expression::StaticMemberExpression(inner) => {
+                    path.push(inner.property.name.as_str());
+                    object = &inner.object;
                 }
-                Some(_) => false,
-                None => name == "Qt" && scope.is_none(),
+                Expression::Identifier(identifier) => {
+                    path.push(identifier.name.as_str());
+                    break;
+                }
+                _ => return expression,
+            }
+        }
+        path.reverse();
+        // `T.Label.ElideRight`: a type of a namespace is named by both.
+        let named = if self.types.namespace(path[0]).is_some() { 2 } else { 1 };
+        // `ListView.SnapMode.SnapOneItem`: the key by the name of its enum.
+        let (name, scope) = match path.split_at_checked(named) {
+            Some((name, [])) => (name, None),
+            Some((name, [scope])) => (name, Some(*scope)),
+            _ => return expression,
+        };
+        let is_key = key.starts_with(|c: char| c.is_ascii_uppercase())
+            && match self.types.find(name) {
+                Some(found) => self.types.is_key(&found.kind, scope, key),
+                None => name == ["Qt"] && scope.is_none(),
             };
+        let name = name.join("$");
         if !is_key {
             return expression;
         }
@@ -896,15 +976,30 @@ fn qt_property(ty: &'static qt::Type, path: &[&str]) -> Option<Property> {
     Some(property)
 }
 
-/// What a declared property is before anything is bound to it.
+/// The runtime's name for a property of a type that what it is given is
+/// made into: `property int hours` holds an int, whatever it is assigned.
+fn typed(type_name: &str, is_list: bool) -> Option<&'static str> {
+    if is_list {
+        return None;
+    }
+    match type_name {
+        "int" => Some("$int"),
+        "real" | "double" | "float" => Some("$real"),
+        "bool" => Some("$bool"),
+        "string" => Some("$string"),
+        "color" => Some("$color"),
+        _ => None,
+    }
+}
+
+/// What a declared property of any other type is before anything is bound
+/// to it.
 fn default_of<'a>(b: B<'a>, type_name: &str, is_list: bool) -> Expression<'a> {
     if is_list {
         return b.array([]);
     }
     match type_name {
-        "int" | "real" | "double" | "float" => b.number(0.0),
-        "bool" => b.boolean(false),
-        "string" | "url" => b.string(""),
+        "url" => b.string(""),
         // An object that is not there yet.
         name if name.starts_with(|c: char| c.is_ascii_uppercase()) => b.null(),
         _ => b.void_0(),
@@ -943,4 +1038,24 @@ fn children_target(root: &QmlObject<'_>) -> Option<String> {
             _ => None,
         }
     })
+}
+
+/// Whether a script names `name`.
+fn mentions(value: &QmlBindingValue<'_>, name: &str) -> bool {
+    struct Mentions<'n> {
+        name: &'n str,
+        found: bool,
+    }
+    impl<'a> Visit<'a> for Mentions<'_> {
+        fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+            self.found |= identifier.name == self.name;
+        }
+    }
+    let mut mentions = Mentions { name, found: false };
+    match value {
+        QmlBindingValue::Expression(expression) => mentions.visit_expression(expression),
+        QmlBindingValue::Statement(statement) => mentions.visit_statement(statement),
+        QmlBindingValue::Object(_) | QmlBindingValue::Objects(_) => {}
+    }
+    mentions.found
 }

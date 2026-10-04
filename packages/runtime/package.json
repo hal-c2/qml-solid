@@ -11,6 +11,8 @@
     "./QtQuick/Effects": "./QtQuick/Effects/index.js",
     "./QtQuick/Layouts": "./QtQuick/Layouts/index.js",
     "./QtQuick/Shapes": "./QtQuick/Shapes/index.js",
+    "./QtQuick/Timeline": "./QtQuick/Timeline/index.js",
+    "./QtQuick/VectorImage": "./QtQuick/VectorImage/index.js",
     "./QtQuick/Window": "./QtQuick/Window/index.js",
     "./QtQuick/Particles": "./QtQuick/Particles/index.js",
     "./QtQuick/Templates": "./QtQuick/Templates/index.js",
@@ -28,13 +30,18 @@
     "./QtQuick3D": "./QtQuick3D/index.js",
     "./QtQuick3D/Helpers": "./QtQuick3D/Helpers/index.js",
     "./QtQuick3D/Helpers/impl": "./QtQuick3D/Helpers/impl/index.js",
+    "./QtQuick3D/Xr": "./QtQuick3D/Xr/index.js",
+    "./QtQuick3D/Physics": "./QtQuick3D/Physics/index.js",
     "./QtMultimedia": "./QtMultimedia/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtQml/Models": "./QtQml/Models/index.js",
     "./QtQml/XmlListModel": "./QtQml/XmlListModel/index.js",
     "./QtCore": "./QtCore/index.js",
     "./QtWebSockets": "./QtWebSockets/index.js",
+    "./QtCharts": "./QtCharts/index.js",
+    "./QtGraphs": "./QtGraphs/index.js",
     "./QtPositioning": "./QtPositioning/index.js",
+    "./QtSensors": "./QtSensors/index.js",
     "./QtLocation": "./QtLocation/index.js",
     "./Qt/labs/settings": "./Qt/labs/settings/index.js",
     "./Qt/labs/folderlistmodel": "./Qt/labs/folderlistmodel/index.js",
@@ -54,6 +61,7 @@
     "vite": "^8.0.0"
   },
   "dependencies": {
+    "physx-js-webidl": "2.8.0",
     "sql.js": "^1.14.2"
   }
 }
