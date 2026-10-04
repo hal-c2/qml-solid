@@ -323,6 +323,52 @@ impl<'a> B<'a> {
         Statement::new_return_statement(SPAN, Some(argument), &self.ast())
     }
 
+    /// What a script is worth is what its last statement is: `if (a) { b }
+    /// else { c }` returns `b` or `c`.
+    pub(crate) fn returning(&self, statement: &mut Statement<'a>) {
+        match statement {
+            Statement::ExpressionStatement(_) => {
+                let empty = Statement::new_empty_statement(SPAN, &self.ast());
+                if let Statement::ExpressionStatement(taken) = std::mem::replace(statement, empty) {
+                    *statement = self.return_(taken.unbox().expression);
+                }
+            }
+            Statement::BlockStatement(block) => {
+                if let Some(last) = block.body.last_mut() {
+                    self.returning(last);
+                }
+            }
+            Statement::IfStatement(branch) => {
+                self.returning(&mut branch.consequent);
+                if let Some(alternate) = &mut branch.alternate {
+                    self.returning(alternate);
+                }
+            }
+            Statement::TryStatement(tried) => {
+                if let Some(last) = tried.block.body.last_mut() {
+                    self.returning(last);
+                }
+                if let Some(last) = tried.handler.as_mut().and_then(|handler| handler.body.body.last_mut()) {
+                    self.returning(last);
+                }
+            }
+            Statement::SwitchStatement(switch) => {
+                for case in &mut switch.cases {
+                    // `case 1: a; break;` is worth `a`.
+                    if matches!(case.consequent.last(), Some(Statement::BreakStatement(_)))
+                        && case.consequent.len() > 1
+                    {
+                        case.consequent.pop();
+                    }
+                    if let Some(last) = case.consequent.last_mut() {
+                        self.returning(last);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn const_pattern(&self, pattern: BindingPattern<'a>, init: Expression<'a>) -> Statement<'a> {
         let declarator = VariableDeclarator::new(SPAN, pattern, None, Some(init), false, &self.ast());
         Statement::VariableDeclaration(VariableDeclaration::boxed(

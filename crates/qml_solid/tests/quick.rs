@@ -862,3 +862,29 @@ Item {
     );
     assert_lacks(&code, "$default");
 }
+
+#[test]
+fn a_script_is_worth_its_last_statement() {
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    id: item
+    property bool wide
+    width: { var twice = height * 2; twice }
+    height: if (wide) { 10 } else if (parent) { 20 } else 30
+    x: switch (width) { case 1: 5; break; default: 7 }
+    onWidthChanged: { height }
+    states: State { PropertyChanges { target: item; y: { if (wide) 1; else 2 } } }
+}"#,
+    );
+    assert_contains(&code, "return twice;");
+    assert_contains(&code, "return 10;");
+    assert_contains(&code, "return 20;");
+    assert_contains(&code, "else return 30;");
+    assert_contains(&code, "return 5;");
+    assert_contains(&code, "return 7;");
+    assert_contains(&code, "if (item.wide) return 1;");
+    assert_contains(&code, "else return 2;");
+    assert_lacks(&code, "return item.height;");
+    assert_lacks(&code, "break;");
+}

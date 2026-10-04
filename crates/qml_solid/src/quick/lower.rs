@@ -582,7 +582,7 @@ impl<'a, 's> Lower<'a, 's> {
         };
         let value = match value {
             QmlBindingValue::Expression(expression) => b.arrow(&[], expression),
-            QmlBindingValue::Statement(statement) => b.arrow_block(&[], self.statements(statement)),
+            QmlBindingValue::Statement(statement) => b.arrow_block(&[], self.worth(statement)),
             value => {
                 let value = self.value(value, Property::default());
                 b.arrow(&[], value)
@@ -713,13 +713,22 @@ impl<'a, 's> Lower<'a, 's> {
         }
     }
 
+    /// The body of a function that gives what the script is worth.
+    fn worth(&self, statement: Statement<'a>) -> ArenaVec<'a, Statement<'a>> {
+        let mut statements = self.statements(statement);
+        if let Some(last) = statements.last_mut() {
+            self.b.returning(last);
+        }
+        statements
+    }
+
     fn value(&mut self, value: QmlBindingValue<'a>, property: Property) -> Expression<'a> {
         let b = self.b;
         match value {
             QmlBindingValue::Expression(expression) if property.is_url => self.url(expression),
             QmlBindingValue::Expression(expression) => expression,
             // A block is the body of a function whose result is the value.
-            QmlBindingValue::Statement(statement) => b.iife(self.statements(statement)),
+            QmlBindingValue::Statement(statement) => b.iife(self.worth(statement)),
             // `transitions: Transition { }` is a list of one.
             QmlBindingValue::Object(object) if property.is_list => b.array([self.object_value(object)]),
             QmlBindingValue::Object(object) => self.object_value(object),
