@@ -392,3 +392,28 @@ test("a body is taken up, carried and let go as a program in Qt does it", async 
   // weighing as the ball, and a box that is only denser.
   near(seen.pushed, [[10.743, 85.944, 45]], "pushed", 0.002);
 });
+
+test("a body is made kinematic and let go, turned about a pivot, and told of what does not move", async ({ page }) => {
+  await begin(page, "physicsswitch");
+  const { seen, told, heard } = await until(page, 240);
+  // Frames 19 to 24 and 39 to 44. Made kinematic in frame 20, a falling
+  // body is where `kinematicPosition` says from frame 22; let go in frame
+  // 40, it falls from there, from rest, from frame 42.
+  near(seen.turning, [983.225, 981.361, 979.399, 500, 500, 500, 500, 500, 500, 499.902, 499.706, 499.411], "turning", 0.002);
+  // A kinematic body with a pivot is told where that puts it: its
+  // `position` is not its `kinematicPosition`, and its `pivot` stays nothing.
+  near(seen.arm, [[[0, 100, 2000], [0, 0, 90], [0, 0, 0], [0, 100, 2000]]], "arm", 0.002);
+  // A ball lies on the end of the slab that stands there.
+  near(seen.ball, [[0, 160, 2000]], "ball", 0.002);
+  // The first each body hears of another. Two that a program moves are both
+  // where `position` says for the first frame, in each other; one of them
+  // reaches the body nothing moves in frame 37. Qt tells of each touch
+  // when it begins, and not while it lasts.
+  expect(told).toEqual([
+    [1, "pusher", "held"],
+    [1, "held", "pusher"],
+    [37, "pusher", "post"],
+    [37, "post", "pusher"],
+  ]);
+  expect(heard).toBe(6);
+});
