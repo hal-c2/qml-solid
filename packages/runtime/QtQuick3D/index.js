@@ -3,6 +3,7 @@ export { Buffer, BufferInput, Command, Effect, Pass, SetUniformValue, Shader, Te
 export { Geometry } from "./Geometry.js";
 export { InstanceList, InstanceListEntry, Instancing } from "./instancing.js";
 export { Node, Object3D } from "./Node.js";
+export { Quaternion } from "./Quaternion.js";
 export { Repeater3D } from "./Repeater3D.js";
 export {
   Camera,
