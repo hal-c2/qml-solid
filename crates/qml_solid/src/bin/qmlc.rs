@@ -165,6 +165,23 @@ fn project(path: &Path, project_root: Option<&Path>, with: &[PathBuf]) -> Projec
         }
         pending.extend(project.directories());
     }
+    // A file may be made by one anywhere in the program that names it by its
+    // path, and finds in that one what it does not have itself: the rest of
+    // the program is there for what it names.
+    if let (Ok(base), Ok(path)) = (root.canonicalize(), path.canonicalize()) {
+        let project_root = project_root.map_or_else(|| self::project_root(&path), Path::to_path_buf);
+        let mut found = Vec::new();
+        qml_files(&project_root, &base, &mut found);
+        found.sort();
+        for file in found {
+            let Some(key) = file.strip_suffix(".qml") else { continue };
+            if !project.has(key) {
+                if let Ok(source) = std::fs::read_to_string(base.join(&file)) {
+                    let _ = project.add(key, &source);
+                }
+            }
+        }
+    }
     project
 }
 
