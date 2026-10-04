@@ -1391,8 +1391,8 @@ export const TableView = defineType("TableView", Flickable, {
           schedule(VIEWPORT_ONLY);
         },
         // A delegate has its new data when the model has said so.
-        data: () => {
-          t.cells.forEach(changed);
+        data(within, roles) {
+          for (const cell of t.cells.values()) if (within(cell.$row, cell.$column)) changed(cell, roles);
           settle();
         },
       },

@@ -1,5 +1,6 @@
 // What a TableView shows: a model of rows and columns, whatever it was
 // given as, and what a delegate is told of its cell.
+import { untrack } from "solid-js";
 import { columnsOf, modelIndex, moved, rowsOf, touch, track } from "./model.js";
 
 const NONE = 0;
@@ -97,12 +98,17 @@ const Cell = Object.create(null, {
   editing: { value: false },
 });
 
+// What a cell reads of one role, which a model may say alone has changed.
+const ofRole = (name) => `role ${name}`;
+
 function role(proto, name, read, write) {
   if (OWN.includes(name)) return;
+  const own = ofRole(name);
   Object.defineProperty(proto, name, {
     get() {
       track(this, "at");
       track(this, "data");
+      track(this, own);
       return read(this.$row, this.$column, name);
     },
     set(value) {
@@ -126,6 +132,7 @@ function data(proto, name, read) {
 }
 
 export const SAME = (line) => line;
+const EVERYWHERE = () => true;
 const inserted = (index, count) => (line) => (line >= index ? line + count : line);
 const removed = (index, count) => (line) => (line < index ? line : line < index + count ? -1 : line - count);
 
@@ -155,17 +162,41 @@ export class Table {
       });
       proto.hasModelChildren = false;
     } else if (kind === TABLE) {
-      const names = source.roleNames?.() ?? ROLES;
-      const numbers = Object.keys(names);
-      const read = (number) => (row, column) => source.data(source.index(row, column), number);
-      for (const key of numbers) {
-        const number = Number(key);
-        role(proto, String(names[key]), read(number), (row, column, name, value) =>
-          source.setData?.(source.index(row, column), value, number),
-        );
-      }
-      data(proto, "modelData", numbers.length === 1 ? read(Number(numbers[0])) : () => undefined);
+      // The names of its roles, by number.
+      this.names = {};
+      this.learn();
+      // A table of one role is also a table of values.
+      data(proto, "modelData", (row, column) => {
+        const numbers = Object.keys(this.names);
+        return numbers.length === 1 ? this.read(row, column, Number(numbers[0])) : undefined;
+      });
       proto.hasModelChildren = false;
+    }
+  }
+
+  // What a table model has in a cell for a role. A delegate reads it again
+  // when the model says it changed, as in Qt, and not when what the model
+  // made it from did: its cell may be gone by then, for the model to say.
+  read(row, column, role) {
+    const source = this.source;
+    return untrack(() => source.data(source.index(row, column), role));
+  }
+
+  // The roles a table model has now: one that learns them from its rows has
+  // none until it has a row.
+  learn() {
+    const source = this.source;
+    const names = source.roleNames?.() ?? ROLES;
+    for (const key of Object.keys(names)) {
+      if (key in this.names) continue;
+      const number = Number(key);
+      this.names[key] = String(names[key]);
+      role(
+        this.proto,
+        this.names[key],
+        (row, column) => this.read(row, column, number),
+        (row, column, name, value) => source.setData?.(source.index(row, column), value, number),
+      );
     }
   }
 
@@ -213,9 +244,11 @@ export class Table {
   }
 
   // Tells `listener` of what the model says changed in it: `reset()`,
-  // `rows(shift)`, `columns(shift)`, `moved(rows, columns)` and `data()`,
-  // where a shift gives a row's new number, or -1 for one that is gone.
-  // Gives what stops it.
+  // `rows(shift)`, `columns(shift)`, `moved(rows, columns)` and
+  // `data(within, roles)`, where a shift gives a row's new number, or -1 for
+  // one that is gone, `within(row, column)` says whether a cell is one of
+  // those that changed and `roles` names what changed of it, when the model
+  // said: all of every cell when it did not. Gives what stops it.
   watch(listener) {
     const source = this.source;
     if (this.kind === LIST) {
@@ -233,8 +266,14 @@ export class Table {
     // a move the line they are put before, counted while they are there.
     const between = (first, last, before) => (line) => moved(line, first, before > first ? before - (last - first + 1) : before, last - first + 1);
     const heard = {
-      modelReset: () => listener.reset(),
-      rowsInserted: (parent, first, last) => listener.rows(inserted(first, last - first + 1)),
+      modelReset: () => {
+        this.learn();
+        listener.reset();
+      },
+      rowsInserted: (parent, first, last) => {
+        this.learn();
+        listener.rows(inserted(first, last - first + 1));
+      },
       rowsRemoved: (parent, first, last) => listener.rows(removed(first, last - first + 1)),
       columnsInserted: (parent, first, last) => listener.columns(inserted(first, last - first + 1)),
       columnsRemoved: (parent, first, last) => listener.columns(removed(first, last - first + 1)),
@@ -242,7 +281,13 @@ export class Table {
       columnsMoved: (parent, first, last, destination, before) => listener.moved(SAME, between(first, last, before)),
       // Anything may be anywhere.
       layoutChanged: () => listener.moved(),
-      dataChanged: () => listener.data(),
+      dataChanged: (from, to, roles) => {
+        if (!from?.valid || !to?.valid) return listener.data(EVERYWHERE);
+        const within = (row, column) => row >= from.row && row <= to.row && column >= from.column && column <= to.column;
+        const names = [];
+        for (const number of roles ?? []) if (number in this.names) names.push(this.names[number]);
+        listener.data(within, names.length === (roles?.length ?? 0) ? names : []);
+      },
     };
     const undo = [];
     for (const name of Object.keys(heard)) {
@@ -280,5 +325,10 @@ export function depend(source) {
   return kind === TABLE ? rowsOf(source) + columnsOf(source) : 0;
 }
 
-export const changed = (cell) => touch(cell, "data");
+// What a delegate read of its cell is read again: all of it, or the roles
+// that are named.
+export function changed(cell, roles) {
+  if (!roles?.length) touch(cell, "data");
+  else for (const name of roles) touch(cell, ofRole(name));
+}
 export const resized = (table) => touch(table, "size");
