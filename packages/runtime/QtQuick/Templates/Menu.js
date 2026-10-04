@@ -14,7 +14,7 @@ import { ObjectModel } from "../model.js";
 import { after, cancel, cursor, rehover } from "../pointer.js";
 import { AbstractButton } from "./AbstractButton.js";
 import { Action, ICON } from "./Action.js";
-import { house, reparent, repeat, within } from "./Container.js";
+import { house, reparent, repeat, shows, within } from "./Container.js";
 import { keeps } from "./Control.js";
 import { overlayOf, Popup, PopupFocusReason, stacked } from "./Popup.js";
 
@@ -309,7 +309,7 @@ function popupAt(self, item) {
 }
 
 // The key a text names with `&`: Qt's `QKeySequence::mnemonic`.
-function mnemonic(text) {
+export function mnemonic(text) {
   for (let at = text.indexOf("&"); at >= 0 && at < text.length - 1; at = text.indexOf("&", at + 1)) {
     const next = text[at + 1];
     if (next !== "&") return next.toUpperCase().charCodeAt(0);
@@ -537,7 +537,7 @@ export const Menu = defineType("Menu", Popup, {
       () => {
         const item = self.contentItem;
         model.$ordered();
-        return [within(item), item?.$v !== undefined];
+        return [within(item), shows(item, model)];
       },
       ([into, viewed]) => house(state.housed, model.$objects, into, viewed),
     );

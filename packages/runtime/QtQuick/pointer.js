@@ -382,6 +382,10 @@ function ungrab(point, cancelled) {
 // over after that, in the order it came over them: Qt's. Something that
 // hovers hides what is under it from the mouse, but not what it is inside of.
 const over = [];
+// Whether they are being told, and whether what was shown meanwhile asked
+// for it again.
+let telling = false;
+let again = false;
 
 function hover(point, hits) {
   over.length = 0;
@@ -410,14 +414,23 @@ function hover(point, hits) {
     hovered.splice(index, 1);
   }
   for (let index = 0; index < over.length; index++) if (!hovered.includes(over[index])) hovered.push(over[index]);
-  for (let index = 0; index < over.length; index++) over[index].$hover(point, true);
-  for (let index = 0; index < left.length; index++) left[index].$hover(point, false);
+  telling = true;
+  try {
+    for (let index = 0; index < over.length; index++) over[index].$hover(point, true);
+    for (let index = 0; index < left.length; index++) left[index].$hover(point, false);
+  } finally {
+    telling = false;
+  }
+  if (!again) return;
+  again = false;
+  rehover();
 }
 
 // What is under a mouse that has not moved is another thing when something
 // is shown there: Qt asks again with every frame, and here whoever showed it
 // asks.
 export function rehover() {
+  if (telling) return void (again = true);
   for (const point of points.values()) {
     if (point.type === "touch" || point.down || !point.scene?.isConnected) continue;
     if (hovers > 0 || point.hovered.length) hover(point, hitsAt(point.scene, point.clientX, point.clientY, null));

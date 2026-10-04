@@ -65,12 +65,15 @@ function leave(window, scope, changed) {
   window.active = null;
 }
 
-// Qt's `setFocusInScope`.
+const enabled = (item) => untrack(() => item.enabled) !== false;
+
+// Qt's `setFocusInScope`. An item that is not enabled has focus without the
+// keys: they stay with its scope.
 function give(window, scope, item, changed) {
   let active = null;
   if (scope === window ? !window.nowhere : scope.$active) {
-    active = item;
-    while (active.$focusScope && active.$subFocus) active = active.$subFocus;
+    active = enabled(item) ? item : scope;
+    while (active.$focusScope && active.$subFocus && enabled(active.$subFocus)) active = active.$subFocus;
     leave(window, scope, changed);
   }
   const old = scope.$subFocus;
@@ -85,8 +88,8 @@ function give(window, scope, item, changed) {
     forget(item);
   }
   if (!active) return;
-  window.active = active;
-  for (let at = active; at && at !== scope; at = parentOf(at)) {
+  window.active = active === window ? null : active;
+  for (let at = window.active; at && at !== scope; at = parentOf(at)) {
     if ((at !== active && !at.$focusScope) || at.$active) continue;
     at.$active = true;
     changed.push(at, "activeFocus");

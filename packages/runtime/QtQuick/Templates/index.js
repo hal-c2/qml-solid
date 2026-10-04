@@ -18,6 +18,7 @@ export { HorizontalHeaderView, VerticalHeaderView } from "./HeaderView.js";
 export { CheckDelegate, ItemDelegate, RadioDelegate, SwitchDelegate } from "./ItemDelegate.js";
 export { Label } from "./Label.js";
 export { Menu, MenuItem } from "./Menu.js";
+export { MenuBar, MenuBarItem } from "./MenuBar.js";
 export { PageIndicator } from "./PageIndicator.js";
 export { Frame, GroupBox, Page, Pane, ToolBar } from "./Pane.js";
 export { Overlay, Popup } from "./Popup.js";

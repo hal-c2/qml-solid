@@ -17,6 +17,11 @@ const next = (version) => version + 1;
 // Where a content item's children are: a Flickable's are in its content.
 export const within = (item) => item?.$contentItem ?? item ?? null;
 
+// Whether the content item shows the items itself: a view does, and so does
+// a Repeater in it over the model, whose items are its parent's children.
+export const shows = (item, model) =>
+  item?.$v !== undefined || within(item)?.$static?.some((child) => child.$repeat && child.model === model) === true;
+
 export function reparent(item, parent) {
   if (item.$parent === parent) return;
   item.$parent = parent;
@@ -212,6 +217,11 @@ export const Container = defineType("Container", Control, {
     $isContent() {
       return true;
     },
+    // The item that shows what is declared in it: a menu bar has one for
+    // each menu.
+    $itemFor(child) {
+      return child;
+    },
     // What the content would like to be.
     $contentWidth() {
       return this.contentItem?.implicitWidth ?? 0;
@@ -244,7 +254,7 @@ export const Container = defineType("Container", Control, {
       () => {
         const item = self.contentItem;
         model.$ordered();
-        return [within(item), item?.$v !== undefined];
+        return [within(item), shows(item, model)];
       },
       ([into, viewed]) => house(self.$items.housed, model.$objects, into, viewed),
     );
@@ -279,7 +289,8 @@ export const Container = defineType("Container", Control, {
   adopt(self, props) {
     const state = self.$items;
     const model = self.$model;
-    for (const child of contents(props, self)) {
+    for (const declared of contents(props, self)) {
+      const child = self.$itemFor(declared);
       if (child?.$siblings) state.declared.push(child);
       else if (child?.$node) {
         if (self.$isContent(child)) {
