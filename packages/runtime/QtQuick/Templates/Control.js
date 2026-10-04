@@ -138,7 +138,7 @@ export const within = (self, x, y) =>
 // A control hovers when the control it is in does, and at the top when the
 // device has something to hover with. Qt asks any item around it that has a
 // `hoverEnabled`.
-function hovering(self) {
+export function hovering(self) {
   for (let parent = self.parent; parent; parent = parent.parent) {
     const enabled = parent.hoverEnabled;
     if (typeof enabled === "boolean") return enabled;
