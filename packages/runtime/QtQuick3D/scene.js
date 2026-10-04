@@ -15,7 +15,7 @@
 // (`baseColorSingleChannelEnabled` and the like), and the colours of a
 // mesh's corners mask nothing.
 import { createSignal, untrack } from "solid-js";
-import { defineType, derived, effect, flush, located } from "../object.js";
+import { defineType, derived, effect, flush, group, located } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";
 import { color } from "../QtQuick/color.js";
 import * as math from "./math.js";
@@ -23,6 +23,7 @@ import { read } from "./mesh.js";
 import { Node, Object3D } from "./Node.js";
 import { primitive } from "./primitives.js";
 import { radiance } from "./TextureData.js";
+import { vectors } from "./vectors.js";
 
 const WRITABLE = { ownedWrite: true };
 
@@ -331,7 +332,7 @@ export const DefaultMaterial = defineType("DefaultMaterial", Material, {
     blendMode: 0,
     diffuseColor: "#ffffff",
     diffuseMap: null,
-    emissiveFactor: new Vector3d(0, 0, 0),
+    emissiveFactor: group({ x: 0, y: 0, z: 0 }),
     emissiveMap: null,
     specularReflectionMap: null,
     specularMap: null,
@@ -388,6 +389,8 @@ export const DefaultMaterial = defineType("DefaultMaterial", Material, {
   },
 });
 
+vectors(DefaultMaterial, "emissiveFactor");
+
 const Mask = 1;
 const Blend = 2;
 const Opaque = 3;
@@ -415,7 +418,7 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
     opacityMap: null,
     opacityChannel: 3,
     invertOpacityMapValue: false,
-    emissiveFactor: new Vector3d(0, 0, 0),
+    emissiveFactor: group({ x: 0, y: 0, z: 0 }),
     emissiveMap: null,
     normalMap: null,
     normalStrength: 1,
@@ -516,6 +519,8 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
     };
   },
 });
+
+vectors(PrincipledMaterial, "emissiveFactor");
 
 // A light: its colour times how bright it is, and what it adds to every
 // surface wherever that is (`ambientColor`). One with a `scope` lights, and
@@ -803,7 +808,7 @@ export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
     lightProbe: null,
     probeExposure: 1,
     probeHorizon: 0,
-    probeOrientation: new Vector3d(0, 0, 0),
+    probeOrientation: group({ x: 0, y: 0, z: 0 }),
     skyBoxCubeMap: null,
     skyboxBlurAmount: 0,
     tonemapMode: 1,
@@ -871,3 +876,5 @@ export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
     };
   },
 });
+
+vectors(SceneEnvironment, "probeOrientation");

@@ -1591,3 +1591,23 @@ test("a View3D finds what Qt finds at a place and along a ray", async ({ page })
     near(read, { ...found, none: 0, ray, rays }, calls.join(" "));
   }
 });
+
+test("a vector's members are set one by one, and assigning it as one unbinds them", async ({ page }) => {
+  const told = { old: [0, 0.5, 0], turned: [0, -70, 0], placed: [-50, 0, 0], x: -50 };
+  const states = [
+    [[], [0.5, 0, 1], [187, 0, 255]],
+    [["dark"], [0.5, 0, 0], [187, 0, 0]],
+    [["dark", "whole", "relit"], [0.2, 0.4, 0.6], [123, 169, 203]],
+  ];
+  for (const [calls, glow, colour] of states) {
+    await open(page, "members3d");
+    for (const call of calls) await page.evaluate((name) => window.scene[name](), call);
+    near(await page.evaluate(() => window.scene.read()), { ...told, glow }, calls.join(" "));
+    const points = [
+      [[50, 50], colour],
+      [[150, 50], [0, 187, 0]],
+      [[100, 50], [11, 11, 11]],
+    ];
+    near(await painted(page, points), points.map(([, colour]) => colour), calls.join(" "), 3);
+  }
+});

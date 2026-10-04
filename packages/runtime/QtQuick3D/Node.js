@@ -249,9 +249,11 @@ export const Node = defineType("Node", Object3D, {
       return this.mapDirectionFromScene(node ? node.mapDirectionToScene(local) : local);
     },
   },
-  setup(self) {
+  setup(self, props) {
     self.$spatial = true;
     for (const [name, view] of Object.entries(GROUPS)) self.$groups[name] = Object.create(view, { $self: { value: self } });
+    // `position.x: -3`: a member of the position is the node's `x`.
+    for (const axis of AXES) if (`position$${axis}` in props) slot(self, axis).bind(props, `position$${axis}`);
     self.$local = kept(self, () => math.placed([self.x, self.y, self.z], three(self.scale), three(self.pivot), turn(self)));
     self.$world = kept(self, () => {
       const above = self.parent;
