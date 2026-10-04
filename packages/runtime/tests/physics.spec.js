@@ -354,3 +354,41 @@ test("a body that goes is gone from under another, and not from a trigger's coun
     [243, "exited", "visitor", 1],
   ]);
 });
+
+test("a body is taken up, carried and let go as a program in Qt does it", async ({ page }) => {
+  await begin(page, "physicsheld");
+  const { seen, zoned, taken, own } = await until(page, 120);
+  // A shape made in a list of the body's own is inside that body.
+  expect(own).toBe(true);
+  // A character that asks for it is told of by a trigger it walks through;
+  // a trigger a hundredth the size, in a node that is turned, finds what
+  // falls into it, and is left when that has been let go and fallen out.
+  expect(zoned).toEqual([
+    [29, "in", "walker"],
+    [74, "out", "walker"],
+    [79, "entered", "Torch"],
+    [113, "exited", "Torch"],
+  ]);
+  expect(taken).toBe(79);
+  // Frames 80 to 105: frame, where, and how turned. Without shapes and not
+  // the world's, the body is where the program puts it each frame; in the
+  // frame after the last of those Qt has it a frame back, and so does this.
+  // With both given back in frame 99 it falls from frame 101.
+  const turned = [0.966, 0, 0, 0.259];
+  const carried = Array.from({ length: 19 }, (_, index) => [80 + index, 10 * (index + 1), 700, 0, ...turned]);
+  const after = [
+    [99, 180, 700],
+    [100, 190, 700],
+    [101, 190, 699.902],
+    [102, 190, 699.706],
+    [103, 190, 699.411],
+    [104, 190, 699.019],
+    [105, 190, 698.529],
+  ].map(([frame, x, y]) => [frame, x, y, 0, ...turned]);
+  near(seen.torch, [...carried, ...after], "torch", 0.002);
+  // Where three bodies are in frame 50, pushed alike in frame 40, after
+  // the world's density doubled in frame 30: a ball grown to twice as wide,
+  // a ball given a box in its place, which Qt goes on colliding and
+  // weighing as the ball, and a box that is only denser.
+  near(seen.pushed, [[10.743, 85.944, 45]], "pushed", 0.002);
+});

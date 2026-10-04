@@ -112,8 +112,11 @@ function scaleOf(node, shape) {
 }
 
 // Makes the body's shapes again when one of them is something else than it
-// was, or somewhere else in the body: all of them, as Qt does. Whether it
-// did.
+// was, or somewhere else in the body, or there are more or fewer of them:
+// all of them, as Qt does. Whether it did. Other shapes given in the place
+// of as many, each where the one before it was, are not seen as a change, in
+// Qt or here: the body is the shapes it had until one of the new ones
+// changes.
 function shape(body) {
   const PhysX = engine();
   const { node, actor } = body;
@@ -126,11 +129,20 @@ function shape(body) {
     forms.push(form);
     poses.push(form ? one.$pose(scale) : null);
   }
-  const unchanged = (form, index) => {
-    const had = body.forms[index];
-    return form && had ? close(form, had) && close(poses[index], body.poses[index]) : form === had;
+  // What each shape was when the body last looked at it.
+  const known = (body.known ??= new WeakMap());
+  const changed = (one, index) => {
+    const pose = poses[index];
+    const was = body.poses[index];
+    if (pose && was ? !close(pose, was) : pose !== was) return true;
+    if (!known.has(one)) return false;
+    const form = forms[index];
+    const had = known.get(one);
+    return form && had ? !close(form, had) : form !== had;
   };
-  if (body.forms?.length === forms.length && forms.every(unchanged)) return false;
+  const dirty = body.forms?.length !== forms.length || wanted.some(changed);
+  wanted.forEach((one, index) => known.set(one, forms[index]));
+  if (!dirty) return false;
   for (const made of body.shapes) {
     actor.detachShape(made);
     made.release();
