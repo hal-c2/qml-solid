@@ -131,11 +131,19 @@ export const TextureData = defineType("TextureData", Object3D, {
     const [held, setHeld] = createSignal({ bytes: null, width: 0, height: 0, depth: 0, format: Format.RGBA8, sheer: false }, WRITABLE);
     let made = null;
     self.$held = held;
+    // Qt says a picture has changed when it next takes it up to draw it:
+    // once for all that was changed since.
+    let told = false;
     self.$hold = (changed) => {
       setHeld({ ...held(), ...changed });
       made = null;
       flush();
-      self.textureDataNodeDirty();
+      if (told) return;
+      told = true;
+      queueMicrotask(() => {
+        told = false;
+        self.textureDataNodeDirty();
+      });
     };
     // One picture for as long as nothing of it changes, so that what the
     // renderer made of it is kept.
