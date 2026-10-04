@@ -74,6 +74,7 @@
       "content": 0.95
     },
     "toycustomizer": {},
-    "windowembedding": {}
+    "windowembedding": {},
+    "xr_physicsbase_teleportation": {}
   }
 }
