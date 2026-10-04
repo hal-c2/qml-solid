@@ -27,16 +27,13 @@ layout(location = 1) in vec3 a_place;
 layout(location = 2) in vec4 a_turn;
 layout(location = 3) in vec4 a_color;
 layout(location = 4) in vec4 a_look;
-layout(location = 5) in vec2 a_frame;
 uniform mat4 u_world;
 uniform mat4 u_view;
 uniform mat4 u_projection;
 uniform int u_mode;
-uniform vec2 u_offset;
 out vec2 v_at;
 out vec4 v_color;
 out vec4 v_look;
-out vec2 v_frame;
 
 vec3 turned(vec4 q, vec3 v) {
   return v + 2.0 * cross(q.yzw, cross(q.yzw, v) + q.x * v);
@@ -45,7 +42,6 @@ vec3 turned(vec4 q, vec3 v) {
 void main() {
   v_color = a_color;
   v_look = a_look;
-  v_frame = a_frame;
   if (u_mode == 2) {
     // A ribbon's corners are where the eye sees them already.
     v_at = a_corner;
@@ -53,14 +49,15 @@ void main() {
     return;
   }
   v_at = a_corner + 0.5;
+  // Which row of the colour table is its: Qt's own sum, of how many are
+  // drawn before it.
+  v_look.z = fract(sin(float(gl_InstanceID) * 12.9898) * 43758.5453);
   vec3 across = vec3(a_corner * a_look.x, 0.0);
-  // What it is moved aside by is not turned with it.
-  vec3 aside = vec3(u_offset * a_look.x, 0.0);
   vec4 place = u_world * vec4(a_place, 1.0);
-  if (u_mode == 0) place.xyz += turned(a_turn, across) + aside;
+  if (u_mode == 0) place.xyz += turned(a_turn, across);
   place = u_view * place;
   // Before the eye it is turned the other way round, as Qt has it.
-  if (u_mode == 1) place.xyz += turned(vec4(a_turn.x, -a_turn.yzw), across) + aside;
+  if (u_mode == 1) place.xyz += turned(vec4(a_turn.x, -a_turn.yzw), across);
   gl_Position = u_projection * place;
 }`;
 
@@ -71,15 +68,14 @@ uniform sampler2D u_picture;
 uniform sampler2D u_table;
 uniform bool u_pictured;
 uniform bool u_tabled;
-uniform bool u_blended;
 uniform bool u_straight;
 uniform float u_frames;
+uniform float u_blend;
 uniform float u_opacity;
 uniform int u_tonemap;
 in vec2 v_at;
 in vec4 v_color;
 in vec4 v_look;
-in vec2 v_frame;
 out vec4 color;
 
 vec3 toLinear(vec3 c) {
@@ -109,32 +105,35 @@ vec3 tonemap(vec3 c) {
 }
 
 vec4 pictured(float frame) {
-  vec4 texel = texture(u_picture, vec2((frame + v_at.x) / u_frames, v_at.y));
+  vec4 texel = texture(u_picture, vec2(clamp(frame / u_frames, 0.0, 1.0) + v_at.x / u_frames, v_at.y));
   return vec4(toLinear(texel.rgb), texel.a);
 }
 
 void main() {
   vec4 tint = v_color;
   if (u_tabled) {
-    vec4 texel = texture(u_table, vec2(v_look.y, v_look.z));
+    vec4 texel = texture(u_table, vec2(fract(v_look.y), v_look.z));
     tint *= vec4(toLinear(texel.rgb), texel.a);
   }
   if (u_pictured) {
-    vec4 texel = pictured(v_frame.x);
-    if (u_blended) texel = mix(texel, pictured(v_frame.y), v_look.w);
-    tint *= texel;
+    // How far through the frames it is, as Qt works it out: through one
+    // fewer when one frame goes over into the next, so that the last is
+    // reached and nothing after it.
+    float frame = (u_frames - u_blend) * v_look.w;
+    float between = fract(frame);
+    tint *= mix(pictured(frame - between), pictured(frame - between + 1.0), between * u_blend);
   }
   float alpha = tint.a * u_opacity;
   color = vec4(tonemap(tint.rgb) * (u_straight ? 1.0 : alpha), alpha);
 }`;
 
-const UNIFORMS = ["u_world", "u_view", "u_projection", "u_mode", "u_offset", "u_picture", "u_table", "u_pictured", "u_tabled", "u_blended", "u_straight", "u_frames", "u_opacity", "u_tonemap"];
+const UNIFORMS = ["u_world", "u_view", "u_projection", "u_mode", "u_picture", "u_table", "u_pictured", "u_tabled", "u_straight", "u_frames", "u_blend", "u_opacity", "u_tonemap"];
 
 // What one particle is in the row of numbers a sprite is drawn from: where
-// it is, its turn, its colour, its size with how far through its life it
-// is, which row of the colour table is its own and how far it is between
-// two frames, and the two frames.
-const EACH = 17;
+// it is, its turn, its colour, and its size with how far through its life
+// it is, a place for the row of the colour table that is its own and how
+// far through the frames of its picture it is.
+const EACH = 15;
 // And one corner of a ribbon: where in the picture, where before the eye,
 // the colour, and how far through its life the particle is with its row.
 const CORNER = 13;
@@ -180,7 +179,6 @@ function tools(gl) {
     [2, 4, 3],
     [3, 4, 7],
     [4, 4, 11],
-    [5, 2, 15],
   ].forEach(([location, count, offset]) => {
     gl.enableVertexAttribArray(location);
     gl.vertexAttribPointer(location, count, gl.FLOAT, false, EACH * FLOAT, offset * FLOAT);
@@ -226,26 +224,34 @@ const SingleFrame = 4;
 const Relative = 1;
 const Fill = 2;
 
-// The frame of a sequence a particle shows at an age: the one it starts
-// at, and from there through all of them once in the sequence's time.
-function frames(sequence, seed, datum, age, into, at) {
+const single = Math.fround;
+
+// How far through the frames of a sequence a particle is when it has been
+// for `seconds`: from nought, the beginning of the first, up to one, the
+// end of the last. The sums are Qt's, in numbers of 32 bits as its are.
+function frame(sequence, seed, datum, seconds) {
   const count = Math.max(1, Math.floor(sequence.frameCount));
-  const first = sequence.randomStart ? Math.floor(random(seed, datum.index, FRAME) * count) : Math.floor(sequence.frameIndex);
-  let phase = 0;
   const direction = sequence.animationDirection;
-  if (direction !== SingleFrame) {
-    let whole = sequence.duration < 0 ? datum.life : sequence.duration;
-    if (sequence.durationVariation) whole += sequence.durationVariation * spread(seed, datum.index, FRAME + 1);
-    phase = whole > 0 ? age / whole : 0;
-    phase -= Math.floor(phase);
-    if (direction === Alternate || direction === AlternateReverse) phase = 1 - Math.abs(1 - 2 * phase);
-    if (direction === Reverse || direction === AlternateReverse) phase = 1 - phase;
+  let first = 0;
+  if (sequence.randomStart) first = single(random(seed, datum.index, FRAME));
+  else if (count > 1 && sequence.frameIndex > 0) {
+    const index = Math.min(Math.floor(sequence.frameIndex), count - 1);
+    first = direction === SingleFrame ? single(index / single(count - 1 + 0.0001)) : single(index / count);
   }
-  const frame = first + phase * count;
-  const whole = Math.floor(frame);
-  into[at + 14] = sequence.interpolate ? frame - whole : 0;
-  into[at + 15] = ((whole % count) + count) % count;
-  into[at + 16] = (((whole + 1) % count) + count) % count;
+  // All of them once in the sequence's time, or in the particle's life.
+  let whole = single(datum.life / 1000);
+  if (sequence.duration > 0) {
+    const varied = single(sequence.durationVariation / 1000);
+    whole = Math.max(single(0.001), single(single(sequence.duration / 1000) + single(varied - single(2 * random(seed, datum.index, FRAME + 1) * varied))));
+  }
+  const gone = single(single(seconds) / whole);
+  const nearly = single(0.9999);
+  let through = first;
+  if (direction === Reverse) through = single(single(first + nearly - (gone % 1)) % 1);
+  else if (direction === Alternate) through = Math.abs(single(single(1 + single(first + gone)) % 2) - 1);
+  else if (direction === AlternateReverse) through = Math.abs(single(Math.abs(single(1 + single((single(first + nearly) % 1) - gone))) % 2) - 1);
+  else if (direction !== SingleFrame) through = single(single(first + gone) % 1);
+  return Math.min(nearly, Math.max(0, through));
 }
 
 // The order the particles of a kind are drawn in, the last on top. As Qt
@@ -274,13 +280,16 @@ function sprites(kind, system) {
   const sequence = map ? kind.spriteSequence : null;
   const seed = system.$seed();
   const size = Number(kind.particleScale) || 0;
+  const aside = [Number(kind.offsetX) || 0, Number(kind.offsetY) || 0];
   const order = ordered(kind, alive);
   const rows = new Float32Array(order.length * EACH);
   order.forEach((one, index) => {
     const { datum } = one;
     const at = index * EACH;
-    rows[at] = one.x;
-    rows[at + 1] = one.y;
+    // `offsetX` and `offsetY` move it in the system, by so many times its
+    // own size.
+    rows[at] = one.x + aside[0] * one.scale;
+    rows[at + 1] = one.y + aside[1] * one.scale;
     rows[at + 2] = one.z;
     rows.set(one.turn, at + 3);
     rows[at + 7] = datum.r / 255;
@@ -288,9 +297,8 @@ function sprites(kind, system) {
     rows[at + 9] = datum.b / 255;
     rows[at + 10] = one.a / 255;
     rows[at + 11] = one.scale * size;
-    rows[at + 12] = datum.life > 0 ? Math.min(1, one.age / datum.life) : 0;
-    rows[at + 13] = table ? random(seed, datum.index, TABLE) : 0;
-    if (sequence) frames(sequence, seed, datum, one.age, rows, at);
+    rows[at + 12] = datum.life > 0 ? Math.min(1, Math.max(0, (one.seconds * 1000) / datum.life)) : 0;
+    rows[at + 14] = sequence ? frame(sequence, seed, datum, one.seconds) : 0;
   });
   return {
     rows,
@@ -301,9 +309,6 @@ function sprites(kind, system) {
     blended: Boolean(sequence?.interpolate),
     blend: kind.blendMode,
     mode: kind.billboard ? 1 : 0,
-    // `offsetX` and `offsetY` are in the particle's own size, which the
-    // square is `particleScale` times.
-    offset: size ? [(Number(kind.offsetX) || 0) / size, (Number(kind.offsetY) || 0) / size] : [0, 0],
     far: kind.sortMode === SortDistance,
   };
 }
@@ -526,16 +531,15 @@ export function painted(system, opacity) {
         const corners = ribbons(kind, world, view, projection[11] === 0);
         gl.uniform1i(at.u_mode, 2);
         gl.uniform1f(at.u_frames, 1);
-        gl.uniform1i(at.u_blended, 0);
+        gl.uniform1f(at.u_blend, 0);
         gl.bindVertexArray(own.ribbons);
         gl.bindBuffer(gl.ARRAY_BUFFER, own.corners);
         gl.bufferData(gl.ARRAY_BUFFER, corners, gl.DYNAMIC_DRAW);
         gl.drawArrays(gl.TRIANGLES, 0, corners.length / CORNER);
       } else {
         gl.uniform1i(at.u_mode, kind.mode);
-        gl.uniform2fv(at.u_offset, kind.offset);
         gl.uniform1f(at.u_frames, kind.frames);
-        gl.uniform1i(at.u_blended, kind.blended ? 1 : 0);
+        gl.uniform1f(at.u_blend, kind.blended ? 1 : 0);
         gl.bindVertexArray(own.squares);
         gl.bindBuffer(gl.ARRAY_BUFFER, own.rows);
         gl.bufferData(gl.ARRAY_BUFFER, kind.far ? farthest(kind, away(world, view)) : kind.rows, gl.DYNAMIC_DRAW);

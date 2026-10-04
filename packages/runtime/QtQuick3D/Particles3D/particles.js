@@ -97,6 +97,8 @@ export function evaluate(particle, system, now) {
   const affecting = system.$affecting(particle);
   const { fadeInEffect, fadeOutEffect, fadeInDuration, fadeOutDuration, alignMode } = particle;
   const aim = alignMode === AlignTowardsTarget ? three(particle.alignTargetPosition) : null;
+  // A sprite that faces the eye is not turned towards anything else.
+  const flat = Boolean(particle.$sprite && particle.billboard);
   // The time in seconds, in a number of 32 bits as Qt has it and as the
   // starts are.
   const time = Math.fround(now / 1000);
@@ -107,10 +109,11 @@ export function evaluate(particle, system, now) {
     // A particle that goes backwards is at the end of its way when it
     // starts and at the beginning when its life is over.
     const seconds = (datum.reversed ? datum.life - age : age) / 1000;
-    const current = moved(datum, seconds, affecting, { datum, age, place });
+    const current = moved(datum, seconds, affecting, { datum, age, seconds, place });
     let turn = math.fromEuler(current.rx, current.ry, current.rz);
-    const aligned =
-      alignMode === AlignTowardsStartVelocity
+    const aligned = flat
+      ? null
+      : alignMode === AlignTowardsStartVelocity
         ? towards([datum.vx, datum.vy, datum.vz])
         : aim
           ? facing([current.x - aim[0], current.y - aim[1], current.z - aim[2]])
