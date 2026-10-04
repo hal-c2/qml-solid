@@ -4,7 +4,7 @@
 // `source`, the model the style's Repeater makes the `delegate` for, and
 // makes the cells as big as there is room for.
 import { createSignal, onCleanup, runWithOwner, untrack } from "solid-js";
-import { defineType, derived, effect, slot } from "../../object.js";
+import { defineType, derived, effect, last, settle, slot } from "../../object.js";
 import { styleHints } from "../../QtQml/application.js";
 import { Locale } from "../../QtQml/locale.js";
 import { LeftButton } from "../keycodes.js";
@@ -105,38 +105,65 @@ const cellsOf = (item) => item.children.filter((child) => !child.$siblings);
 // Every cell is as big as its share of the content item, the spacing taken
 // off. As in Qt that is done when the control's size or its padding changes
 // and not when its spacing does: the spacing is what it was by then.
-//
+function share(self, across, down) {
+  untrack(() => {
+    const item = self.contentItem;
+    if (!item) return;
+    const spacing = self.spacing;
+    const wide = (self.availableWidth - (across - 1) * spacing) / across;
+    const high = (self.availableHeight - (down - 1) * spacing) / down;
+    // A share that differs by what the division lost is the same.
+    for (const cell of cellsOf(item)) {
+      if (!close(cell.width, wide)) slot(cell, "width").place(wide);
+      if (!close(cell.height, high)) slot(cell, "height").place(high);
+    }
+  });
+}
+
 // The cells of a content item that was just made are there before what
-// places them has counted them, and how big the control is comes from that:
-// they are shared out once the item has been seen, as Qt does it once the
-// control is complete.
+// places them has counted them, and how big the control is comes from that,
+// and from the layout it may be in: they are shared out once all of that has
+// settled, as Qt does it once the control is complete.
+//
+// A row is as high as its cells, and its cells as high as the row. A layout
+// gives the row what it asked for a moment ago: when its padding changes it
+// is given what the cells were, while the cells are given what the row was,
+// and then each the other's again, for ever. Qt shares out before a layout
+// looks, so that is done here at once; what the layout makes of the control
+// meanwhile is looked at when it has settled.
 function shares(self, across, down) {
   const [seen, see] = createSignal(null, WRITABLE);
-  let last = [];
+  let found = [];
+  let settled = true;
+  let again = false;
   effect(
     () => {
       const item = self.contentItem;
       if (!item || seen() !== item) return [item];
       return [item, self.availableWidth, self.availableHeight, self.leftPadding, self.topPadding, ...cellsOf(item)];
     },
-    (found) => {
-      const [item, width, height, , , ...cells] = found;
-      if (found.length === 1) {
-        if (item) see(item);
+    (next) => {
+      if (next.length === 1) {
+        const item = next[0];
+        if (item)
+          last(() => {
+            see(item);
+            settle();
+          });
         return;
       }
       // Asked again is not changed: the spacing alone leaves them be.
-      if (found.length === last.length && found.every((each, index) => each === last[index])) return;
-      last = found;
-      untrack(() => {
-        const spacing = self.spacing;
-        const wide = (width - (across - 1) * spacing) / across;
-        const high = (height - (down - 1) * spacing) / down;
-        // A share that differs by what the division lost is the same.
-        for (const cell of cells) {
-          if (!close(cell.width, wide)) slot(cell, "width").place(wide);
-          if (!close(cell.height, high)) slot(cell, "height").place(high);
-        }
+      if (next.length === found.length && next.every((each, index) => each === found[index])) return;
+      found = next;
+      if (!settled) return void (again = true);
+      settled = false;
+      share(self, across, down);
+      last(() => {
+        settled = true;
+        if (!again) return;
+        again = false;
+        share(self, across, down);
+        settle();
       });
     },
   );
@@ -149,13 +176,13 @@ const YEARS = [-271820, 275759];
 // was, and Qt says so.
 function ranged(self, type, name, [low, high]) {
   const held = slot(self, name);
-  let last;
+  let given;
   effect(
     () => held.asked(),
     (value) => {
       // Said once of what was given, however often it is asked for.
-      if (value === last) return;
-      last = value;
+      if (value === given) return;
+      given = value;
       if (value >= low && value <= high) self.$shown[name] = value;
       else console.warn(`${type}: ${name} ${value} is out of range [${low}...${high}]`);
     },
