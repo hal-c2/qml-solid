@@ -324,20 +324,38 @@ impl<'p> Types<'p> {
         None
     }
 
-    /// The properties whoever makes an object of the type has to set.
+    /// The properties whoever makes an object of the type has to set: what
+    /// the components in its chain require, and what the Qt type the chain
+    /// ends in does, in its C++ (`tableView` of a TableViewDelegate) or in
+    /// the QML of a style (`row`, `column` and `model` of Basic's).
     pub(crate) fn required(&self, kind: &Kind) -> Vec<String> {
-        let mut required = Vec::new();
+        let mut required: Vec<String> = Vec::new();
         let mut kind = kind.clone();
         for _ in 0..64 {
-            let Kind::Component(key) = kind else { break };
-            let Some(shape) = self.project.shape(&key) else { break };
-            for name in &shape.required {
-                if !required.contains(name) {
-                    required.push(name.clone());
+            match kind {
+                Kind::Qt(ty) => {
+                    let mut ty = Some(ty);
+                    while let Some(found) = ty {
+                        for property in found.properties.iter().filter(|property| property.is_required) {
+                            if !required.iter().any(|name| name == property.name) {
+                                required.push(property.name.to_string());
+                            }
+                        }
+                        ty = found.prototype();
+                    }
+                    break;
+                }
+                Kind::Component(key) => {
+                    let Some(shape) = self.project.shape(&key) else { break };
+                    for name in &shape.required {
+                        if !required.contains(name) {
+                            required.push(name.clone());
+                        }
+                    }
+                    let Some(root) = self.root(&key, shape) else { break };
+                    kind = root;
                 }
             }
-            let Some(root) = self.root(&key, shape) else { break };
-            kind = root;
         }
         required
     }

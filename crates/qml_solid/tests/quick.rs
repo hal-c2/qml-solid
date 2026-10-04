@@ -285,6 +285,46 @@ Item {
 }
 
 #[test]
+fn a_delegate_is_given_what_its_type_requires() {
+    // What Qt's type requires in C++, and what a style's requires in QML.
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Templates as T
+Item {
+    TableView { delegate: TableViewDelegate { } }
+    TableView { delegate: T.TableViewDelegate { required property int row; selected: false } }
+    HorizontalHeaderView { delegate: T.HeaderViewDelegate { } }
+    TableViewDelegate { }
+}"#,
+    );
+    assert_contains(
+        &code,
+        "<TableViewDelegate column={$data.column} row={$data.row} model={$data.model} tableView={$data.tableView} \
+         current={$data.current} selected={$data.selected} editing={$data.editing}></TableViewDelegate>",
+    );
+    // What the delegate sets is not given.
+    assert_contains(
+        &code,
+        "<T.TableViewDelegate selected={false} row={$data.row} tableView={$data.tableView} current={$data.current} \
+         editing={$data.editing}",
+    );
+    assert_contains(&code, "<T.HeaderViewDelegate headerView={$data.headerView} model={$data.model} tableView={$data.tableView}");
+    // One that is not a delegate is given nothing.
+    assert_contains(&code, "<TableViewDelegate></TableViewDelegate>");
+
+    // A component has what the type of its root requires, with its own.
+    let app = "import QtQuick\nTableView { delegate: Cell { } }";
+    let cell = "import QtQuick.Templates as T\nT.TableViewDelegate { required property var model }";
+    let code = lowered_in(&[("App", app), ("Cell", cell)], "App").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(
+        &code,
+        "<Cell model={$data.model} tableView={$data.tableView} current={$data.current} selected={$data.selected} \
+         editing={$data.editing}></Cell>",
+    );
+}
+
+#[test]
 fn an_alias_is_a_path_to_the_object_that_has_the_property() {
     let code = lowered(
         r#"import QtQuick

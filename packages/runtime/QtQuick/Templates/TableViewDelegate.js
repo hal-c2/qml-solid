@@ -30,8 +30,8 @@ export const TableViewDelegate = defineType("TableViewDelegate", ItemDelegate, {
   setup(self, props) {
     const cell = (self.$cell = making());
     // A style's delegate requires `row`, `column` and `model` of the view
-    // in QML of Qt's own, which the compiler does not read when it compiles
-    // the delegate of a view: they are bound here, to the same.
+    // in QML of Qt's own. The compiler binds them where the delegate of a
+    // view is written; one made without them is bound here, to the same.
     for (const name of REQUIRED) {
       if (!cell || !(name in self.$type.slots) || name in props) continue;
       Object.defineProperty(props, name, { get: () => cell[name], enumerable: true, configurable: true });
