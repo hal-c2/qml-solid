@@ -5,9 +5,10 @@ import { defineType, derived, group, QtObject } from "../object.js";
 import { fontNamed } from "../QtCharts/plot.js";
 import { styleHints } from "../QtQml/application.js";
 import { color, colorValue } from "../QtQuick/color.js";
+import { given } from "../QtQuick/compute.js";
 
-const LIGHT = { background: "#f2f2f2", plot: "#fcfcfc", main: "#545151", sub: "#afafaf", text: "#6a6a6a" };
-const DARK = { background: "#262626", plot: "#1f1f1f", main: "#aeabab", sub: "#6a6a6a", text: "#aeaeae" };
+const LIGHT = { background: "#f2f2f2", plot: "#fcfcfc", main: "#545151", sub: "#afafaf", text: "#6a6a6a", label: "#e7e7e7", single: "#ccdc00", multi: "#22d47b" };
+const DARK = { background: "#262626", plot: "#1f1f1f", main: "#aeabab", sub: "#6a6a6a", text: "#aeaeae", label: "#2e2e2e", single: "#dbeb00", multi: "#22d489" };
 
 // `Automatic` is the scheme the application has.
 const scheme = (self) => ((self.colorScheme || (styleHints().colorScheme === 2 ? 2 : 1)) === 2 ? DARK : LIGHT);
@@ -52,6 +53,27 @@ const line = (members) =>
 // An axis' labels are of the theme's label colour until given their own.
 const labelled = { labelTextColor: derived((self) => self.labelTextColor) };
 
+// The font of a graph in space's labels, which is not the application's:
+// Arial, twelve points.
+const labelFont = group({
+  family: "Arial",
+  styleName: "",
+  bold: derived((self) => self.labelFont.weight >= 600),
+  weight: derived((self) => (given(self, "labelFont", "bold") && self.labelFont.bold ? 700 : 400)),
+  italic: false,
+  underline: false,
+  overline: false,
+  strikeout: false,
+  pixelSize: derived((self) => (given(self, "labelFont", "pointSize") ? Math.round((self.labelFont.pointSize * 96) / 72) : 16)),
+  pointSize: derived((self) => (given(self, "labelFont", "pixelSize") ? (self.labelFont.pixelSize * 72) / 96 : 12)),
+  capitalization: 0,
+  letterSpacing: 0,
+  wordSpacing: 0,
+  kerning: true,
+  features: undefined,
+  variableAxes: undefined,
+});
+
 const lined = (name) => ({ [`${name}$mainColor`]: colorValue, [`${name}$subColor`]: colorValue });
 
 export const GraphsTheme = defineType("GraphsTheme", QtObject, {
@@ -66,12 +88,24 @@ export const GraphsTheme = defineType("GraphsTheme", QtObject, {
     grid: line(),
     axisX: line(labelled),
     axisY: line(labelled),
+    axisZ: line(labelled),
     axisXLabelFont: fontNamed("axisXLabelFont"),
     axisYLabelFont: fontNamed("axisYLabelFont"),
+    axisZLabelFont: fontNamed("axisZLabelFont"),
     labelTextColor: derived((self) => scheme(self).text),
     seriesColors: themed,
     borderColors: themed,
     borderWidth: 1,
+    // What a graph in space draws with besides: its labels are written in
+    // one font on a ground of their own, and what is selected has a colour.
+    labelFont,
+    labelsVisible: true,
+    labelBackgroundColor: derived((self) => scheme(self).label),
+    labelBackgroundVisible: true,
+    labelBorderVisible: true,
+    colorStyle: 0,
+    singleHighlightColor: derived((self) => scheme(self).single),
+    multiHighlightColor: derived((self) => scheme(self).multi),
   },
   enums: {
     Automatic: 0,
@@ -86,6 +120,9 @@ export const GraphsTheme = defineType("GraphsTheme", QtObject, {
     PurpleSeries: 6,
     GreySeries: 7,
     UserDefined: 8,
+    Uniform: 0,
+    ObjectGradient: 1,
+    RangeGradient: 2,
   },
   resolve: {
     backgroundColor: colorValue,
@@ -94,8 +131,13 @@ export const GraphsTheme = defineType("GraphsTheme", QtObject, {
     ...lined("grid"),
     ...lined("axisX"),
     ...lined("axisY"),
+    ...lined("axisZ"),
     axisX$labelTextColor: colorValue,
     axisY$labelTextColor: colorValue,
+    axisZ$labelTextColor: colorValue,
+    labelBackgroundColor: colorValue,
+    singleHighlightColor: colorValue,
+    multiHighlightColor: colorValue,
     seriesColors: colours,
     borderColors: colours,
   },

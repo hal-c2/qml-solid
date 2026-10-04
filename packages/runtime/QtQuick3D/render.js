@@ -211,6 +211,7 @@ uniform float u_coatBump;
 uniform vec3 u_coatEdge;
 uniform vec3 u_tint;
 uniform bool u_shiny;
+uniform bool u_glint;
 uniform vec3 u_reads[MAPS];
 uniform mat3 u_places[MAPS];
 uniform float u_specular;
@@ -466,8 +467,9 @@ void main() {
         // How much a surface gives back as shine: a DefaultMaterial in its
         // own colour, a PrincipledMaterial all of it where it is metal. The
         // lights heed the first, and of the second only whether there is
-        // any; the surroundings heed both.
-        vec3 amount = u_principled ? vec3(metalness + u_specular * (1.0 - metalness)) * clamp(u_edge.y + u_edge.x * turning, 0.0, 1.0) : base.rgb * u_specular * turning;
+        // any; the surroundings heed both. What a graph draws gives a light
+        // back in the light's colour.
+        vec3 amount = u_principled ? vec3(metalness + u_specular * (1.0 - metalness)) * clamp(u_edge.y + u_edge.x * turning, 0.0, 1.0) : (u_glint ? vec3(1.0) : base.rgb) * u_specular * turning;
         for (int index = 0; index < u_count; index++) {
             vec3 L = -u_lightWay[index];
             float fade = 1.0;
@@ -558,6 +560,7 @@ const UNIFORMS = [
   "u_coatEdge",
   "u_tint",
   "u_shiny",
+  "u_glint",
   "u_reads",
   "u_places",
   "u_colors",
@@ -1349,6 +1352,7 @@ function part(piece) {
   gl.uniform3fv(at.u_coatEdge, material.coatEdge ?? [5, 1, 0]);
   gl.uniform3fv(at.u_tint, material.tint ?? [1, 1, 1]);
   gl.uniform1i(at.u_shiny, material.shiny === false ? 0 : 1);
+  gl.uniform1i(at.u_glint, material.glint ? 1 : 0);
   gl.uniform2fv(at.u_edge, material.edge ?? [1, 0]);
   const reads = new Float32Array(MAPS.length * 3);
   const places = new Float32Array(MAPS.length * 9);
