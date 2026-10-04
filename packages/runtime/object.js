@@ -1043,16 +1043,20 @@ function inherit(own, given) {
     // What it finds names in is its own context, not the one it was made in.
     if (key === "children" || key === "$self" || key === "$given" || key === "$context") continue;
     const descriptor = Object.getOwnPropertyDescriptor(given, key);
+    // What both say is put in place of what the file said, which may be
+    // there as something computed (`$attach` of `T.Overlay`) that nothing
+    // can be assigned to.
+    const put = (value) => Object.defineProperty(props, key, { value, writable: true, enumerable: true, configurable: true });
     if (!(key in own)) Object.defineProperty(props, key, descriptor);
-    else if (key === "$declare") props.$declare = [own.$declare, given.$declare].flat();
-    else if (key === "$is") props.$is = [own.$is, given.$is].flat();
-    else if (key === "$attach" || key === "$made") props[key] = [...new Set([...own[key], ...given[key]])];
-    else if (key === "$functions" || key === "$aliases") props[key] = { ...own[key], ...given[key] };
+    else if (key === "$declare") put([own.$declare, given.$declare].flat());
+    else if (key === "$is") put([own.$is, given.$is].flat());
+    else if (key === "$attach" || key === "$made") put([...new Set([...own[key], ...given[key]])]);
+    else if (key === "$functions" || key === "$aliases") put({ ...own[key], ...given[key] });
     else if (HANDLER.test(key)) {
-      props[key] = (...args) => {
+      put((...args) => {
         own[key]?.(...args);
         return given[key]?.(...args);
-      };
+      });
     } else Object.defineProperty(props, key, descriptor);
   }
   // `default property list<QtObject> things`: what is written inside an
