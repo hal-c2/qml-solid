@@ -127,7 +127,7 @@ export const ValueAxis = defineType("ValueAxis", AbstractAxis, {
 const NONE = Object.freeze([]);
 
 // Qt keeps one of each name. The list it was given is looked through once.
-function distinct(self, own) {
+export function distinct(self, own) {
   const given = own() ?? NONE;
   if (self.$given !== given) {
     self.$given = given;
