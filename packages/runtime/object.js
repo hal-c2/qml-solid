@@ -372,6 +372,24 @@ function guarded(key, compute) {
   };
 }
 
+// The objects a property is given (`background: Rectangle {}`) are made once,
+// by a binding that reads nothing. Solid would still evaluate it again: what
+// is made reads, outside a flush, values written since the last one, and
+// whatever computation that happens under is run again by the flush that
+// carries them. So they are made under an owner of their own, which is no
+// computation, and end when the binding does.
+function apart(make) {
+  return () => {
+    const owner = getOwner();
+    return runWithOwner(null, () =>
+      createRoot((dispose) => {
+        if (owner) runWithOwner(owner, () => onCleanup(dispose));
+        return make();
+      }),
+    );
+  };
+}
+
 // A value computed from others and kept until one of them changes, which what
 // it is computed from may ask for: `sourceSize.width: height` on a picture as
 // high as it is loaded, `a.width: b.width + 1` where `b.width: a.width`. A
@@ -624,9 +642,8 @@ class Slot {
     // What it reads of its own property, itself or through another's
     // binding, is what the property had.
     const kind = this.kind;
-    const compute = descriptor?.get
-      ? guarded(key, () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key])))
-      : null;
+    const make = () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key]));
+    const compute = descriptor?.get ? guarded(key, props.$made?.includes(key) ? apart(make) : make) : null;
     this.bound = compute ? ringed(self.$owner, kind ? converted(key, kind, compute) : compute, undefined, true) : null;
     this.given = descriptor && !descriptor.get ? this.made(descriptor.value) : undefined;
     this.bound?.start();
