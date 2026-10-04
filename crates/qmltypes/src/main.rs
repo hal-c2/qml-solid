@@ -7,8 +7,11 @@
 //! file, so the compiler knows QtQuick without having Qt.
 //!
 //! ```sh
-//! qmltypes [--qt /usr/lib/qt6/qml] [--out crates/qml_solid/src/qt/types.txt]
+//! qmltypes [--qt /usr/lib/qt6/qml]... [--out crates/qml_solid/src/qt/types.txt]
 //! ```
+//!
+//! `--qt` may be given more than once, for modules of Qt that are kept
+//! somewhere else: a module is taken from the first directory that has it.
 
 mod model;
 mod qmldir;
@@ -88,19 +91,23 @@ const MODULES: &[&str] = &[
 const BUILTINS: &str = "QML";
 
 fn main() -> ExitCode {
-    let mut qt = PathBuf::from("/usr/lib/qt6/qml");
+    let mut qt: Vec<PathBuf> = Vec::new();
     let mut out =
         PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../qml_solid/src/qt/types.txt"));
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match (argument.as_str(), arguments.next()) {
-            ("--qt", Some(path)) => qt = path.into(),
+            ("--qt", Some(path)) => qt.push(path.into()),
             ("--out", Some(path)) => out = path.into(),
             _ => {
-                eprintln!("usage: qmltypes [--qt DIRECTORY] [--out FILE]");
+                eprintln!("usage: qmltypes [--qt DIRECTORY]... [--out FILE]");
                 return ExitCode::FAILURE;
             }
         }
+    }
+
+    if qt.is_empty() {
+        qt.push(PathBuf::from("/usr/lib/qt6/qml"));
     }
 
     match generate(&qt) {
@@ -128,8 +135,15 @@ struct Source {
     files: Vec<(String, String, Option<QmlFile>)>,
 }
 
-fn generate(qt: &Path) -> Result<String, String> {
-    let directories = qmldir::find(qt).map_err(|error| format!("{}: {error}", qt.display()))?;
+fn generate(qt: &[PathBuf]) -> Result<String, String> {
+    let mut directories = BTreeMap::new();
+    for root in qt {
+        let found =
+            qmldir::find(root).map_err(|error| format!("{}: {error}", root.display()))?;
+        for (uri, directory) in found {
+            directories.entry(uri).or_insert((root.as_path(), directory));
+        }
+    }
 
     let mut sources = BTreeMap::new();
     let mut missing = BTreeSet::new();
@@ -139,11 +153,11 @@ fn generate(qt: &Path) -> Result<String, String> {
         if sources.contains_key(&uri) || missing.contains(&uri) {
             continue;
         }
-        let Some(directory) = directories.get(&uri) else {
+        let Some((root, directory)) = directories.get(&uri) else {
             missing.insert(uri);
             continue;
         };
-        let source = read(qt, directory)?;
+        let source = read(root, directory)?;
         wanted.extend(needs(&source));
         sources.insert(uri, source);
     }
