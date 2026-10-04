@@ -278,6 +278,22 @@ const ParticleInstancing = defineType("Instancing", Object3D, {
     instanceCustomData() {
       return new Vector4d(0, 0, 0, 0);
     },
+    // The same as numbers, twenty to a particle, as Qt keeps a table of
+    // instances: three rows of where it is, turned and sized, its colour
+    // in linear light, and four numbers of its own. For a renderer that
+    // draws a table by one call and asks a Model's `instancing` for it,
+    // which places each as `$instanced` does; made anew each time, so
+    // `fresh`, and seen through wherever the particles may fade.
+    $table() {
+      const alive = this.$of.$alive();
+      const data = new Float32Array(alive.length * 20);
+      alive.forEach((each, index) => {
+        const size = each.scale;
+        const m = math.placed([each.x, each.y, each.z], [size, size, size], [0, 0, 0], each.turn);
+        data.set([m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14], light(each.datum.r), light(each.datum.g), light(each.datum.b), each.a / 255], index * 20);
+      });
+      return { data, count: alive.length, sheer: Boolean(this.$of.hasTransparency), sorted: false, fresh: true };
+    },
     // `one` is the model as it would be drawn alone: instead it is drawn
     // where each particle is, in the node the model is in. As Qt places
     // what is drawn many times: the model's own turn and size are inside
