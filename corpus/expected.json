@@ -13,6 +13,10 @@
       "pixels": 0.95,
       "content": 0.9
     },
+    "coffee": {
+      "pixels": 0.98,
+      "content": 0.86
+    },
     "hangman": {
       "pixels": 0.95,
       "content": 0.93
