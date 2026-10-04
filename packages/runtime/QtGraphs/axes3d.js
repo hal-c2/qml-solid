@@ -124,12 +124,6 @@ export const Abstract3DAxis = defineType("Abstract3DAxis", QtObject, {
   },
   methods: Object.defineProperties(
     {
-      setRange(min, max) {
-        slot(this, "min").write(Math.min(min, max));
-        slot(this, "max").write(max);
-        slot(this, "autoAdjustRange").write(false);
-        settle();
-      },
       // The graph the axis is in tells it what it measures.
       $tell(told) {
         this.$told = told;

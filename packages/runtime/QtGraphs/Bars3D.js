@@ -148,6 +148,11 @@ export const Bars3D = defineType("Bars3D", GraphsItem3D, {
     },
     selectedSeries: (self) => self.$series().find((series) => series.selectedBar.x >= 0 && series.selectedBar.y >= 0) ?? null,
   },
+  methods: {
+    insertSeries(index, series) {
+      this.$insert(index, series);
+    },
+  },
   setup(self, props) {
     self.$takes = (series) => is(series, Bar3DSeries);
     const make = (Type) => inside(self, () => untrack(() => Type({})));
@@ -178,7 +183,7 @@ export const Bars3D = defineType("Bars3D", GraphsItem3D, {
       columnAxis: { orientation: X, range: () => [0, Math.max(0, count().columns - 1)], labels: () => self.primarySeries?.columnLabels ?? NONE },
     });
     self.$plot = kept(self, () => laid(self));
-    self.$drawn = kept(self, () => bars(self));
+    self.$shown = kept(self, () => bars(self));
   },
 });
 

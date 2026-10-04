@@ -7,7 +7,7 @@
 //
 // Not here: the lines of a surface's mesh (`DrawWireframe`), its texture,
 // and what is selected.
-import { defineType, derived } from "../object.js";
+import { defineType, slot } from "../object.js";
 import { Value3DAxis } from "./axes3d.js";
 import { Surface3DSeries } from "./data3d.js";
 import { ambient, GraphsItem3D, valued } from "./graph3d.js";
@@ -55,14 +55,21 @@ export const Surface3D = defineType("Surface3D", GraphsItem3D, {
     axisY: null,
     axisZ: null,
     flipHorizontalGrid: false,
-    // The series a point of which is selected.
-    selectedSeries: derived((self) => self.$series().find((series) => series.selectedPoint.x >= 0 && series.selectedPoint.y >= 0) ?? null),
+    // The series what is selected was last said of.
+    selectedSeries: null,
+  },
+  resolve: {
+    selectedSeries: (self, own) => {
+      const series = own();
+      return self.$series().includes(series) ? series : null;
+    },
   },
   setup(self, props) {
+    self.$select = (series) => slot(self, "selectedSeries").write(series);
     self.$takes = (series) => is(series, Surface3DSeries);
     valued(self, props, Value3DAxis, function* () {
       for (const series of self.$series()) if (series.visible) for (const row of rows(series)) yield* row;
     });
-    self.$drawn = kept(self, () => surfaces(self));
+    self.$shown = kept(self, () => surfaces(self));
   },
 });

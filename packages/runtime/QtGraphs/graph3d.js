@@ -5,7 +5,7 @@
 // axes, and what its series show.
 //
 // A kind of graph says where its data is (`$plot`) and what is drawn of it
-// (`$drawn`); the sizes are Qt's, in a space whose tallest side is 2.
+// (`$shown`); the sizes are Qt's, in a space whose tallest side is 2.
 //
 // Not here: shadows, turning and zooming with the mouse, selecting by it and
 // the label of what is selected, `polar`, custom items, the camera's target,
@@ -55,7 +55,9 @@ const PRESETS = [
   [0, -90],
 ];
 
-const Graphs3D = {
+// What the `Graphs3D` namespace names, which a graph's own properties are
+// said in.
+export const Graphs3D = Object.freeze({
   // SelectionFlag
   None: 0,
   Item: 1,
@@ -118,7 +120,7 @@ const Graphs3D = {
   // TransparencyTechnique
   Approximate: 1,
   Accurate: 2,
-};
+});
 
 // An angle of the camera kept between two others: past one it comes round
 // from the other when it `wraps`, and else it stops there.
@@ -425,8 +427,7 @@ export const GraphsItem3D = defineType("GraphsItem3D", View3D, {
     theme: null,
     seriesList: NONE,
     selectionMode: Graphs3D.Item,
-    // Qt draws no shadows where things far away are as big as those near.
-    shadowQuality: derived((self) => (self.orthoProjection ? Graphs3D.None : Graphs3D.Medium)),
+    shadowQuality: Graphs3D.Medium,
     shadowStrength: 25,
     msaaSamples: 4,
     renderingMode: Graphs3D.Indirect,
@@ -442,7 +443,7 @@ export const GraphsItem3D = defineType("GraphsItem3D", View3D, {
     horizontalAspectRatio: 0,
     optimizationHint: Graphs3D.Default,
     polar: false,
-    labelMargin: 0.1,
+    labelMargin: Math.fround(0.1),
     radialLabelOffset: 1,
     locale: undefined,
     queriedGraphPosition: new Vector3d(0, 0, 0),
@@ -478,23 +479,16 @@ export const GraphsItem3D = defineType("GraphsItem3D", View3D, {
   resolve: {
     seriesList: (self) => self.$series(),
     lightColor: colorValue,
-    cameraXRotation: (self, own) => turned(own(), self.minCameraXRotation, self.maxCameraXRotation, self.wrapCameraXRotation),
-    cameraYRotation: (self, own) => turned(own(), self.minCameraYRotation, self.maxCameraYRotation, self.wrapCameraYRotation),
+    labelMargin: (self, own) => Math.fround(own()),
+    // An angle the camera is given is held to its limits; one a preset has
+    // is not, as Qt's is not: `DirectlyBelow` is below the least.
+    cameraXRotation: (self, own) => (slot(self, "cameraXRotation").explicit() ? turned(own(), self.minCameraXRotation, self.maxCameraXRotation, self.wrapCameraXRotation) : own()),
+    cameraYRotation: (self, own) => (slot(self, "cameraYRotation").explicit() ? turned(own(), self.minCameraYRotation, self.maxCameraYRotation, self.wrapCameraYRotation) : own()),
   },
   methods: Object.defineProperties(
     {
       addSeries(series) {
-        this.insertSeries(Infinity, series);
-      },
-      // Puts a series among the graph's, before the one that is at `index`:
-      // among those added since the graph was made, which come last.
-      insertSeries(index, series) {
-        const all = untrack(() => this.$series());
-        if (!this.$takes(series) || all.includes(series)) return;
-        this.$removed.delete(series);
-        this.$added.splice(Math.max(0, index - (all.length - this.$added.length)), 0, series);
-        this.$touch(next);
-        settle();
+        this.$insert(Infinity, series);
       },
       removeSeries(series) {
         const index = this.$added.indexOf(series);
@@ -512,12 +506,29 @@ export const GraphsItem3D = defineType("GraphsItem3D", View3D, {
           if ("selectedBar" in series) slot(series, "selectedBar").write(new Point(-1, -1));
           if ("selectedPoint" in series) slot(series, "selectedPoint").write(new Point(-1, -1));
         }
+        this.$select?.(null);
         settle();
       },
       doPicking() {},
       doRayPicking() {},
     },
     {
+      // A preset puts the camera where it says, wherever it was put before.
+      cameraPreset: {
+        get() {
+          return slot(this, "cameraPreset").get();
+        },
+        set(value) {
+          slot(this, "cameraPreset").write(value);
+          if (PRESETS[value]) {
+            slot(this, "cameraXRotation").reset();
+            slot(this, "cameraYRotation").reset();
+          }
+          settle();
+        },
+        enumerable: true,
+        configurable: true,
+      },
       minCameraZoomLevel: limit("minCameraZoomLevel", "maxCameraZoomLevel", true),
       maxCameraZoomLevel: limit("maxCameraZoomLevel", "minCameraZoomLevel", false),
     },
@@ -532,12 +543,38 @@ export const GraphsItem3D = defineType("GraphsItem3D", View3D, {
     self.$declared = NONE;
     self.$added = [];
     self.$removed = new Set();
+    self.$placed = NONE;
     self.$series = kept(self, () => {
       self.$track();
       const given = list(slot(self, "seriesList").asked());
-      const all = [...new Set([...given, ...self.$declared, ...self.$added])];
-      return all.filter((series) => self.$takes(series) && !self.$removed.has(series));
+      const all = [...given, ...self.$declared, ...self.$added].filter((series) => self.$takes(series) && !self.$removed.has(series));
+      // Those that were put somewhere are where they were put.
+      return [...new Set([...self.$placed.filter((series) => all.includes(series)), ...all])];
     });
+    // Puts a series among the graph's, before the one that is at `index`;
+    // one that is the graph's already goes there from where it was.
+    self.$insert = (index, series) => {
+      const had = untrack(() => self.$series());
+      if (!self.$takes(series)) return;
+      const all = had.filter((other) => other !== series);
+      const from = had.indexOf(series);
+      all.splice(Math.max(0, from >= 0 && from < index ? index - 1 : index), 0, series);
+      self.$removed.delete(series);
+      if (!self.$added.includes(series)) self.$added.push(series);
+      self.$placed = all;
+      self.$touch(next);
+      settle();
+    };
+    // Qt draws no shadows where things far away are as big as those near,
+    // and does not draw them again when they are not.
+    effect(
+      () => self.orthoProjection,
+      (flat) => {
+        if (!flat) return;
+        slot(self, "shadowQuality").write(Graphs3D.None);
+        settle();
+      },
+    );
     // Each is told the graph it is in, and one that is in it no more that
     // it is in none.
     let told = NONE;
@@ -620,7 +657,9 @@ export const GraphsItem3D = defineType("GraphsItem3D", View3D, {
       }),
     );
 
-    const drawn = (shape, given) => make(self, Model, { geometry: { $shape: shape }, ...given });
+    // A model of a shape made here: its geometry is whatever says what
+    // the shape is.
+    const drawn = (shape, given) => make(self, Model, Object.defineProperty(given, "geometry", { value: { $shape: shape }, enumerable: true }));
 
     const background = kept(self, () => walls(self));
     const paint = make(self, PrincipledMaterial, {
@@ -671,14 +710,14 @@ export const GraphsItem3D = defineType("GraphsItem3D", View3D, {
           // As tight a spot of light as Qt's graphs have.
           specularRoughness: 2.56 / 75 - 0.01,
           get emissiveFactor() {
-            const [r, g, b] = self.$drawn().paints[index]?.glow ?? [0, 0, 0];
+            const [r, g, b] = self.$shown().paints[index]?.glow ?? [0, 0, 0];
             return new Vector3d(r, g, b);
           },
           get specularAmount() {
-            return self.$drawn().paints[index]?.shine ?? 0;
+            return self.$shown().paints[index]?.shine ?? 0;
           },
           get cullMode() {
-            return self.$drawn().paints[index]?.sided ? 3 : 1;
+            return self.$shown().paints[index]?.sided ? 3 : 1;
           },
         }),
       ));
@@ -697,9 +736,9 @@ export const GraphsItem3D = defineType("GraphsItem3D", View3D, {
         },
       }),
       drawn(() => labels().mesh, { materials: [text] }),
-      drawn(() => self.$drawn().mesh, {
+      drawn(() => self.$shown().mesh, {
         get materials() {
-          return self.$drawn().paints.map((_, index) => painted(index));
+          return self.$shown().paints.map((_, index) => painted(index));
         },
       }),
     ];
@@ -752,25 +791,18 @@ const X = 1;
 const Y = 2;
 const Z = 3;
 
-// The ranges of points in space, for axes that follow them. Points that are
-// all at one place across or in depth are given a twentieth of the other
-// way's range to each side, as Qt gives them.
-export function reach(points) {
-  const xs = [];
-  const ys = [];
-  const zs = [];
+// The least and the most of points in space each way: nothing each way
+// when there are none.
+function reach(points) {
+  const least = [Infinity, Infinity, Infinity];
+  const most = [-Infinity, -Infinity, -Infinity];
   for (const { x, y, z } of points) {
-    xs.push(x);
-    ys.push(y);
-    zs.push(z);
+    [x, y, z].forEach((value, way) => {
+      if (value < least[way]) least[way] = value;
+      if (value > most[way]) most[way] = value;
+    });
   }
-  const wide = spread(xs, [0, 0], 0);
-  const deep = spread(zs, [0, 0], 0);
-  return {
-    x: spread(xs, [-1, 1], (deep[1] - deep[0]) / 20 || 1),
-    y: spread(ys, [-1, 1]),
-    z: spread(zs, [-1, 1], (wide[1] - wide[0]) / 20 || 1),
-  };
+  return least.map((value, way) => (value > most[way] ? [0, 0] : [value, most[way]]));
 }
 
 // A graph of points in space has three value axes, its own until it is
@@ -779,11 +811,22 @@ export function valued(self, props, Axis, points) {
   for (const name of ["axisX", "axisY", "axisZ"]) {
     if (!(name in props)) slot(self, name).provide(inside(self, () => untrack(() => Axis({}))));
   }
-  const ranges = kept(self, () => reach(points()));
+  const data = kept(self, () => reach(points()));
+  // Points that are all at one place across or in depth are given a
+  // twentieth of the other way's range to each side: the data's when that
+  // axis follows it, and else the axis' own.
+  const floor = (way, other, axis) => () => {
+    const [least, most] = data()[way];
+    if (least !== most) return [least, most];
+    const beside = self[axis];
+    const [from, to] = !beside || beside.autoAdjustRange ? data()[other] : [beside.min, beside.max];
+    const around = Math.abs(to - from) / 20 || 1;
+    return [least - around, most + around];
+  };
   axes(self, ["axisX", "axisY", "axisZ"], {
-    axisX: { orientation: X, range: () => ranges().x, labels: () => NONE },
-    axisY: { orientation: Y, range: () => ranges().y, labels: () => NONE },
-    axisZ: { orientation: Z, range: () => ranges().z, labels: () => NONE },
+    axisX: { orientation: X, range: floor(0, 2, "axisZ"), labels: () => NONE },
+    axisY: { orientation: Y, range: () => spread(data()[1], [-1, 1]), labels: () => NONE },
+    axisZ: { orientation: Z, range: floor(2, 0, "axisX"), labels: () => NONE },
   });
   // The graph is twice as wide as it is tall along the longer of its ranges
   // on the floor, and the other is to it as the ranges are to each other.

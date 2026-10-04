@@ -3,7 +3,7 @@
 // Not here: the other shapes a point can be drawn as (`mesh`), turning each
 // (`rotationRole`), and selecting one with the mouse: the one a program
 // selects is drawn in the colour of what is selected.
-import { defineType, derived } from "../object.js";
+import { defineType, slot } from "../object.js";
 import { kept } from "../QtQuick3D/Node.js";
 import { linear } from "../QtQuick3D/scene.js";
 import { Value3DAxis } from "./axes3d.js";
@@ -58,14 +58,21 @@ export const Scatter3D = defineType("Scatter3D", GraphsItem3D, {
     axisX: null,
     axisY: null,
     axisZ: null,
-    // The series a point of which is selected.
-    selectedSeries: derived((self) => self.$series().find((series) => series.selectedItem >= 0) ?? null),
+    // The series what is selected was last said of.
+    selectedSeries: null,
+  },
+  resolve: {
+    selectedSeries: (self, own) => {
+      const series = own();
+      return self.$series().includes(series) ? series : null;
+    },
   },
   setup(self, props) {
+    self.$select = (series) => slot(self, "selectedSeries").write(series);
     self.$takes = (series) => is(series, Scatter3DSeries);
     valued(self, props, Value3DAxis, function* () {
       for (const series of self.$series()) if (series.visible) yield* items(series);
     });
-    self.$drawn = kept(self, () => points(self));
+    self.$shown = kept(self, () => points(self));
   },
 });

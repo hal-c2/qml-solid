@@ -15,7 +15,7 @@ export {
   Surface3DSeries,
   SurfaceDataProxy,
 } from "./data3d.js";
-export { GraphsItem3D } from "./graph3d.js";
+export { Graphs3D, GraphsItem3D } from "./graph3d.js";
 export { GraphsView } from "./GraphsView.js";
 export { Scatter3D } from "./Scatter3D.js";
 export { BarModelMapper, BarSeries, BarSet } from "./series.js";

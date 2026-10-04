@@ -360,8 +360,32 @@ const proxied = (Proxy) => (self, props) => {
   if (!("dataProxy" in props)) slot(self, "dataProxy").provide(inside(self, () => untrack(() => Proxy({}))));
 };
 
+// Saying what of a series is selected says to its graph whose the selection
+// is, whatever was said: Qt's graph has the series even of no point.
+const selecting = (name) => ({
+  [name]: {
+    get() {
+      return slot(this, name).get();
+    },
+    set(value) {
+      slot(this, name).write(value);
+      this.$told?.graph.$select?.(this);
+      settle();
+    },
+    enumerable: true,
+    configurable: true,
+  },
+});
+
 // A place in the data that is no place: what is selected when nothing is.
 const NOWHERE = Object.freeze(new Point(-1, -1));
+
+// A row and a column that are selected, when the data has them.
+const placed = (rows, columns) => (self, own) => {
+  const place = own();
+  const proxy = self.dataProxy;
+  return place && place.x >= 0 && place.y >= 0 && place.x < (proxy?.[rows] ?? 0) && place.y < (proxy?.[columns] ?? 0) ? place : NOWHERE;
+};
 
 const DrawWireframe = 1;
 const DrawSurface = 2;
@@ -379,7 +403,8 @@ export const Surface3DSeries = defineType("Surface3DSeries", Abstract3DSeries, {
     textureFile: "",
   },
   enums: { Smooth: 0, Flat: 1, DrawWireframe, DrawSurface, DrawSurfaceAndWireframe: DrawWireframe | DrawSurface, DrawFilledSurface: 4 },
-  resolve: { wireframeColor: colorValue },
+  resolve: { wireframeColor: colorValue, selectedPoint: placed("rowCount", "columnCount") },
+  methods: Object.defineProperties({}, selecting("selectedPoint")),
   setup: proxied(SurfaceDataProxy),
 });
 
@@ -397,6 +422,7 @@ export const Bar3DSeries = defineType("Bar3DSeries", Abstract3DSeries, {
     columnLabels: derived((self) => self.dataProxy?.$data().columnCategories ?? NONE),
     valueColoringEnabled: false,
   },
+  resolve: { selectedBar: placed("rowCount", "colCount") },
   setup: proxied(BarDataProxy),
 });
 
@@ -416,6 +442,7 @@ export const Scatter3DSeries = defineType("Scatter3DSeries", Abstract3DSeries, {
       return index >= 0 && index < (self.dataProxy?.itemCount ?? 0) ? index : -1;
     },
   },
+  methods: Object.defineProperties({}, selecting("selectedItem")),
   setup: proxied(ScatterDataProxy),
 });
 
