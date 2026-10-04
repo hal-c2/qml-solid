@@ -229,12 +229,13 @@ export const Overlay = defineType("Overlay", Item, {
     // that popup.
     self.$lastFocus = null;
     self.$lastFocusPopup = null;
-    // One that is there for its drawers alone is in nothing's way: what is
-    // under it is the page's to press.
+    // An overlay is in the way of what is the page's own, a field that is
+    // typed in, only while a popup in it is modal: a press beside any other
+    // is for what is under it.
     effect(
-      () => self.children.length > 0,
-      (any) => {
-        self.$node.style.pointerEvents = any ? "" : "none";
+      () => self.children.some((item) => item.$popup?.modal === true),
+      (modal) => {
+        self.$node.style.pointerEvents = modal ? "" : "none";
       },
     );
   },
@@ -285,6 +286,8 @@ export const PopupItem = defineType("Popup", Page, {
   },
   setup(self) {
     const popup = (self.$popup = making);
+    // What the overlay lets through, the popup does not.
+    self.$node.style.pointerEvents = "auto";
     // Its font is the window's where it has none: a popup inherits nothing
     // from the item it is shown over.
     self.$around = () => {

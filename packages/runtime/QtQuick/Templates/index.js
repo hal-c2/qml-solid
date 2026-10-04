@@ -7,6 +7,7 @@ export { Button, RoundButton, TabButton, ToolButton } from "./Button.js";
 export { ButtonGroup } from "./ButtonGroup.js";
 export { Calendar, CalendarModel } from "./Calendar.js";
 export { CheckBox, RadioButton } from "./CheckBox.js";
+export { ComboBox } from "./ComboBox.js";
 export { Container } from "./Container.js";
 export { ContextMenu } from "./ContextMenu.js";
 export { Control } from "./Control.js";

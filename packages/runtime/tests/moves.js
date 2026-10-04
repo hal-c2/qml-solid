@@ -4,12 +4,13 @@
 //
 // A move is `step N` (the scene's own), `move X Y`, `press X Y`,
 // `release X Y`, `rpress X Y` and `rrelease X Y` with the right button,
-// `key Name`, `alt Letter` (the letter with Alt held), `wheel X Y DELTA` and
-// `wait MS`; `drag X Y MS` is a move that many milliseconds after the last,
-// for what goes by how fast the mouse went, and `up X Y` a release that waits
-// for nothing after it. Qt's mouse was moved to where it pressed before the
-// press, and where it let go before and after: QtTest leaves what hovers as
-// it was until a move, and a real mouse does not.
+// `key Name`, `type X` (the letter as it is typed), `alt Letter` (the letter
+// with Alt held), `wheel X Y DELTA` and `wait MS`; `drag X Y MS` is a move
+// that many milliseconds after the last, for what goes by how fast the mouse
+// went, and `up X Y` a release that waits for nothing after it. Qt's mouse
+// was moved to where it pressed before the press, and where it let go before
+// and after: QtTest leaves what hovers as it was until a move, and a real
+// mouse does not.
 import { expect, open } from "./open.js";
 
 const KEYS = { Backtab: "Shift+Tab", Return: "Enter", Up: "ArrowUp", Down: "ArrowDown", Left: "ArrowLeft", Right: "ArrowRight" };
@@ -44,6 +45,8 @@ async function make(page, move) {
       return page.mouse.up();
     case "key":
       return page.keyboard.press(KEYS[args[0]] ?? (args[0].length === 1 ? `Key${args[0]}` : args[0]));
+    case "type":
+      return page.keyboard.press(args[0]);
     case "alt":
       return page.keyboard.press(`Alt+Key${args[0]}`);
     case "wheel":
