@@ -828,6 +828,14 @@ QtObject {
     assert_contains(&code, "twice={Units().grid * 2}");
     assert_contains(&code, "const Units = $singleton(Units$component, {\n\tSmall: 0,\n\tLarge: 1\n});");
     assert_contains(&code, "export default Units;");
+
+    // One named like the type it is one of leaves the name to the type.
+    let files = [("QtObject", "pragma Singleton\nimport QtQuick\nQtObject { property int grid: 8 }")];
+    let code = lowered_in(&files, "QtObject").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, r#"import { QtObject } from "qml-solid/QtQuick";"#);
+    assert_contains(&code, "const QtObject$singleton = $singleton(QtObject$component, {});");
+    assert_contains(&code, "Object.setPrototypeOf(QtObject$singleton, QtObject);");
+    assert_contains(&code, "export default QtObject$singleton;");
 }
 
 #[test]
