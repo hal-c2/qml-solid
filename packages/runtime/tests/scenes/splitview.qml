@@ -5,13 +5,14 @@
 import QtQuick
 import QtQuick.Templates
 import QtQuick.Templates as T
+import QtQuick.Controls.Basic as Basic
 
 Item {
     id: root
     width: 400
     height: 300
 
-    property int steps: 24
+    property int steps: 26
     property var saved
     property var restored: []
     property alias row: row
@@ -71,7 +72,13 @@ Item {
         height: 50
         hoverEnabled: true
 
-        handle: Rectangle { implicitWidth: 10; implicitHeight: 3; color: "gray" }
+        // As a program that imports the controls names what a handle says.
+        handle: Rectangle {
+            property bool held: Basic.SplitHandle.pressed
+            implicitWidth: 10
+            implicitHeight: 3
+            color: "gray"
+        }
 
         Rectangle { id: p; color: "#fdd"; SplitView.preferredWidth: 60; SplitView.minimumWidth: 40 }
         Rectangle { id: q; color: "#dfd"; SplitView.fillWidth: true; SplitView.minimumWidth: 15 }
@@ -116,7 +123,7 @@ Item {
         for (const child of view.children) {
             if (child === view.contentItem)
                 continue
-            all.push(box(child).concat([child.visible, child.SplitHandle.hovered, child.SplitHandle.pressed]))
+            all.push(box(child).concat([child.visible, child.SplitHandle.hovered, child.SplitHandle.pressed, child.held === true]))
         }
         return all
     }
@@ -138,9 +145,9 @@ Item {
         case 4: c.visible = false; break
         case 5: c.visible = true; a.SplitView.fillWidth = true; break
         case 6: row.width = 150; break
-        // Qt works out which item fills only when something of the
-        // orientation it has is said: the one it had would fill still.
-        case 7: row.orientation = Qt.Vertical; b.SplitView.fillHeight = true; break
+        // The item that filled still does: which fills is not looked for
+        // again when the view is turned.
+        case 7: row.orientation = Qt.Vertical; break
         case 8: row.orientation = Qt.Horizontal; a.SplitView.fillWidth = false; row.width = 300; break
         case 9:
             b.SplitView.preferredWidth = undefined
@@ -165,6 +172,9 @@ Item {
         case 21: bare.handle = thin; wide.handle = null; break
         case 22: bare.addItem(h); break
         case 23: h.visible = false; break
+        // Turned back, the last still fills, until one says it does.
+        case 24: col.orientation = Qt.Vertical; break
+        case 25: d.SplitView.fillHeight = true; break
         }
     }
 

@@ -274,14 +274,15 @@ function layout(self) {
 
   // The fill item is the first shown that says it is, or the last shown.
   let last = -1;
-  let fill = -1;
+  let first = -1;
   for (let index = 0; index < count; index++) {
     if (!items[index].visible) continue;
     last = index;
-    if (fill < 0 && fills(items[index], across)) fill = index;
+    if (first < 0 && fills(items[index], across)) first = index;
   }
-  if (fill < 0) fill = last < 0 ? count - 1 : last;
-  state.fill = fill;
+  if (state.refill || state.fill >= count) state.fill = first >= 0 ? first : last < 0 ? count - 1 : last;
+  state.refill = false;
+  const fill = state.fill;
 
   // A handle is after its item, and the last item shown has none.
   shown.length = thick.length = all.length;
@@ -397,6 +398,15 @@ function note(state, index, value) {
   state.stale = true;
 }
 
+// Which item fills is found again when the items change, or which of them
+// are shown, or when one says whether it fills the way the view goes: not
+// when the view is turned, after which the one that filled still does.
+function tell(state, index, value, counts) {
+  if (state.told[index] === value) return;
+  state.told[index] = value;
+  if (counts) state.refill = state.stale = true;
+}
+
 function read(self) {
   const state = self.$split;
   const model = self.$model;
@@ -404,6 +414,7 @@ function read(self) {
   model.$ordered();
   const across = self.orientation === Horizontal;
   let index = 0;
+  let told = 0;
   note(state, index++, self.handle ?? null);
   note(state, index++, across);
   note(state, index++, self.width);
@@ -414,7 +425,15 @@ function read(self) {
     note(state, index++, minimum(item, across));
     note(state, index++, preferred(item, across));
     note(state, index++, maximum(item, across));
-    note(state, index++, fills(item, across));
+    const attached = attachedOf(item);
+    tell(state, told++, item, true);
+    tell(state, told++, item.visible, true);
+    tell(state, told++, Boolean(attached?.fillWidth), across);
+    tell(state, told++, Boolean(attached?.fillHeight), !across);
+  }
+  if (state.told.length !== told) {
+    state.told.length = told;
+    state.refill = state.stale = true;
   }
   for (const handle of state.handles) {
     note(state, index++, handle);
@@ -496,7 +515,11 @@ export const SplitView = defineType("SplitView", Container, {
       at: [],
       // How long the layout makes each item.
       sizes: [],
+      // The item that fills, and whether it is to be found again: by what
+      // was `told` of the items when it was last looked for.
       fill: -1,
+      refill: true,
+      told: [],
       // The handle that is dragged and the first item shown after it; where
       // the press was, where the mouse is, and where the handle was.
       pressed: -1,
