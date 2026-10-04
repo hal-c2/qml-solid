@@ -12,6 +12,8 @@ Item {
     // What the buttons hear of the box they are in: apart from what the
     // boxes tell, for the order between the two is not the same every time.
     property var heard: []
+    // A role that is bound, which the handler next to it hears of.
+    property int help: T.DialogButtonBox.HelpRole
     property alias plain: plain
     property alias listed: listed
 
@@ -77,7 +79,7 @@ Item {
             text: "Mine"
             implicitWidth: 50
             implicitHeight: 20
-            T.DialogButtonBox.buttonRole: T.DialogButtonBox.HelpRole
+            T.DialogButtonBox.buttonRole: root.help
             T.DialogButtonBox.onButtonBoxChanged: root.heard.push("mine box " + root.named(T.DialogButtonBox.buttonBox))
             T.DialogButtonBox.onButtonRoleChanged: root.heard.push("mine role " + T.DialogButtonBox.buttonRole)
         }
