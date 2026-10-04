@@ -447,6 +447,15 @@ export class Outline {
     return this.measure().length;
   }
 
+  // How long its first `count` parts are.
+  lengthAt(count) {
+    const { segments } = this.measure();
+    let drawn = 0;
+    for (let index = 0; index < count && index < this.parts.length; index++) if (this.parts[index].kind !== MOVE) drawn++;
+    const last = segments[drawn - 1];
+    return last ? last.before + last.length : 0;
+  }
+
   // The segment a fraction of the length falls in, and how far along it:
   // by length for a line, by the curve's own parameter for a curve, which is
   // how Qt has it.

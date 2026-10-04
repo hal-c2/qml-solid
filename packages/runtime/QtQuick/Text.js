@@ -5,8 +5,7 @@
 // out, so plain text is measured and broken into lines here and the element
 // is given the lines. Markup is the browser's to set: it is measured in an
 // element off the page.
-import { flush } from "solid-js";
-import { defineType, derived, effect, slot } from "../object.js";
+import { defineType, derived, effect, flush, slot } from "../object.js";
 import { css } from "./color.js";
 import { given, lazy, sized } from "./compute.js";
 import {
@@ -36,7 +35,7 @@ const WRAP_ANYWHERE = 3;
 const PARAGRAPHS = /\r\n|[\n\u2028\u2029]/;
 const TRAILING = /[ \t]+$/;
 // A text whose first letter is Hebrew or Arabic starts from the right.
-const RIGHT_TO_LEFT = /^[^\p{L}]*[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u;
+export const RIGHT_TO_LEFT = /^[^\p{L}]*[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u;
 
 const hangs = (code) => code === 32 || code === 9;
 const letter = (code) => (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code >= 0xc0;

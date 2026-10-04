@@ -303,13 +303,76 @@ function build(self) {
   const startY = Number(self.startY) || 0;
   outline.moveTo(startX, startY);
   const curves = self.pathElements.filter((element) => typeof element?.$draw === "function");
-  curves.forEach((curve, index) => curve.$draw(outline, { index, curves }));
+  // How many parts there were as each curve ended: where it ends.
+  const ends = [];
+  curves.forEach((curve, index) => {
+    curve.$draw(outline, { index, curves });
+    ends.push(outline.parts.length);
+  });
+  outline.ends = ends;
   outline.loop = outline.length > 0 && outline.x === startX && outline.y === startY;
   const scale = self.scale;
   const sx = Number(scale?.width ?? 1);
   const sy = Number(scale?.height ?? 1);
   if (sx !== 1 || sy !== 1) outline.scale(sx, sy);
   return outline;
+}
+
+// What the path's `PathAttribute`s say: a value at the start of the path or
+// at the end of a curve, the one it is declared after. Between two it goes
+// evenly from one to the other; before the first that names it, it grows
+// from 0, and after the last it is what it was at the start. Qt's.
+function attributes(self) {
+  const outline = self.$outline();
+  const whole = outline.length;
+  const points = [{ percent: 0, values: {} }];
+  const names = [];
+  let curve = 0;
+  for (const element of self.pathElements) {
+    if (typeof element?.$draw === "function") {
+      const percent = whole > 0 ? outline.lengthAt(outline.ends[curve++]) / whole : 0;
+      points.push({ percent, values: {} });
+    } else if (element?.$type === PathAttribute) {
+      const name = String(element.name);
+      if (!names.includes(name)) names.push(name);
+      points.at(-1).values[name] = Number(element.value) || 0;
+    }
+  }
+  for (const name of names) {
+    let last = 0;
+    let lastPercent = 0;
+    let from = 0;
+    for (let index = 0; index < points.length; index++) {
+      const point = points[index];
+      if (!(name in point.values)) continue;
+      const value = point.values[name];
+      for (let before = from; before < index; before++) {
+        const span = point.percent - lastPercent;
+        points[before].values[name] = span > 0 ? last + ((value - last) * (points[before].percent - lastPercent)) / span : last;
+      }
+      last = value;
+      lastPercent = point.percent;
+      from = index + 1;
+    }
+    const first = points[0].values[name] ?? 0;
+    for (let after = from; after < points.length; after++) points[after].values[name] = first;
+  }
+  return { names, points };
+}
+
+// The value of an attribute at a fraction of the path's length.
+function attributeAt({ points }, name, percent) {
+  if (percent < 0 || percent > 1) return 0;
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
+    if (point.percent === percent) return point.values[name];
+    if (point.percent < percent) continue;
+    const before = points[index - 1];
+    const last = before?.values[name] ?? 0;
+    const lastPercent = before?.percent ?? 0;
+    return last + ((point.values[name] - last) * (percent - lastPercent)) / (point.percent - lastPercent);
+  }
+  return 0;
 }
 
 export const Path = defineType("Path", QtObject, {
@@ -354,6 +417,10 @@ export const Path = defineType("Path", QtObject, {
       });
     self.$path = { version, bump, list, assigned: null, declared: list([]), wrapped: new WeakMap() };
     self.$outline = lazy(self, () => build(self));
+    // The names of its attributes, and what they are at a fraction of it.
+    const told = lazy(self, () => attributes(self));
+    self.$attributes = () => told().names;
+    self.$attributeAt = (name, percent) => attributeAt(told(), name, percent);
     // `changed`: the path is another one than it was.
     let drawn = false;
     effect(

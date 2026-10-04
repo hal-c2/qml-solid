@@ -167,6 +167,13 @@ impl Paths {
                                 }
                                 Some(self.literal(b, kernel, value, scope).unwrap_or_else(|| {
                                     made = false;
+                                    // A directory is no asset: a bundler
+                                    // that takes `new URL` for one gives it
+                                    // back without the slash it ends with.
+                                    if value.ends_with('/') {
+                                        kernel.insert("$url");
+                                        return b.call(b.id("$url"), [b.string(value), b.import_meta_url()]);
+                                    }
                                     b.member(b.new_(b.id("URL"), [b.string(value), b.import_meta_url()]), "href")
                                 }))
                             }

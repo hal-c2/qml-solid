@@ -230,10 +230,7 @@ impl<'a> Resolver<'a, '_, '_> {
         if has_enum(ty, member) {
             return Access::Enum;
         }
-        let attaches = ty.attached().is_some_and(|attached| {
-            attached.property(member).is_some() || attached.signal(member).is_some() || attached.has_method(member)
-        });
-        if attaches && !ty.is_singleton { Access::Attached } else { Access::Static }
+        if ty.attaches(member) && !ty.is_singleton { Access::Attached } else { Access::Static }
     }
 
     /// `Type.member`, when `expression` is exactly that.
@@ -287,10 +284,7 @@ impl<'a> Resolver<'a, '_, '_> {
         let path: Vec<&str> = namespace.as_deref().into_iter().chain([name.as_str()]).collect();
         let Some(found) = self.types.find(&path) else { return false };
         let Some(ty) = self.types.base(&found.kind) else { return false };
-        let attaches = ty.attached().is_some_and(|attached| {
-            attached.property(&wanted).is_some() || attached.signal(&wanted).is_some() || attached.has_method(&wanted)
-        });
-        if !attaches || ty.is_singleton {
+        if !ty.attaches(&wanted) || ty.is_singleton {
             return false;
         }
         match namespace {

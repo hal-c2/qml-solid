@@ -1,8 +1,8 @@
 // Sprite: one animation in a sheet of frames, and which may follow it.
 // What plays it is another type's business: an ImageParticle gives each
 // particle one.
-import { createSignal, flush } from "solid-js";
-import { defineType, effect, QtObject } from "../object.js";
+import { createSignal } from "solid-js";
+import { defineType, effect, flush, QtObject } from "../object.js";
 
 const WRITABLE = { ownedWrite: true };
 

@@ -1,5 +1,8 @@
 // `import QtQml`, and what QML puts in every file's scope without an import.
 export { QtObject } from "../object.js";
+export { Timer } from "../QtQuick/animation/Timer.js";
+export { Binding } from "../QtQuick/Binding.js";
+export { Connections } from "../QtQuick/Connections.js";
 export { Component } from "./Component.js";
 export { Locale } from "./locale.js";
 export {
@@ -16,3 +19,5 @@ export {
   QT_TRANSLATE_NOOP,
   QT_TRID_NOOP,
 } from "./Qt.js";
+// What it has by importing `QtQml.Models`.
+export * from "./Models/index.js";

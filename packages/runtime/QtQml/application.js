@@ -1,8 +1,8 @@
 // What there is one of for a whole program: `Application` (which is
 // `Qt.application`), its style hints and the input method. On the web the
 // program is the page, so these read the document and the browser.
-import { createRoot, flush, onCleanup, runWithOwner, untrack } from "solid-js";
-import { defineType, derived, inside, QtObject, slot } from "../object.js";
+import { createRoot, onCleanup, runWithOwner, untrack } from "solid-js";
+import { defineType, derived, flush, inside, QtObject, slot } from "../object.js";
 import { locale } from "./locale.js";
 import { enums } from "./namespace.js";
 import { Rect } from "./values.js";

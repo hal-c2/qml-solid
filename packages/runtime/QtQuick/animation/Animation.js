@@ -6,8 +6,8 @@
 // Transition or a Behavior uses it for a change of theirs. `$transition` makes
 // it, from the changes there are to animate (`actions`); what the animation
 // takes of them it adds to `modified`, and the rest is not its business.
-import { createEffect, createMemo, createSignal, flush, onCleanup, untrack } from "solid-js";
-import { contents, defineType, QtObject, slot, whenComplete } from "../../object.js";
+import { createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js";
+import { contents, defineType, flush, QtObject, slot, whenComplete } from "../../object.js";
 import { drain, later } from "./clock.js";
 import { ActionJob, ParallelJob, PauseJob, RUNNING, SequentialJob } from "./jobs.js";
 

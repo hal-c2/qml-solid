@@ -249,9 +249,10 @@ test("a proxy of a ListModel type of the program's own follows it row by row", a
     selected: [["cap@0", "crown@1!"], true, true, "rgb(255, 0, 0)"],
     other: ["cap@0!", "crown@1"],
     appended: [["cap@0!", "crown@1", "beret@2"], true, true, true, 3],
-    // The handler is told of changes, not of what the binding first gave.
-    tab: [["lens@0", "patch@1"], ["filter eye"]],
-    none: [[], ["filter eye", "filter "], 0],
+    // The handler is told of what the binding first gave too: it is not what
+    // the property had.
+    tab: [["lens@0", "patch@1"], ["filter hat", "filter eye"]],
+    none: [[], ["filter hat", "filter eye", "filter "], 0],
   });
 });
 

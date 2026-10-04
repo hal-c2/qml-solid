@@ -6,8 +6,8 @@
 // entered. With a transition the property has its new value at once, as with
 // a Behavior, and reads as what the transition's animations show until they
 // are done.
-import { createEffect, createMemo, createRoot, createSignal, flush, runWithOwner, untrack } from "solid-js";
-import { contents, defineType, group, QtObject, slot, whenComplete } from "../object.js";
+import { createEffect, createMemo, createRoot, createSignal, runWithOwner, untrack } from "solid-js";
+import { contents, defineType, flush, group, QtObject, slot, whenComplete } from "../object.js";
 import { follow, parallel } from "./animation/Animation.js";
 import { drain, later } from "./animation/clock.js";
 import { display, Property } from "./animation/property.js";
@@ -676,13 +676,15 @@ export const Transition = defineType("Transition", QtObject, {
     },
     // The job that animates what of `actions` its animations are for: side
     // by side, and when the transition is taken backwards, back to front.
-    $prepare(actions, modified, reverse) {
+    // `defaultTarget` is what an animation that names no target is of: the
+    // item a view's transition moves.
+    $prepare(actions, modified, reverse, defaultTarget = null) {
       const given = list(untrack(() => this.animations));
       if (given.length) {
         for (const animation of given) animation.$group = this;
         this.$animations = given;
       }
-      return untrack(() => parallel(this, actions, modified, reverse, null));
+      return untrack(() => parallel(this, actions, modified, reverse, defaultTarget));
     },
   },
   setup(self) {

@@ -64,6 +64,7 @@ export {
   PathRectangle,
   PathSvg,
 } from "./Path.js";
+export { PathView } from "./PathView.js";
 export { Gradient, GradientStop, Rectangle } from "./Rectangle.js";
 export { Repeater } from "./Repeater.js";
 export { Sprite } from "./Sprite.js";

@@ -11,6 +11,14 @@ export default defineConfig({
       // runtime, whatever Qt the machine has.
       qt: join(import.meta.dirname, "qt"),
       style: (importer) => (importer?.includes("-oak") ? "Oak" : undefined),
+      // What an application says of its controls: the file Qt reads, for
+      // the scenes that are of one, or what would be in it.
+      controls: (importer) =>
+        importer?.includes("/scenes/conf")
+          ? join(import.meta.dirname, "scenes/qtquickcontrols2.conf")
+          : importer?.includes("-said")
+            ? { Controls: { Style: "Oak" } }
+            : undefined,
       standins: [join(import.meta.dirname, "standins")],
     }),
   ],

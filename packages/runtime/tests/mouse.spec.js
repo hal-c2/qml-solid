@@ -313,7 +313,7 @@ test("an area that is hidden or loses the pointer while pressed is canceled", as
   await log(page);
   // The page takes a pointer back when it has another use for it.
   await page.evaluate(() => document.dispatchEvent(new PointerEvent("pointercancel", { pointerId: 1, bubbles: true })));
-  expect(await log(page)).toEqual(["plain pressedChanged false", "plain canceled"]);
+  expect(await log(page)).toEqual(["plain canceled", "plain pressedChanged false"]);
   await page.mouse.up();
   expect(await log(page)).toEqual([]);
 });

@@ -76,7 +76,7 @@
       "qt": {
         "runnable": true
       },
-      "notes": "Three Android apps in one directory. The entry is the one that is plain QML; splashscreen/quick/Splash.qml (a splash Window that loads its own Main.qml) and feature-delivery/fdmaploader/Main.qml (needs MapLoader from C++) are the other two."
+      "notes": "Three Android apps in one directory. The entry is the one that is plain QML; splashscreen/quick/Splash.qml (a splash Window that loads its own Main.qml) and feature-delivery/fdmaploader/Main.qml (its MapLoader from C++ is stood in for; its maps are in the program's resources, at qrc:/images/, which only the built program has) are the other two."
     },
     {
       "id": "calqlatr",
@@ -243,7 +243,7 @@
       ],
       "qt": {
         "runnable": false,
-        "reason": "Main.qml instantiates RestService and PaginatedResource, C++ types of the example's own module."
+        "reason": "The pictures are addressed in the program's resources (qrc:/qt/qml/ColorPalette/icons/...), which the plain tool has not got; and RestService, BasicLogin and PaginatedResource are C++ types of the example's own module, which its files do not import: corpus/standins/colorpaletteclient stands in for them on the web."
       }
     },
     {
@@ -381,7 +381,7 @@
       ],
       "qt": {
         "runnable": false,
-        "reason": "QtGraphs is not installed, and the model is the C++ type CsvDataModel."
+        "reason": "QtGraphs is not installed. The model is the C++ type CsvDataModel, a QAbstractTableModel; corpus/standins/graphs_csv stands in for it with an object that answers what QML calls of one, which no view of Qt takes as a model."
       }
     },
     {
@@ -409,9 +409,12 @@
         "examples.Hangman: Hangman (the game), Store, Product, Transaction (in-app purchasing)"
       ],
       "qt": {
-        "runnable": false,
-        "reason": "The game is the C++ type Hangman, which every view binds to; the store types are C++ too."
-      }
+        "runnable": true,
+        "env": {
+          "QML_XHR_ALLOW_FILE_READ": "1"
+        }
+      },
+      "notes": "The game and the store are C++ types: corpus/standins/hangman stands in for them, for Qt's picture too. The word is one of dict.txt at random; the dash under each of its letters is what is left of the letter's height below a line of Helvetica, which here is nothing, so the picture is the same for any word."
     },
     {
       "id": "lightningviewer",
@@ -450,7 +453,8 @@
       ],
       "qt": {
         "runnable": false,
-        "reason": "QtLocation is not installed, and the data comes from the C++ singleton LightningController. main.cpp sets the example's own LightningViewerStyle as the Controls style."
+        "style": "Basic",
+        "reason": "QtLocation is not installed. main.cpp sets the example's own LightningViewerStyle as the Controls style: a module with a Button and a RoundButton, and Basic behind it for the rest. `style` can name only a style of Qt's, so it names Basic, and the two buttons are not the example's. The C++ singleton LightningController is stood in for by corpus/standins/lightningviewer; its WebSocket is QtWebSockets', which qml-solid has not got."
       }
     },
     {
@@ -520,9 +524,29 @@
         "initial properties from main.cpp: source, nameFilters, selectedNameFilter"
       ],
       "qt": {
-        "runnable": false,
-        "reason": "MediaPlayer/PlaylistInfo.qml imports io.qt.filenameprovider, a C++ singleton, and Main.qml has required properties that main.cpp sets."
-      }
+        "runnable": true,
+        "properties": {
+          "source": "",
+          "nameFilters": [
+            "Advanced Audio Coding (AAC) (*.aac *.adts *.ass)",
+            "Audio Video Interleave (AVI) (*.avi *.avf *.divx)",
+            "Free Lossless Audio Codec (FLAC) (*.flac)",
+            "MP3 (*.mp3 *.mpga)",
+            "MPEG-4 Audio (*.m4a *.f4a)",
+            "MPEG-4 Video Container (*.mp4 *.m4v *.f4v *.lrv *.lrf)",
+            "Matroska Multimedia Container (*.mkv)",
+            "Ogg (*.ogv *.ogg)",
+            "QuickTime Container (*.qt *.mov *.moov *.qtvr)",
+            "Wave Audio File Format (WAVE) (*.wav)",
+            "WebM (*.webm)",
+            "Windows Media Audio (WMA) (*.wma)",
+            "Windows Media Video (WMV) (*.wmv)"
+          ],
+          "selectedNameFilter": 5
+        },
+        "offline": true
+      },
+      "notes": "FileNameProvider is a C++ singleton, stood in by corpus/standins/mediaplayer, for Qt's picture too. main.cpp gives Main.qml the name filters of the file formats the platform decodes: for the picture what Qt 6.11 with FFmpeg gives on Linux, on the web (main.js) what the browser says it plays. The playlist starts with a film on download.qt.io: the picture is taken without a network."
     },
     {
       "id": "osmbuildings",
@@ -611,9 +635,9 @@
         "qtjenny_consumer: BackEnd (Android APIs through JNI)"
       ],
       "qt": {
-        "runnable": false,
-        "reason": "Android only: Main.qml instantiates the C++ type BackEnd, which calls Android APIs."
-      }
+        "runnable": true
+      },
+      "notes": "Android only in C++: Main.qml instantiates the C++ type BackEnd, which calls Android APIs through JNI. corpus/standins/qtjennydemo stands in for it with a made-up phone, also for Qt's picture."
     },
     {
       "id": "robotarm",
@@ -741,7 +765,7 @@
       ],
       "qt": {
         "runnable": false,
-        "reason": "QtGraphs is not installed, and the data comes from the C++ singleton StockEngine. The Imagine style, from qtquickcontrols2.conf."
+        "reason": "QtGraphs is not installed. The data comes from the C++ singleton StockEngine, which corpus/standins/stocqt stands in for. The Imagine style, from qtquickcontrols2.conf."
       }
     },
     {

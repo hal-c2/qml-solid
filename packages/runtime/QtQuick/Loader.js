@@ -7,7 +7,7 @@
 // comes later. Anything else is the URL it was given, for which there is
 // nothing to load: QML is not interpreted here.
 import { createEffect, createSignal, runWithOwner, untrack } from "solid-js";
-import { defineType, derived, effect, instantiate, slot, whenComplete } from "../object.js";
+import { defineType, derived, effect, instantiate, last, slot, whenComplete } from "../object.js";
 import { Item } from "./Item.js";
 import { settle } from "./settle.js";
 
@@ -208,6 +208,6 @@ export const Loader = defineType("Loader", Item, {
     );
     // After that `loaded` comes with the handlers of what changed, once
     // those of `item` and `status` have run.
-    whenComplete(() => createEffect(made, () => void untrack(() => self.loaded()), { defer: true }));
+    whenComplete(() => createEffect(made, () => last(() => self.loaded()), { defer: true }));
   },
 });

@@ -3,8 +3,8 @@
 // The browser loads and paints it. What QML reads of it is computed here as
 // Qt computes it: the size it would have been loaded at, which is the item's
 // implicit size, and the rectangle it is painted in.
-import { createSignal, flush } from "solid-js";
-import { defineType, derived, effect, group, located } from "../object.js";
+import { createSignal } from "solid-js";
+import { defineType, derived, effect, flush, group, located } from "../object.js";
 import { given, lazy, rules, sized } from "./compute.js";
 import { Item } from "./Item.js";
 

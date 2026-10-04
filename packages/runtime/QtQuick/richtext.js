@@ -2,10 +2,11 @@
 // string made at run time, often from data, so it is never given to the page
 // as it is: it is parsed apart from it, and the elements Qt knows are built
 // again with nothing in them that loads a script or leaves the page.
-import { createSignal, flush } from "solid-js";
+import { createSignal } from "solid-js";
 import { css } from "./color.js";
 import { rules } from "./compute.js";
 import { dress, fonts, metrics, resized } from "./font.js";
+import { flush } from "../object.js";
 
 // Qt's line is its font's height rounded up, which CSS computes per element
 // from `--qq-line`. Headings and `<font size>` scale as Qt's do; paragraphs
