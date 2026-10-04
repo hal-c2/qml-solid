@@ -11,6 +11,7 @@ export { ContextMenu } from "./ContextMenu.js";
 export { Control } from "./Control.js";
 export { DelayButton } from "./DelayButton.js";
 export { Dial } from "./Dial.js";
+export { Dialog } from "./Dialog.js";
 export { DialogButtonBox } from "./DialogButtonBox.js";
 export { CheckDelegate, ItemDelegate, RadioDelegate, SwitchDelegate } from "./ItemDelegate.js";
 export { Label } from "./Label.js";

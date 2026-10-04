@@ -5,6 +5,7 @@
 // shows none of them, as in Qt.
 import { untrack } from "solid-js";
 import { contents, defineType, derived, effect, slot } from "../../object.js";
+import { departing } from "../focus.js";
 import { Item } from "../Item.js";
 import { ObjectModel } from "../model.js";
 import { settle } from "../settle.js";
@@ -76,6 +77,8 @@ function remove(self, index) {
     drive(self, "currentIndex", index$ - 1);
     settle();
   }
+  // The keys are no more the item's: they stay with what it was in.
+  departing(item);
   model.remove(index);
   if (index < index$) drive(self, "currentIndex", index$ - 1);
   const housed = self.$items.housed;

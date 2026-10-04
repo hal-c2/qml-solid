@@ -210,6 +210,10 @@ export const DialogButtonBox = defineType("DialogButtonBox", Container, {
     defaultButton: null,
     delegate: null,
     buttonLayout: 0,
+    // What its buttons would like, whatever `contentWidth` is said to be: a
+    // box as wide as the view its buttons are in grows with its buttons.
+    implicitContentWidth: derived((self) => self.$contentWidth()),
+    implicitContentHeight: derived((self) => self.$contentHeight()),
   },
   resolve: {
     // `undefined` is no alignment, and the platform's layout.
@@ -378,7 +382,10 @@ export const DialogButtonBox = defineType("DialogButtonBox", Container, {
       },
     );
     // Focus is the default button's, else the first that accepts; the
-    // default one is highlighted.
+    // default one is highlighted. It is given when the buttons are others
+    // and when the box comes to be seen, and left where it went since when
+    // the box goes.
+    let before = [];
     effect(
       () => {
         const buttons = self.contentChildren;
@@ -391,7 +398,11 @@ export const DialogButtonBox = defineType("DialogButtonBox", Container, {
         return [self.contentItem, self.visible, index, lit, ...buttons];
       },
       (focus) => {
+        const was = before;
+        before = focus ?? [];
         if (!focus) return;
+        const same = focus.length === was.length && focus.every((value, at) => at === 1 || value === was[at]);
+        if (same && !(focus[1] && !was[1])) return;
         const [view, , index, lit, ...buttons] = focus;
         untrack(() => {
           // A view has a current item, and focus of its own to give.
