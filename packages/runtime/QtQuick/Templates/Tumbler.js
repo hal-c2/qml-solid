@@ -80,6 +80,8 @@ function go(view, index, count, instant) {
 // view is, and goes to the row that is asked for if there is one.
 function sync(self, mine, view, count, at, asked, explicit) {
   const fresh = view !== mine.view;
+  // Asked for since: where the view went meanwhile is not a request.
+  const told = !Object.is(asked, mine.asked);
   let wanted = -1;
   let instant = true;
   if (fresh) {
@@ -110,7 +112,7 @@ function sync(self, mine, view, count, at, asked, explicit) {
   }
   if (mine.explicit && !explicit && count) mine.wrap(count >= self.visibleItemCount);
   mine.explicit = explicit;
-  if (!Object.is(asked, mine.asked)) {
+  if (told) {
     mine.asked = asked;
     const index = Math.trunc(Number(asked));
     if (!mine.ready) {

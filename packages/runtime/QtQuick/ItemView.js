@@ -133,7 +133,12 @@ function reveal(self, state, bounded) {
     if (at < position + begin) position = at - begin;
     if (mode === StrictlyEnforceRange) bounded = state.lax !== null;
   }
-  if (bounded) position = clamp(position, least(self, state), most(self, state));
+  if (bounded) {
+    // One that starts inside its content is kept to that, not to its range.
+    const ends = state.lax ? Flickable.proto : self;
+    const [low, high] = state.vertical ? [ends.$minY, ends.$maxY] : [ends.$minX, ends.$maxX];
+    position = clamp(position, low.call(self), high.call(self));
+  }
   moveTo(self, state, position);
 }
 
@@ -157,6 +162,29 @@ function loosened(self, state, count, current) {
     return true;
   }
   return !self.moving && by.every((value, index) => value === lax[index]);
+}
+
+// A view whose range is enforced goes as far as its first row and its last
+// are in the range, if the range has a size. (Qt: with one of no size too, to
+// where the last row begins.)
+function ranged(self, vertical) {
+  return (
+    self.highlightRangeMode === StrictlyEnforceRange &&
+    self.preferredHighlightEnd > self.preferredHighlightBegin &&
+    self.$vertical() === vertical
+  );
+}
+
+function first(self, vertical) {
+  const base = (vertical ? Flickable.proto.$minY : Flickable.proto.$minX).call(self);
+  return ranged(self, vertical) ? base - self.preferredHighlightBegin : base;
+}
+
+function last(self, vertical) {
+  const length = vertical ? self.contentHeight : self.contentWidth;
+  if (!ranged(self, vertical) || !(length >= 0)) return (vertical ? Flickable.proto.$maxY : Flickable.proto.$maxX).call(self);
+  const end = (vertical ? self.originY : self.originX) + length - self.preferredHighlightEnd;
+  return Math.max(end, first(self, vertical));
 }
 
 function refresh(self, state) {
@@ -196,7 +224,10 @@ function refresh(self, state) {
     state.follow = true;
   }
   if (current < 0 || current >= count) current = -1;
-  if (state.lax && !loosened(self, state, count, current)) state.lax = null;
+  if (state.lax && !loosened(self, state, count, current)) {
+    state.lax = null;
+    state.loose(false);
+  }
   // Where the current item is decides which rows are needed.
   if (state.follow && current >= 0) {
     self.$seek(state, current);
@@ -338,6 +369,18 @@ export const ItemView = defineType("ItemView", Flickable, {
     NoSnap: 0,
   },
   methods: {
+    $minX() {
+      return first(this, false);
+    },
+    $maxX() {
+      return last(this, false);
+    },
+    $minY() {
+      return first(this, true);
+    },
+    $maxY() {
+      return last(this, true);
+    },
     // The delegate of a row, if the row is near enough to have one.
     itemAtIndex(index) {
       return this.$v.rows.live.get(index)?.$item ?? null;
@@ -369,6 +412,7 @@ export const ItemView = defineType("ItemView", Flickable, {
   },
   setup(self, props) {
     const [version, bump] = createSignal(0, WRITABLE);
+    const [loosely, loose] = createSignal(Boolean(props.$lax), WRITABLE);
     const content = self.$contentItem;
     const changed = () => {
       slot(self, "count").write(rows.count);
@@ -448,6 +492,7 @@ export const ItemView = defineType("ItemView", Flickable, {
       shown: undefined,
       follow: false,
       lax: props.$lax ? [] : null,
+      loose,
       fresh: null,
       added: [],
       // What stands for a row in an item that is not one's.
@@ -493,12 +538,18 @@ export const ItemView = defineType("ItemView", Flickable, {
         state.laidOut = true;
       },
     );
-    // Snapping is the browser's too: the items are where it stops.
+    // Snapping is the browser's too: the items are where it stops, which is
+    // where an enforced range begins. One that started inside its content
+    // and is there still may be where no item would stop.
     effect(
-      () => [self.snapMode, self.$vertical()],
-      ([snap, vertical]) => {
+      () => {
+        const vertical = self.$vertical();
+        return [loosely() ? 0 : self.snapMode, vertical, ranged(self, vertical) ? self.preferredHighlightBegin : 0];
+      },
+      ([snap, vertical, begin]) => {
         const viewport = self.$viewport;
         viewport.style.scrollSnapType = snap ? `${vertical ? "y" : "x"} mandatory` : "";
+        viewport.style.scrollPadding = begin ? (vertical ? `${begin}px 0 0 0` : `0 0 0 ${begin}px`) : "";
         viewport.classList.toggle("qq-snap", snap !== 0);
         viewport.classList.toggle("qq-snap-one", snap === 2);
       },

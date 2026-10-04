@@ -3,14 +3,40 @@
 // wrapping: a PathView along `path` for one that does, a ListView for one
 // that does not.
 import { onCleanup, untrack } from "solid-js";
-import { defineType, effect, instantiate } from "../../../object.js";
+import { defineType, effect, instantiate, slot } from "../../../object.js";
 import { Item } from "../../Item.js";
 import { ListView } from "../../ListView.js";
 import { PathView } from "../../PathView.js";
 
+// A row is as big as the tumbler has it from when it is made: the view lays
+// it out as that, as Qt's does, and the tumbler sees to it after.
+function sized(self, tumbler) {
+  let from;
+  let made;
+  return () => {
+    const delegate = self.delegate;
+    if (delegate === from) return made;
+    from = delegate;
+    made =
+      typeof delegate !== "function"
+        ? delegate
+        : (row) => {
+            const item = delegate(row);
+            if (item?.$node) {
+              untrack(() => {
+                slot(item, "width").place(tumbler.availableWidth);
+                slot(item, "height").place(tumbler.availableHeight / tumbler.visibleItemCount);
+              });
+            }
+            return item;
+          };
+    return made;
+  };
+}
+
 // What either view has: the size of the TumblerView, its rows, and the
 // tumbler's say in how a flick slows.
-const shared = (self, tumbler) => ({
+const shared = (self, tumbler, delegate = sized(self, tumbler)) => ({
   get width() {
     return self.width;
   },
@@ -21,7 +47,7 @@ const shared = (self, tumbler) => ({
     return self.model;
   },
   get delegate() {
-    return self.delegate;
+    return delegate();
   },
   get flickDeceleration() {
     return tumbler.flickDeceleration;

@@ -53,7 +53,7 @@ Item {
         readonly property real each: availableHeight / visibleItemCount
         contentItem: TumblerView {
             implicitWidth: 60
-            implicitHeight: 200
+            implicitHeight: 210
             model: wheel.model
             delegate: wheel.delegate
             path: Path {
@@ -307,7 +307,7 @@ Item {
         for (let i = 0; i < items.length; i++) {
             const item = items[i]
             if (item.index === undefined || item.y + item.height <= top || item.y >= top + inside.height) continue
-            seen.push([item.index, round(item.x), round(item.y - top), item.width, round(item.height), round(item.displacement), round(item.opacity), item.of === tumbler])
+            seen.push([item.index, round(item.x), round(item.y - top), item.width, round(item.height), round(item.displacement), round(Math.max(0, item.opacity)), item.of === tumbler])
         }
         seen.sort((a, b) => a[2] - b[2])
         return seen
