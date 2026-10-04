@@ -660,7 +660,13 @@ class Slot {
   }
 
   own() {
-    if (this.placed !== undefined && !this.over) return this.placed;
+    if (this.placed !== undefined && !this.over) {
+      if (typeof this.placed !== "function") return this.placed;
+      // Placed by what something else is, as wide as a share of its box:
+      // asked each time, and nothing where it has no say.
+      const placed = this.placed();
+      if (placed !== undefined) return placed;
+    }
     if (this.assigned) return this.value;
     let value = this.bound ? this.bound() : this.given;
     if (value === undefined && this.whole) value = slot(this.self, this.whole).get()?.[this.member];
@@ -1274,13 +1280,16 @@ function first(self, name, key, value, firsts) {
   const top = levels.findLastIndex((level) => Object.hasOwn(level, name));
   if (top < 0) return;
   const given = Object.getOwnPropertyDescriptor(levels[top], name);
+  // An object declared for the property (`footer: ToolBar {}`) is there as a
+  // value is, and no binding.
+  const bound = given.get && !levels[top].$made?.includes(name);
   const initial = slot(self, name).initial;
   let before = initial?.[DERIVED] ? untrack(() => initial[DERIVED](self)) : initial;
   levels.forEach((level, index) => {
     const descriptor = Object.getOwnPropertyDescriptor(level, name);
     if (descriptor && !descriptor.get) before = descriptor.value;
     const handler = Object.hasOwn(level, key) ? level[key] : null;
-    if (!handler || (!given.get && top <= index)) return;
+    if (!handler || (!bound && top <= index)) return;
     if (Object.is(given.get ? value : given.value, before)) return;
     if (firsts) firsts.push(handler);
     else soon(handler);
@@ -1313,7 +1322,11 @@ function attach(name, Attached, self) {
     Object.defineProperty(props, key.slice(prefix.length), Object.getOwnPropertyDescriptor(self.$props, key));
   }
   hidden(props, "$attachee", self);
-  return (all[name] = runWithOwner(self.$owner, () => untrack(() => Attached(props))));
+  // It is the object's before it is made: what it tells of once it is, as
+  // `Layout.onRowChanged` of a `Layout.row` that is bound, may ask for it.
+  hidden(props, "$self", (all[name] = $object()));
+  runWithOwner(self.$owner, () => untrack(() => Attached(props)));
+  return all[name];
 }
 
 // What a `Component` is at run time: a function from what its object is

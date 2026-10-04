@@ -300,6 +300,16 @@ function place(point, event) {
 
 const asked = [];
 
+// Who is told of a press before anything under it is asked: `hear(point,
+// hits)` may watch the point. An overlay asks the drawers at the edges of its
+// window.
+const first = new Set();
+
+export function overhear(hear) {
+  first.add(hear);
+  listen();
+}
+
 // The items around `item` that filter what their children are sent, nearest
 // first. One that took the press is not asked again for what is under it.
 function filter(point, item) {
@@ -382,6 +392,10 @@ function ungrab(point, cancelled) {
 // over after that, in the order it came over them: Qt's. Something that
 // hovers hides what is under it from the mouse, but not what it is inside of.
 const over = [];
+// Whether they are being told, and whether what was shown meanwhile asked
+// for it again.
+let telling = false;
+let again = false;
 
 function hover(point, hits) {
   over.length = 0;
@@ -410,8 +424,35 @@ function hover(point, hits) {
     hovered.splice(index, 1);
   }
   for (let index = 0; index < over.length; index++) if (!hovered.includes(over[index])) hovered.push(over[index]);
-  for (let index = 0; index < over.length; index++) over[index].$hover(point, true);
-  for (let index = 0; index < left.length; index++) left[index].$hover(point, false);
+  telling = true;
+  try {
+    for (let index = 0; index < over.length; index++) over[index].$hover(point, true);
+    for (let index = 0; index < left.length; index++) left[index].$hover(point, false);
+  } finally {
+    telling = false;
+  }
+  if (!again) return;
+  again = false;
+  rehover();
+}
+
+// What is under a mouse that has not moved is another thing when something
+// is shown there: Qt asks again with every frame, and here whoever showed it
+// asks.
+export function rehover() {
+  if (telling) return void (again = true);
+  for (const point of points.values()) {
+    if (point.type === "touch" || point.down || !point.scene?.isConnected) continue;
+    if (hovers > 0 || point.hovered.length) hover(point, hitsAt(point.scene, point.clientX, point.clientY, null));
+  }
+}
+
+// Where the mouse was last, in the page: Qt's `QCursor::pos()`.
+export function cursor() {
+  for (const point of points.values()) {
+    if (point.type !== "touch" && point.scene?.isConnected) return { x: point.clientX, y: point.clientY };
+  }
+  return null;
 }
 
 // The last press of the first pointer: whether what the page would do with
@@ -452,6 +493,7 @@ function onDown(event) {
     else after(DOUBLE_CLICK_INTERVAL, forgotten, last.job);
   }
   const hits = hitsAt(scene, point.clientX, point.clientY, NATIVE);
+  for (const hear of first) hear(point, hits);
   press(point, hits);
   point.claimed = Boolean(point.exclusive || point.passive.length || point.filters.length);
   if (point.primary) claimed = point.claimed;

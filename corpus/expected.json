@@ -1,6 +1,10 @@
 {
   "about": "The ratchet: examples that must keep rendering on the web. `mise run gallery` fails when one listed here does not render; `pixels` and `content`, when given, are the least its scores against Qt's picture may be. `GALLERY_RATCHET=1 mise run gallery` adds every example that renders now.",
   "examples": {
+    "alarms": {
+      "pixels": 0.95,
+      "content": 0.6
+    },
     "android": {
       "pixels": 0.98,
       "content": 0.9
@@ -22,9 +26,17 @@
       "pixels": 0.95,
       "content": 0.93
     },
+    "lightningviewer": {
+      "pixels": 0.99,
+      "content": 0.88
+    },
     "maroon": {
       "pixels": 0.95,
       "content": 0.95
+    },
+    "mediaplayer": {
+      "pixels": 0.99,
+      "content": 0.93
     },
     "photosurface": {
       "pixels": 0.95,
@@ -49,6 +61,10 @@
     "thermostat": {
       "pixels": 0.99,
       "content": 0.98
+    },
+    "todolist": {
+      "pixels": 0.99,
+      "content": 0.95
     },
     "windowembedding": {}
   }

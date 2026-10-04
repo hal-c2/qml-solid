@@ -400,6 +400,11 @@ const Row = Object.setPrototypeOf(
     get modelData() {
       return this.$value;
     },
+    // A role with no name is the row's value, as in Qt, whose styles show
+    // the rows of a combo box that has no `textRole` by it.
+    get ""() {
+      return this.modelData;
+    },
   },
   null,
 );

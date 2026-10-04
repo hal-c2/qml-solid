@@ -196,6 +196,10 @@ export const Dial = defineType("Dial", Control, {
       if (put(this, "pressed", true)) settle();
       if (mine.dragging) move(this, x, y);
     },
+    // A mouse that drags it is its own: nothing around takes the drag.
+    $keeps() {
+      return this.$dial.dragging;
+    },
     $handleMove(x, y) {
       const mine = this.$dial;
       const threshold = styleHints().startDragDistance;

@@ -214,6 +214,10 @@ export const Slider = defineType("Slider", Control, {
       this.$slider.dragging = false;
       put(this, "pressed", false);
     },
+    // A mouse that drags it is its own: nothing around takes the drag.
+    $keeps() {
+      return this.$slider.dragging;
+    },
     $keyPressed(event) {
       const mine = this.$slider;
       const before = mine.value;

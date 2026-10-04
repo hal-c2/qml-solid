@@ -890,20 +890,23 @@ impl<'a, 's> Lower<'a, 's> {
             }
         }
         path.reverse();
-        // `T.Label.ElideRight`: a type of a namespace is named by both.
-        let named = if self.types.namespace(path[0]).is_some() { 2 } else { 1 };
+        // `T.Label.ElideRight`: a type of a namespace is named by both, and
+        // Qt looks no key up through one. That is a binding like any other,
+        // whose handler is told of what it comes to.
+        if self.types.namespace(path[0]).is_some() {
+            return expression;
+        }
         // `ListView.SnapMode.SnapOneItem`: the key by the name of its enum.
-        let (name, scope) = match path.split_at_checked(named) {
-            Some((name, [])) => (name, None),
-            Some((name, [scope])) => (name, Some(*scope)),
+        let (name, scope) = match path[..] {
+            [name] => (name, None),
+            [name, scope] => (name, Some(scope)),
             _ => return expression,
         };
         let is_key = key.starts_with(|c: char| c.is_ascii_uppercase())
-            && match self.types.find(name) {
+            && match self.types.find(&[name]) {
                 Some(found) => self.types.is_key(&found.kind, scope, key),
-                None => name == ["Qt"] && scope.is_none(),
+                None => name == "Qt" && scope.is_none(),
             };
-        let name = name.join("$");
         if !is_key {
             return expression;
         }

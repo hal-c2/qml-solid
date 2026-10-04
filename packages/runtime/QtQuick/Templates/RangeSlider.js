@@ -218,6 +218,10 @@ export const RangeSlider = defineType("RangeSlider", Control, {
       if (under) slot(under, "z").write(0);
       if (mine.dragging) move(this, x, y);
     },
+    // A mouse that drags it is its own: nothing around takes the drag.
+    $keeps() {
+      return this.$slider.dragging;
+    },
     $handleMove(x, y) {
       const mine = this.$slider;
       mine.dragging ||= dragged(this, mine, x, y);
