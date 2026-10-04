@@ -1,3 +1,4 @@
+import { test as plain } from "@playwright/test";
 import { expect, open, test } from "./open.js";
 
 // The steps are the ones Qt was taken through with the same scene, and the
@@ -48,6 +49,26 @@ test("a binding that comes back to its own property ends there", async ({ page }
   expect(await page.evaluate(() => window.scene.read())).toEqual([20, 20, true, true, 5]);
 });
 
+test("a property bound again to what depends on it goes round once", async ({ page }) => {
+  await open(page, "lateloop");
+  const read = await page.evaluate(() => {
+    const { scene } = window;
+    const seen = [scene.read()];
+    for (let step = 0; step < 3; step++) {
+      scene.step(step);
+      seen.push(scene.read());
+    }
+    return seen;
+  });
+  // Qt's answers: what changed first is left as it was when it changed.
+  expect(read).toEqual([
+    [[0, false, 484, 484], [1, true, 364, 364], [1, true, 364, 364], [4, 8]],
+    [[0, false, 484, 484], [1, true, 364, 364], [1, true, 364, 600], [8, 16]],
+    [[0, false, 484, 500], [1, true, 364, 500], [0, false, 484, 380], [61, 122]],
+    [[0, false, 484, 484], [1, true, 364, 364], [1, true, 364, 484], [123, 246]],
+  ]);
+});
+
 test("a picture as wide as its own height says is loaded once more, and no more", async ({ page }) => {
   await open(page, "imageloop");
   await page.waitForFunction(() => window.scene.ready);
@@ -80,4 +101,31 @@ test("what is said of the object a property holds is that object's", async ({ pa
     ["wide", "#ff0000", 5, 4, 80, "back 2,width 4"],
     ["wide", "#ff0000", 2, 10, 30, "back 2,width 4,width 10"],
   ]);
+});
+
+plain("a binding that cannot be evaluated is told of, unless what it met is not made yet", async ({ page }) => {
+  const warnings = [];
+  page.on("console", (message) => {
+    if (message.type() === "warning") warnings.push(message.text());
+  });
+  await open(page, "early");
+  const read = await page.evaluate(() => {
+    const { scene } = window;
+    const seen = [scene.read()];
+    for (let step = 0; step < 2; step++) {
+      scene.step(step);
+      seen.push(scene.read());
+    }
+    return seen;
+  });
+  // Qt's answers. An item may be beside one that is below it; what an alias
+  // was given stays what it was when it cannot be evaluated again.
+  expect(read).toEqual([
+    [300, "", 32, 10, 7, 43],
+    [300, "first", 32, 10, 7, 43],
+    [300, "first", 32, 10, 7, 43],
+  ]);
+  // And Qt's complaints: none of `wide`, which asked an object made after it.
+  expect(new Set(warnings)).toEqual(new Set(["title: TypeError: Cannot read properties of null (reading 'title')"]));
+  expect(warnings.length).toBeGreaterThanOrEqual(2);
 });

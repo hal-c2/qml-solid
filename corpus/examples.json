@@ -454,7 +454,7 @@
       "qt": {
         "runnable": false,
         "style": "Basic",
-        "reason": "QtLocation is not installed. main.cpp sets the example's own LightningViewerStyle as the Controls style: a module with a Button and a RoundButton, and Basic behind it for the rest. `style` can name only a style of Qt's, so it names Basic, and the two buttons are not the example's. The C++ singleton LightningController is stood in for by corpus/standins/lightningviewer; its WebSocket is QtWebSockets', which qml-solid has not got."
+        "reason": "QtLocation is not installed. main.cpp sets the example's own LightningViewerStyle as the Controls style: a module with a Button and a RoundButton, and Basic behind it for the rest. `style` can name only a style of Qt's, so it names Basic, and the two buttons are not the example's. The C++ singleton LightningController is stood in for by corpus/standins/lightningviewer; its WebSocket is QtWebSockets'."
       }
     },
     {

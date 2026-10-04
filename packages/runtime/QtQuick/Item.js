@@ -25,27 +25,27 @@ const LINES = ["left", "right", "top", "bottom", "horizontalCenter", "verticalCe
 const half = (item, side) => (item.anchors?.alignWhenCentered === false ? side / 2 : Math.round(side / 2));
 
 // Where a line is, in the coordinates `self` is positioned in: its parent's.
+// A line across is asked only of where the item is across, and one down of
+// where it is down: an item may be beside one that is below it.
 function position(self, { item, edge }) {
   // An item anchors to its parent or to a sibling; the parent's own lines
   // are measured from its top left corner.
   const own = item === self.parent;
-  const x = own ? 0 : item.x;
-  const y = own ? 0 : item.y;
   switch (edge) {
     case "left":
-      return x;
+      return own ? 0 : item.x;
     case "right":
-      return x + item.width;
+      return (own ? 0 : item.x) + item.width;
     case "horizontalCenter":
-      return x + half(item, item.width);
+      return (own ? 0 : item.x) + half(item, item.width);
     case "top":
-      return y;
+      return own ? 0 : item.y;
     case "bottom":
-      return y + item.height;
+      return (own ? 0 : item.y) + item.height;
     case "verticalCenter":
-      return y + half(item, item.height);
+      return (own ? 0 : item.y) + half(item, item.height);
     default:
-      return y + item.baselineOffset;
+      return (own ? 0 : item.y) + item.baselineOffset;
   }
 }
 

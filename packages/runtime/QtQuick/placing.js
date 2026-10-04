@@ -1,9 +1,8 @@
 // What positioners and layouts share: what an item said about itself before
 // anything placed it, and whether it takes part at all.
-import { createMemo, createSignal, getObserver, runWithOwner } from "solid-js";
-import { slot } from "../object.js";
+import { createSignal, getObserver, runWithOwner } from "solid-js";
+import { looped, slot } from "../object.js";
 
-const SYNC = { sync: true };
 const WRITABLE = { ownedWrite: true };
 const next = (version) => version + 1;
 const whole = (result) => result;
@@ -45,17 +44,15 @@ export class Settling {
 
   read() {
     if (this.early()) return this.last;
-    this.memo ??= runWithOwner(this.self.$owner, () =>
-      createMemo(() => {
-        this.running = true;
-        try {
-          this.last = this.compute(this.self, this.last);
-        } finally {
-          this.running = false;
-        }
-        return this.last;
-      }, SYNC),
-    );
+    this.memo ??= looped(this.self.$owner, () => {
+      this.running = true;
+      try {
+        this.last = this.compute(this.self, this.last);
+      } finally {
+        this.running = false;
+      }
+      return this.last;
+    });
     return this.memo();
   }
 

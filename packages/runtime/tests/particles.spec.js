@@ -140,6 +140,8 @@ test("a burst is emitted at once, where the emitter is or where it is told", asy
 
 test("a pulse emits for as long as it lasts, and no more than the emitter may have", async ({ page }) => {
   await show(page, "Bursts");
+  // A picture that comes later is painted in a frame of its own.
+  await ready(page, "sparks", "late");
   await page.evaluate(() => window.objects.scene.burster.pulse(100));
   await advance(page, 48);
   // A thousand a second, sixteen a frame, from the frame after it began.

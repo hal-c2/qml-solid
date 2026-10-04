@@ -68,6 +68,13 @@ mise run types          # the table of Qt's types, from the Qt installed here
 `packages` (pnpm install) and `browser` (Playwright's Chromium) are tasks the
 others depend on.
 
+The table of types covers the modules Qt's examples import, some of which a
+distribution packages apart from Qt itself (Charts, Graphs, Quick 3D, Location,
+Sensors, Timeline). Where those are not installed with the rest, `mise run
+types -- --qt /usr/lib/qt6/qml --qt elsewhere/lib/qt6/qml` reads them from
+wherever their packages were unpacked; a table made without them loses their
+types.
+
 `qml-solid/vite` is a Vite plugin that runs `qmlc` on `.qml` imports and on the
 scripts they import:
 
