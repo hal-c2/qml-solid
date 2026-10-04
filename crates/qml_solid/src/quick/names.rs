@@ -284,22 +284,35 @@ impl<'a> Resolver<'a, '_, '_> {
             *expression = member.object.take_in(&b.allocator());
             return true;
         }
-        let Expression::Identifier(object) = &member.object else { return false };
+        match self.of_type(member) {
+            None => return false,
+            Some(Access::Enum) => *expression = member.object.take_in(&b.allocator()),
+            Some(_) => {}
+        }
+        true
+    }
+
+    /// `Type.member`, read or written: of the one object a singleton is, or
+    /// of what the type attaches to the object the script is written in.
+    /// None when it is no member of a type.
+    fn of_type(&mut self, member: &mut StaticMemberExpression<'a>) -> Option<Access> {
+        let b = self.b;
+        let Expression::Identifier(object) = &member.object else { return None };
         let name = object.name.as_str();
         if !self.is_free(object) || !name.starts_with(|c: char| c.is_ascii_uppercase()) {
-            return false;
+            return None;
         }
         let span = object.span;
-        match self.access(name, member.property.name.as_str(), span) {
-            Access::Static => {}
-            Access::Enum => *expression = b.id(name),
+        let access = self.access(name, member.property.name.as_str(), span);
+        match access {
+            Access::Static | Access::Enum => {}
             Access::Singleton => member.object = b.call(b.id(name), []),
             Access::Attached => {
                 let attachee = self.scope(span.start);
                 member.object = b.call(b.member(b.id(name), "attached"), [attachee]);
             }
         }
-        true
+        Some(access)
     }
 }
 
@@ -480,8 +493,10 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
             }
             return;
         }
+        // `ToolTip.visible = true` is told to what the type attaches, as
+        // `ToolTip.visible` is read from it.
         if let SimpleAssignmentTarget::StaticMemberExpression(member) = target
-            && self.attached_member(member)
+            && (self.attached_member(member) || self.of_type(member).is_some())
         {
             return;
         }

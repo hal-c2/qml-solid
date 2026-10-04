@@ -1153,6 +1153,30 @@ Item {
 }
 
 #[test]
+fn what_a_type_attaches_is_written_where_it_is_read() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Controls
+import QtQuick.Templates as T
+Item {
+    id: item
+    function show(on) {
+        ToolTip.visible = on
+        ToolTip.timeout += 1
+        item.ToolTip.delay = 2
+        T.ToolTip.delay++
+        return ToolTip.visible
+    }
+}"#,
+    );
+    assert_contains(&code, "ToolTip.attached(item).visible = on;");
+    assert_contains(&code, "ToolTip.attached(item).timeout += 1;");
+    assert_contains(&code, "ToolTip.attached(item).delay = 2;");
+    assert_contains(&code, "T.ToolTip.attached(item).delay++;");
+    assert_contains(&code, "return ToolTip.attached(item).visible;");
+}
+
+#[test]
 fn a_state_changes_what_a_type_attaches() {
     let code = lowered(
         r#"import QtQuick
