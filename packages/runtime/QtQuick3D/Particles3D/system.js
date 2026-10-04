@@ -23,7 +23,7 @@ import { defineType, derived, effect, inside, last, QtObject, settle, slot } fro
 import { clock } from "../../QtQuick/animation/clock.js";
 import { kept, Node } from "../Node.js";
 import { enrolled } from "./core.js";
-import { fresh } from "./emitters.js";
+import { fresh, trail } from "./emitters.js";
 import { painted } from "./paint.js";
 
 // What a system says of itself while it is `logging`: how many times it
@@ -60,7 +60,9 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
     reset() {
       const { emitters, particles } = untrack(() => this.$members());
       for (const particle of particles) particle.$clear();
-      for (const emitter of emitters) this.$states.set(emitter, fresh(0));
+      // Not the bursts that are there from the start: those an emitter has
+      // emitted it does not emit again.
+      for (const emitter of emitters) this.$states.set(emitter, fresh(0, this.$states.get(emitter)?.generated));
       this.$before = 0;
       this.$numbered = 0;
     },
@@ -105,18 +107,18 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
       const { emitters } = this.$members();
       for (const emitter of emitters) {
         let state = this.$states.get(emitter);
-        if (!state) {
-          // One that comes into the system starts from the time it is, and
-          // has its bursts from the start.
-          this.$states.set(emitter, (state = fresh(this.$before)));
-          emitter.$begin(this);
-        }
-        // And one that was not enabled from the time it is when it is.
+        // One that comes into the system starts from the time it is.
+        if (!state) this.$states.set(emitter, (state = fresh(this.$before)));
+        // And one that was not enabled from the time it is when it is, and
+        // one that had no rate from the time it is when it has.
         if (!emitter.enabled) state.idle = true;
         else if (state.idle) {
           state.idle = false;
-          state.previous = this.$before;
+          state.previous = state.burstBefore = this.$before;
         }
+        const rate = Number(emitter.emitRate) || 0;
+        if (state.rate === 0 && rate !== 0) state.previous = this.$before;
+        state.rate = rate;
       }
       // A system that is not running and whose time is nought has not
       // begun: there is nothing in it until its time is something. One
@@ -128,13 +130,12 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
       if (!this.$begun && now === 0 && !this.running && !this.$timed && !this.$members().affectors.length) return now;
       this.$begun = true;
       if (this.$at === now) return now;
-      const since = this.$before;
+      this.$updates++;
+      for (const emitter of emitters) if (!emitter.$trail && emitter.enabled) emitter.$emit(this, this.$states.get(emitter), now);
       // Those that follow particles come after those that make them.
-      for (const emitter of emitters) if (!emitter.$trail && emitter.enabled) emitter.$emit(this, this.$states.get(emitter), now, since);
-      for (const emitter of emitters) if (emitter.$trail && emitter.enabled) emitter.$emit(this, this.$states.get(emitter), now, since);
+      trail(this, emitters, this.$states, now);
       this.$before = now;
       this.$at = now;
-      this.$updates++;
       return now;
     },
     // What a View3D draws of the system besides the models in it: its
@@ -166,7 +167,9 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
       setMade(true);
       settle();
     });
-    // What is the system's, in the order it was made.
+    // What is the system's. Its emitters and its affectors the last made
+    // first: the order Qt's do their work in, each of which comes to its
+    // system when it is complete, and what was made last is complete first.
     self.$members = kept(self, () => {
       const emitters = [];
       const affectors = [];
@@ -176,7 +179,7 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
           if (other.$system() === self) particles.push(other);
         } else if (other.system === self) (other.$emitter ? emitters : affectors).push(other);
       }
-      return { emitters, affectors, particles };
+      return { emitters: emitters.reverse(), affectors: affectors.reverse(), particles };
     });
     // The time goes while the system runs and is not paused: from nought
     // each time it is set running.

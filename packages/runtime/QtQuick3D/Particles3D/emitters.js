@@ -8,21 +8,31 @@
 // has not a whole particle to emit waits where it was, and no more of the
 // past is made up for than a particle's longest life.
 //
+// Emitters and affectors do their work the last declared first, as Qt's
+// do, where each comes to its system when it is complete and the last made
+// is complete first. And an emitter that has bursts empties its kind of
+// particle before the first thing it emits, as Qt's does: of several
+// emitters of one kind that have bursts, what the earlier declared emits
+// first is all there is then.
+//
+// A TrailEmitter3D is Qt 6.11's step for step (`trail`), and so not what
+// its documentation says: a burst that is to come when a particle followed
+// starts or ends comes at its `time` as well; of a model, the one for an
+// end comes again every time the system moves on while the particle that
+// ended has its place in the table, and the one for a start only for a
+// particle with no life at all; of a sprite or a line both come once.
+//
 // Not here: `emitMode` and `depthBias` are kept and do nothing: a particle
-// sets off as `velocity` says whatever surface it starts on. A
-// TrailEmitter3D's bursts on a particle's start and end are told once for
-// each particle followed, as Qt's documentation has them; Qt 6.11 itself
-// tells an end again every time the system moves on.
+// sets off as `velocity` says whatever surface it starts on.
 import { untrack } from "solid-js";
 import { defineType, derived, group, QtObject } from "../../object.js";
 import { color } from "../../QtQuick/color.js";
 import * as math from "../math.js";
 import { Node } from "../Node.js";
 import { AMOUNT, COLOR, END_SCALE, enrol, LIFE, list, random, SCALE, seenFrom, SPIN, spread, three, TURN, vectors, within } from "./core.js";
-import { evaluate, moved } from "./particles.js";
+import { looking } from "./particles.js";
 
 const HERE = Object.freeze([0, 0, 0]);
-const UNTURNED = Object.freeze([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
 const TriggerTime = 0;
 const TriggerStart = 1;
@@ -42,7 +52,9 @@ export const EmitBurst3D = defineType("EmitBurst3D", QtObject, {
 });
 
 // The same, emitted when the system's time comes past `time`: again when
-// it comes past it again, and not at all while it is not `enabled`.
+// it comes past it again, and not at all while it is not `enabled`. The
+// time is the system's `time`, without its `startTime`, and `triggerMode`
+// is nothing to that: it adds a start or an end of a particle followed.
 export const DynamicBurst3D = defineType("DynamicBurst3D", EmitBurst3D, {
   properties: {
     enabled: true,
@@ -82,7 +94,7 @@ const when = (from, share, span) => fround(fround(from / 1000) + fround(fround(s
 // particle starts that far from where they put it.
 function emit(system, emitter, particle, begin, placed, turned, around, kept) {
   const place = particle.$take(kept);
-  if (place < 0) return;
+  if (place < 0) return place;
   const seed = system.$seed();
   const index = system.$numbered++;
   const inside = emitter.shape?.$position?.(seed, index) ?? HERE;
@@ -139,6 +151,7 @@ function emit(system, emitter, particle, begin, placed, turned, around, kept) {
     to: Math.max(0, end + endBy),
     reversed: Boolean(emitter.reversed),
   };
+  return place;
 }
 
 // How an emitter lies in its system: where it puts a place of its own, and
@@ -156,16 +169,15 @@ function amountOf(system, burst) {
   return Math.max(0, Math.round(amount + burst.amountVariation * spread(system.$seed(), system.$numbered, AMOUNT)));
 }
 
-// What an emitter keeps from one time to the next.
-export const fresh = (from) => ({ previous: from, owed: 0, spreading: [], idle: false });
+// What an emitter keeps from one time to the next: when it last emitted
+// and when it last looked at its bursts, what its rate has left over, the
+// bursts that are under way, and the bursts it had when it emitted those
+// that are there from the start.
+export const fresh = (from, generated = null) => ({ previous: from, burstBefore: from, owed: 0, spreading: [], idle: false, rate: undefined, generated });
 
 // How many the emitter's rate gives for the time since it last emitted,
 // with what was left over of the times before.
-function due(emitter, state, now) {
-  // Time gone back is begun from again; and of time that jumped ahead, no
-  // more is made up for than a particle lives.
-  if (now < state.previous) state.previous = now;
-  state.previous = Math.max(state.previous, now - (emitter.lifeSpan + emitter.lifeSpanVariation));
+function owing(emitter, state, now) {
   const rate = Number(emitter.emitRate) || 0;
   if (!(rate > 0)) return 0;
   const exact = ((now - state.previous) * rate) / 1000;
@@ -178,16 +190,29 @@ function due(emitter, state, now) {
   return amount;
 }
 
-// The bursts whose time came since the system was last at a time, the time
-// then and the time now both included, as Qt includes them: all at once,
-// or a share with each step until their `duration` is over.
-function burst(system, emitter, state, now, since) {
+function due(emitter, state, now) {
+  // Time gone back is begun from again; and of time that jumped ahead, no
+  // more is made up for than a particle lives.
+  if (now < state.previous) state.previous = now;
+  state.previous = Math.max(state.previous, now - (emitter.lifeSpan + emitter.lifeSpanVariation));
+  return owing(emitter, state, now);
+}
+
+// The bursts whose time came since the emitter last looked, the time then
+// and the time now both included, as Qt includes them: all at once, or a
+// share with each step until their `duration` is over. With a `trigger`,
+// those that are for a start or an end of a particle followed instead.
+function dynamic(system, emitter, state, trigger) {
   let amount = 0;
+  const now = system.$time();
+  const since = state.burstBefore;
   for (const each of bursts(emitter)) {
-    if (!each.$dynamic || !each.enabled || each.triggerMode !== TriggerTime) continue;
-    if (!(since <= each.time && each.time <= now)) continue;
+    if (!each.$dynamic || !each.enabled) continue;
+    const timed = trigger === TriggerTime && since <= each.time && each.time <= now;
+    if (!timed && !(trigger !== TriggerTime && each.triggerMode === trigger)) continue;
     const many = amountOf(system, each);
-    if (each.duration > 0) state.spreading.push({ end: now + each.duration, duration: each.duration, amount: many, emitted: 0, previous: since });
+    if (many <= 0) continue;
+    if (timed && each.duration > 0) state.spreading.push({ end: now + each.duration, duration: each.duration, amount: many, emitted: 0, previous: since });
     else amount += many;
   }
   for (let index = 0; index < state.spreading.length; index++) {
@@ -198,13 +223,36 @@ function burst(system, emitter, state, now, since) {
       state.spreading.splice(index, 1);
       continue;
     }
-    // Its share for the time since, and no more than is left of it.
-    const share = Math.max(0, Math.min(spreading.amount - spreading.emitted, Math.trunc((spreading.amount * (now - spreading.previous)) / spreading.duration)));
+    // Its share for the time since, and no more than is left of it: one
+    // that has no share yet waits where it was.
+    const share = Math.min(spreading.amount - spreading.emitted, Math.trunc((spreading.amount * (now - spreading.previous)) / spreading.duration));
+    if (share <= 0) continue;
     spreading.emitted += share;
     spreading.previous = now;
     amount += share;
   }
+  state.burstBefore = now;
   return amount;
+}
+
+// The bursts that are there from the start, before the first thing the
+// emitter emits and again when it has other bursts than it had. An emitter
+// with bursts, of whatever sort, empties its kind of particle first, as
+// Qt's does; and one with a burst of none begins again every time.
+function generate(system, emitter, state, particle) {
+  const all = bursts(emitter);
+  if (state.generated && state.generated.length === all.length && all.every((each, index) => each === state.generated[index])) return;
+  if (all.length > 0) {
+    particle.$clear();
+    const { placed, turned } = lie(system, emitter);
+    for (const each of all) {
+      if (each.$dynamic) continue;
+      const many = Math.min(Math.floor(each.amount), particle.maxAmount);
+      if (!(many > 0)) return;
+      for (let index = 0; index < many; index++) emit(system, emitter, particle, when(each.time, index / many, each.duration), placed, turned, null, true);
+    }
+  }
+  state.generated = all;
 }
 
 const turns = vectors(["particleRotation", "particleRotationVariation", "particleRotationVelocity", "particleRotationVelocityVariation"]);
@@ -247,23 +295,12 @@ export const ParticleEmitter3D = defineType("ParticleEmitter3D", Node, {
       const around = position ? three(position) : null;
       for (let index = 0; index < many; index++) emit(system, this, particle, when(now, (1 + index) / many, Math.max(0, duration)), placed, turned, around);
     },
-    // The bursts that are there from the start: when the emitter comes
-    // into a system.
-    $begin(system) {
+    // What the time up to `now` has it emit.
+    $emit(system, state, now) {
       const particle = this.particle;
       if (!particle) return;
-      const { placed, turned } = lie(system, this);
-      for (const each of bursts(this)) {
-        if (each.$dynamic) continue;
-        const many = Math.min(Math.max(0, Math.floor(each.amount)), particle.maxAmount);
-        for (let index = 0; index < many; index++) emit(system, this, particle, when(each.time, index / many, each.duration), placed, turned, null, true);
-      }
-    },
-    // What the time from `since` to `now` has it emit.
-    $emit(system, state, now, since) {
-      const particle = this.particle;
-      if (!particle) return;
-      const amount = Math.min(due(this, state, now) + burst(system, this, state, now, since), particle.maxAmount);
+      generate(system, this, state, particle);
+      const amount = Math.min(due(this, state, now) + dynamic(system, this, state, TriggerTime), particle.maxAmount);
       if (amount <= 0) return;
       const { placed, turned } = lie(system, this);
       const span = now - state.previous;
@@ -279,63 +316,115 @@ export const ParticleEmitter3D = defineType("ParticleEmitter3D", Node, {
 });
 
 // Emits where the particles of another kind are: its rate for each of them
-// there is, and its bursts when one of them starts or ends.
+// there is, and its bursts (`trail`).
 export const TrailEmitter3D = defineType("TrailEmitter3D", ParticleEmitter3D, {
   properties: {
     follow: null,
   },
   methods: {
-    // So many now, for each of the particles followed.
+    // So many for each of the particles followed, when the time next
+    // moves: started at the time it was asked.
     burst(count) {
       const system = this.system;
       if (!system || !this.enabled) return;
-      (this.$asked ??= []).push(Math.max(0, Math.floor(count)));
+      this.$asked.push({ amount: Math.max(0, Math.floor(count)), time: untrack(() => system.$sync()) });
     },
-    $begin() {},
-    $emit(system, state, now, since) {
-      const particle = this.particle;
-      const followed = this.follow;
-      if (!particle || !followed?.$particle) return;
-      let steady = due(this, state, now);
-      for (const asked of this.$asked ?? []) steady += asked;
-      this.$asked = null;
-      const own = bursts(this).filter((each) => each.$dynamic && each.enabled);
-      for (const each of own) if (each.triggerMode === TriggerTime && since <= each.time && each.time <= now) steady += amountOf(system, each);
-      const starting = own.filter((each) => each.triggerMode === TriggerStart);
-      const ending = own.filter((each) => each.triggerMode === TriggerEnd);
-      const most = particle.maxAmount;
-      const span = now - state.previous;
-      let first = true;
-      const give = (amount, at, spreadOut) => {
-        amount = Math.min(amount, most);
-        for (let index = 0; index < amount; index++) emit(system, this, particle, spreadOut ? when(state.previous, index / amount, span) : fround(now / 1000), null, UNTURNED, at);
-      };
-      const affecting = ending.length ? system.$affecting(followed) : null;
-      for (const one of evaluate(followed, system, now)) {
-        let amount = steady;
-        if (one.datum.start > since || (since === 0 && one.datum.start === 0)) for (const each of starting) amount += amountOf(system, each);
-        if (amount <= 0) continue;
-        // What is owed for the time since is spread over it for the first
-        // of them; the rest have theirs now.
-        give(amount, [one.x, one.y, one.z], first);
-        first = false;
-      }
-      if (ending.length) {
-        // Those whose life ended since the last time: where it ended.
-        for (const datum of followed.$data) {
-          if (!datum) continue;
-          const end = datum.start + datum.life;
-          if (!(end >= since && end < now)) continue;
-          const last = moved(datum, datum.reversed ? 0 : datum.life / 1000, affecting, {});
-          let amount = 0;
-          for (const each of ending) amount += amountOf(system, each);
-          give(amount, [last.x, last.y, last.z], false);
-        }
-      }
-      state.previous = now;
-    },
+    $emit() {},
   },
   setup(self) {
     self.$trail = true;
+    self.$asked = [];
   },
 });
+
+const unit = (value) => Math.min(1, Math.max(0, value));
+
+// Has those that follow a particle emit what one at `at` gives them: so
+// many, and what their bursts add for the time or for a start or an end.
+// Whatever the rate owes is spread from the time the emitter last emitted,
+// the first at that time; what was asked for starts when it was asked.
+function follow(system, { emitter, state }, at, amount, trigger, now, mark) {
+  if (!emitter.enabled) return;
+  const particle = emitter.particle;
+  if (particle?.$particle) {
+    amount = Math.min(amount + dynamic(system, emitter, state, trigger), particle.maxAmount);
+    // Its own turn alone turns the way they set off.
+    const turn = math.unscaled(emitter.$local());
+    const turned = [turn[0], turn[1], turn[2], turn[4], turn[5], turn[6], turn[8], turn[9], turn[10]];
+    const from = fround(state.previous / 1000);
+    const step = fround(fround((now - state.previous) / 1000) / amount);
+    for (let index = 0; index < amount; index++) mark(particle, emit(system, emitter, particle, fround(from + fround(step * index)), null, turned, at));
+    for (const asked of emitter.$asked) {
+      const many = Math.min(asked.amount, particle.maxAmount);
+      for (let index = 0; index < many; index++) mark(particle, emit(system, emitter, particle, fround(asked.time / 1000), null, turned, at));
+    }
+  }
+  state.previous = now;
+}
+
+// What the emitters that follow particles emit when their system has come
+// to `now`, after the others have emitted. Qt's own way, step for step:
+// the kinds of particle one after the other, in the order their emitters
+// came to the system, and of each every place in its table: one that is
+// there has its followers emit where it is, and one whose life is over
+// where it ended. What goes into a kind that was looked at already is not
+// there to see before the next time.
+export function trail(system, emitters, states, now) {
+  const trailing = emitters.filter((emitter) => emitter.$trail);
+  if (trailing.length === 0) return;
+  const kinds = [];
+  for (const emitter of emitters) {
+    const kind = emitter.particle;
+    if (kind?.$particle && !kinds.includes(kind)) kinds.push(kind);
+  }
+  const time = fround(now / 1000);
+  for (let number = 0; number < kinds.length; number++) {
+    const kind = kinds[number];
+    const followers = trailing.filter((emitter) => emitter.follow === kind);
+    if (followers.length === 0) continue;
+    const emits = [];
+    for (const emitter of followers) {
+      const state = states.get(emitter);
+      const amount = emitter.enabled ? owing(emitter, state, now) : 0;
+      if (amount > 0 || emitter.$asked.length > 0 || bursts(emitter).some((each) => each.$dynamic)) emits.push({ emitter, state, amount });
+    }
+    const sprite = Boolean(kind.$sprite);
+    if (emits.length === 0 && !sprite) continue;
+    const look = looking(kind, system, now);
+    const data = kind.$data;
+    const most = Math.max(0, Math.floor(kind.maxAmount));
+    for (let place = 0; place < most; place++) {
+      const datum = data[place];
+      if (!datum) continue;
+      const mark = (particle, at) => {
+        if (at < 0) return;
+        const where = kinds.indexOf(particle);
+        if (where < number || (where === number && at < place)) particle.$data[at].unseen = system.$updates;
+      };
+      const aged = sprite ? (kind.$aged[place] ??= { age: 0, size: 0 }) : null;
+      if (time < datum.begin || time > datum.end) {
+        // A sprite's end is told once, when it is first found gone; a
+        // model's for as long as it has its place.
+        if (time > datum.end && (sprite ? aged.age > 0 : datum.life > 0)) {
+          const whole = datum.reversed ? 0 : datum.life / 1000;
+          const ended = [datum.x + datum.vx * whole, datum.y + datum.vy * whole, datum.z + datum.vz * whole];
+          for (const each of emits) follow(system, each, ended, 0, TriggerEnd, now, mark);
+        }
+        if (sprite && aged.size > 0) aged.age = aged.size = 0;
+        continue;
+      }
+      // And a sprite's start when it is first found there; a model's only
+      // when it has no life to be through.
+      if (sprite ? time < datum.end && aged.age === 0 : datum.life <= 0) {
+        for (const each of emits) follow(system, each, [datum.x, datum.y, datum.z], 0, TriggerStart, now, mark);
+      }
+      const current = look(datum, place);
+      for (const each of emits) follow(system, each, [current.x, current.y, current.z], each.amount, TriggerTime, now, mark);
+      if (sprite) {
+        aged.age = datum.life > 0 ? unit((current.seconds * 1000) / datum.life) : 0;
+        aged.size = current.scale;
+      }
+    }
+  }
+  for (const emitter of trailing) emitter.$asked = [];
+}

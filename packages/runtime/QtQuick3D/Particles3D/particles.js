@@ -86,14 +86,11 @@ export function moved(datum, seconds, affecting, current) {
   return current;
 }
 
-// The particles of one kind that there are at `now`, in the order of their
-// places in its table: each with where it is, its turn, its size and its
-// colour. One is there from the moment it starts to the moment its life is
-// over, both included, as in Qt.
-export function evaluate(particle, system, now) {
-  const data = particle.$data;
-  const alive = [];
-  if (data.length === 0) return alive;
+// What looks at a kind's particles at `now`: given what an emitter gave one
+// and its place in the table, where it is then, its turn, its size and its
+// colour, or nothing when it is not there. One is there from the moment it
+// starts to the moment its life is over, both included, as in Qt.
+export function looking(particle, system, now) {
   const affecting = system.$affecting(particle);
   const { fadeInEffect, fadeOutEffect, fadeInDuration, fadeOutDuration, alignMode } = particle;
   const aim = alignMode === AlignTowardsTarget ? three(particle.alignTargetPosition) : null;
@@ -102,9 +99,8 @@ export function evaluate(particle, system, now) {
   // The time in seconds, in a number of 32 bits as Qt has it and as the
   // starts are.
   const time = Math.fround(now / 1000);
-  for (let place = 0; place < data.length; place++) {
-    const datum = data[place];
-    if (!datum || time < datum.begin || time > datum.end) continue;
+  return (datum, place) => {
+    if (!datum || time < datum.begin || time > datum.end) return null;
     const age = Math.fround(time - datum.begin) * 1000;
     // A particle that goes backwards is at the end of its way when it
     // starts and at the beginning when its life is over.
@@ -140,7 +136,25 @@ export function evaluate(particle, system, now) {
     current.scale = scale;
     // A colour is four whole numbers out of 255, as Qt keeps it.
     current.a = Math.trunc(datum.a * alpha);
-    alive.push(current);
+    return current;
+  };
+}
+
+// The particles of one kind that there are at `now`, in the order of their
+// places in its table. Not one that was emitted where another is after its
+// kind was looked at for this time (`trail` in emitters.js): Qt has that
+// one to see from the next time on.
+export function evaluate(particle, system, now) {
+  const data = particle.$data;
+  const alive = [];
+  if (data.length === 0) return alive;
+  const look = looking(particle, system, now);
+  const round = system.$updates;
+  for (let place = 0; place < data.length; place++) {
+    const datum = data[place];
+    if (datum?.unseen === round) continue;
+    const current = look(datum, place);
+    if (current) alive.push(current);
   }
   return alive;
 }
@@ -194,6 +208,10 @@ export const Particle3D = defineType("Particle3D", Object3D, {
       this.$next = 0;
       this.$kept = 0;
       this.$last = 0;
+      // How far through its life each sprite was and how big, when the
+      // system last looked: what tells a start and an end to those that
+      // follow it.
+      this.$aged = [];
       // And the lines there were of it, where it is one of lines.
       this.$trails = [];
       this.$fading = [];
