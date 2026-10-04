@@ -19,6 +19,11 @@ const EMPTY = Object.freeze([]);
 // `item.left`: one of an item's seven lines, for another item to anchor to.
 const LINES = ["left", "right", "top", "bottom", "horizontalCenter", "verticalCenter", "baseline"];
 
+// Half of an item's side, for the line through its middle: a whole number,
+// so that what is centred lands on a pixel, unless the item's own
+// `anchors.alignWhenCentered` says not to.
+const half = (item, side) => (item.anchors?.alignWhenCentered === false ? side / 2 : Math.round(side / 2));
+
 // Where a line is, in the coordinates `self` is positioned in: its parent's.
 function position(self, { item, edge }) {
   // An item anchors to its parent or to a sibling; the parent's own lines
@@ -32,13 +37,13 @@ function position(self, { item, edge }) {
     case "right":
       return x + item.width;
     case "horizontalCenter":
-      return x + item.width / 2;
+      return x + half(item, item.width);
     case "top":
       return y;
     case "bottom":
       return y + item.height;
     case "verticalCenter":
-      return y + item.height / 2;
+      return y + half(item, item.height);
     default:
       return y + item.baselineOffset;
   }
@@ -82,13 +87,13 @@ const resolve = {
     const centerIn = anchors.centerIn;
     if (centerIn) {
       const offset = anchors.horizontalCenterOffset;
-      return left(self, centerIn) + (centerIn.width - self.width) / 2 + (mirrored(self) ? -offset : offset);
+      return left(self, centerIn) + half(centerIn, centerIn.width) - half(self, self.width) + (mirrored(self) ? -offset : offset);
     }
     if (!anchors.left && !anchors.right && !anchors.horizontalCenter) return own();
     const lines = across(self);
     if (lines.left) return position(self, lines.left) + lines.leftMargin;
     if (lines.right) return position(self, lines.right) - lines.rightMargin - self.width;
-    return position(self, lines.center) - self.width / 2 + lines.offset;
+    return position(self, lines.center) - half(self, self.width) + lines.offset;
   },
   y(self, own) {
     const anchors = self.anchors;
@@ -96,12 +101,12 @@ const resolve = {
     if (fill) return top(self, fill) + anchors.topMargin;
     const centerIn = anchors.centerIn;
     if (centerIn) {
-      return top(self, centerIn) + (centerIn.height - self.height) / 2 + anchors.verticalCenterOffset;
+      return top(self, centerIn) + half(centerIn, centerIn.height) - half(self, self.height) + anchors.verticalCenterOffset;
     }
     if (anchors.top) return position(self, anchors.top) + anchors.topMargin;
     if (anchors.bottom) return position(self, anchors.bottom) - anchors.bottomMargin - self.height;
     if (anchors.verticalCenter) {
-      return position(self, anchors.verticalCenter) - self.height / 2 + anchors.verticalCenterOffset;
+      return position(self, anchors.verticalCenter) - half(self, self.height) + anchors.verticalCenterOffset;
     }
     if (anchors.baseline) {
       return position(self, anchors.baseline) - self.baselineOffset + anchors.baselineOffset;

@@ -1,5 +1,32 @@
 import { expect, open, rect, test } from "./open.js";
 
+// What `qml6` answers for the scene: x, y, width and height of each item.
+test("the middle an item is centred on is a whole pixel", async ({ page }) => {
+  await open(page, "centred");
+  const read = await page.evaluate(() => {
+    const first = window.scene.read();
+    window.scene.step(0);
+    return [first, window.scene.read()[0]];
+  });
+  expect(read).toEqual([
+    [
+      [166, 133, 67, 33],
+      [166, 133, 67.5, 33.5],
+      [41, 21, 20, 10],
+      [41.5, 20, 21, 11],
+      // `anchors.alignWhenCentered: false`: its own half is not rounded, its parent's is.
+      [40.5, 20.5, 21, 11],
+      [45, 38, 31, 15],
+      [61, 46, 30, 14],
+      [31, 32, 30, 14],
+      [61, 46, 339, 254],
+      [45, 38, 31, 15],
+      [95, 63, 31, 15],
+    ],
+    [166.5, 133.5, 67, 33],
+  ]);
+});
+
 test("anchors place an item against its parent and its siblings", async ({ page }) => {
   await open(page, "anchors");
   expect(await rect(page, "root")).toEqual({ x: 0, y: 0, width: 400, height: 300 });
