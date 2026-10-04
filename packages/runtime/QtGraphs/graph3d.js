@@ -135,10 +135,11 @@ function turned(angle, least, most, wraps) {
 
 // Which walls are behind the data as the camera sees it: the one at the
 // side is to the right once the camera is to the left, the one at the back
-// in front once it is behind, and the floor above once it is below.
+// in front once it is behind, and the floor above once it is below. A floor
+// that bars stand on stays under them, and is seen from below.
 export function flips(self) {
   const round = self.cameraXRotation;
-  return { x: round > 0, y: self.cameraYRotation < 0, z: Math.abs(round) > 90 };
+  return { x: round > 0, y: !self.$plot().floored && self.cameraYRotation < 0, z: Math.abs(round) > 90 };
 }
 
 // How much of the series' own colour they show where no light falls. Qt
@@ -173,12 +174,12 @@ export function measured(axis) {
 }
 
 // And along an axis of so many rows or columns: a line between each two and
-// a label at the middle of each.
+// a label at the middle of each. Their lines are on the floor alone.
 export function named(axis, count) {
   const { labels } = axis;
   const cells = Math.max(1, count);
   const marks = Array.from({ length: cells + 1 }, (_, at) => ({ t: at / cells, sub: false }));
-  return { axis, marks, labels: Array.from({ length: count }, (_, at) => ({ t: (at + 0.5) / cells, text: String(labels[at] ?? "") })) };
+  return { axis, marks, floor: true, labels: Array.from({ length: count }, (_, at) => ({ t: (at + 0.5) / cells, text: String(labels[at] ?? "") })) };
 }
 
 // ---------------------------------------------------------------- shapes
@@ -209,12 +210,15 @@ function walls(self) {
 const LIFT = 0.002;
 
 // The lines of the axes on the walls: one of each axis' on each of the two
-// walls the axis runs along.
+// walls the axis runs along, or on the floor alone for the rows and the
+// columns of bars.
 function grid(self) {
   const plot = self.$plot();
   const [x, y, z] = plot.wall;
   const flip = flips(self);
-  const floor = (flip.y ? y : -y) + (flip.y ? -LIFT : LIFT);
+  // The lines of a floor that is seen from below are below it.
+  const under = flip.y || (plot.floored && self.cameraYRotation < 0);
+  const floor = (flip.y ? y : -y) + (under ? -LIFT : LIFT);
   const back = (flip.z ? z : -z) + (flip.z ? -LIFT : LIFT);
   const side = (flip.x ? x : -x) + (flip.x ? -LIFT : LIFT);
   const { mainColor, subColor } = self.theme.grid;
@@ -225,7 +229,7 @@ function grid(self) {
     const at = plot.place(0, t);
     const colour = lesser ? sub : main;
     shape.line([at, floor, -z], [at, floor, z], colour);
-    shape.line([at, -y, back], [at, y, back], colour);
+    if (!plot.x.floor) shape.line([at, -y, back], [at, y, back], colour);
   }
   for (const { t, sub: lesser } of plot.y.marks) {
     const at = plot.place(1, t);
@@ -237,7 +241,7 @@ function grid(self) {
     const at = plot.place(2, t);
     const colour = lesser ? sub : main;
     shape.line([-x, floor, at], [x, floor, at], colour);
-    shape.line([side, -y, at], [side, y, at], colour);
+    if (!plot.z.floor) shape.line([side, -y, at], [side, y, at], colour);
   }
   return shape.mesh().mesh;
 }
@@ -248,10 +252,15 @@ function grid(self) {
 // how far from a wall its middle is for its width, as Qt's are measured.
 const TALL = 0.0072;
 const OUT = 0.565;
-// How many times its font's size a label is drawn at, to be sharp when it
-// is seen from near.
-const SHARP = 2;
 const WIDEST = 2048;
+
+// How many of the view's pixels one of the graph's own lengths is, at the
+// middle of the graph.
+function scale(self) {
+  const zoom = self.cameraZoomLevel;
+  if (self.orthoProjection) return (zoom / 100) * Math.min(self.width / 6.4, self.height / 4);
+  return (self.height * zoom) / (1440 * Math.tan(Math.PI / 8));
+}
 
 // The labels of the axes and their titles, each a square in space with its
 // text on it: `{ text, box, middle, across, up }`, where `box` is how wide
@@ -332,11 +341,11 @@ function labelled(self, spec) {
     put(along.axis.title, size, [open * (x + beyond.z + margin + size.tall / 2), floor, 0], way, flat(way));
   }
   // That of the axis that stands is with its labels to the left: those at
-  // the back once the camera is to the left, and else those at the side.
+  // the back wall or those at the side, as the camera sees them.
   if (titled(up.axis)) {
     const size = sized(up.axis, [up.axis.title]);
     const out = beyond.y + margin + size.tall / 2;
-    if (flip.x) put(up.axis.title, size, [open * (x + out), 0, back], [0, 1, 0], [-front, 0, 0]);
+    if (flip.x !== flip.z) put(up.axis.title, size, [open * (x + out), 0, back], [0, 1, 0], [-front, 0, 0]);
     else put(up.axis.title, size, [side, 0, front * (z + out)], [0, 1, 0], [0, 0, -deep]);
   }
   return made;
@@ -353,7 +362,10 @@ function written(self, canvas) {
   if (!all.length) return { mesh: null, canvas };
   const { ascent, height } = metrics(spec);
   const pad = theme.labelFont.pointSize / 2;
-  const tall = Math.ceil((height + pad) * SHARP);
+  // A label is written as big as it is seen, for its text to be as sharp
+  // as Qt's is: a little bigger, as what is nearer the camera is.
+  const sharp = Math.max(0.25, Math.min(4, (1.25 * scale(self) * TALL * theme.labelFont.pointSize) / (height + pad)));
+  const tall = Math.ceil((height + pad) * sharp);
   // Where each is on the canvas, row after row.
   const cells = new Map();
   let x = 0;
@@ -361,7 +373,7 @@ function written(self, canvas) {
   for (const { text, box } of all) {
     const key = `${box} ${text}`;
     if (cells.has(key)) continue;
-    const wide = Math.ceil(box * SHARP);
+    const wide = Math.ceil(box * sharp);
     if (x && x + wide > WIDEST) {
       x = 0;
       y += tall + 2;
@@ -376,7 +388,7 @@ function written(self, canvas) {
   const paper = canvas.getContext("2d");
   const ink = css(theme.labelTextColor);
   for (const cell of cells.values()) {
-    paper.setTransform(SHARP, 0, 0, SHARP, cell.x, cell.y);
+    paper.setTransform(sharp, 0, 0, sharp, cell.x, cell.y);
     const high = height + pad;
     if (theme.labelBackgroundVisible) {
       paper.fillStyle = css(theme.labelBackgroundColor);
@@ -684,8 +696,6 @@ export const GraphsItem3D = defineType("GraphsItem3D", View3D, {
       get sourceItem() {
         return { $canvas: { element: labels().canvas } };
       },
-      generateMipmaps: true,
-      mipFilter: 2,
       tilingModeHorizontal: 1,
       tilingModeVertical: 1,
     });

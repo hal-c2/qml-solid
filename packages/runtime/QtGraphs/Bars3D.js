@@ -23,6 +23,10 @@ const X = 1;
 const Y = 2;
 const Z = 3;
 
+// How far beyond the bars' cells the walls behind them go, and how far
+// above where its value is on the axis a bar stands, as Qt's do.
+const EDGE = 1 / 75;
+
 const rows = (series) => series.dataProxy?.$data().rows ?? NONE;
 
 // How many rows and columns the series that are shown have between them.
@@ -60,12 +64,20 @@ function laid(self) {
   const half = [(2 * across) / longest, 1, (2 * depth) / longest];
   const place = (way, t) => (way === 2 ? half[2] - 2 * half[2] * t : 2 * half[way] * t - half[way]);
   const { min, max } = valueAxis;
+  // The bars stand on `floorLevel`, or on the end of the axis nearest it.
+  // One that is beyond the other end goes on past the walls, as Qt's does,
+  // and one that is beyond the floor's own end is not there.
+  const floor = Math.max(min, Math.min(max, self.floorLevel));
   const tall = (value) => {
-    const t = (Math.max(min, Math.min(max, value)) - min) / (max - min);
+    if (min >= floor) value = Math.max(floor, value);
+    else if (max <= floor) value = Math.min(floor, value);
+    const t = (value - min) / (max - min);
     return place(1, valueAxis.reversed ? 1 - t : t);
   };
   return {
-    wall: half,
+    wall: half.map((length) => length + EDGE),
+    floor: tall(floor),
+    floored: true,
     place,
     first,
     rows: deep,
@@ -86,7 +98,7 @@ function bars(self) {
   const plot = self.$plot();
   const shown = self.$series().filter((series) => series.visible);
   const [wide, deep] = plot.bar;
-  const floor = plot.tall(self.floorLevel);
+  const floor = plot.floor;
   // Those of several series share a cell's width, and its depth as well
   // when they are to keep their shape.
   const share = Math.max(1, shown.length);
@@ -112,7 +124,7 @@ function bars(self) {
         const top = plot.tall(value);
         if (top === floor) continue;
         const x = plot.place(0, (column + 0.5) / plot.columns) + (which - (share - 1) / 2) * 2 * narrow;
-        box(shape, [x - narrow, Math.min(floor, top), z - shallow], [x + narrow, Math.max(floor, top), z + shallow], lit.colour, top > floor ? -1 : 1);
+        box(shape, [x - narrow, Math.min(floor, top) + EDGE, z - shallow], [x + narrow, Math.max(floor, top) + EDGE, z + shallow], lit.colour, top > floor ? -1 : 1);
       }
       if (colours.length) shape.part(lit.paint);
     }
