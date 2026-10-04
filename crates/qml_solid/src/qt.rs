@@ -41,7 +41,10 @@
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashMap, sync::OnceLock};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
 
 /// The module `uri` is imported as, when it is one of Qt's that the table has.
 pub(crate) fn module(uri: &str) -> Option<&'static Module> {
@@ -236,6 +239,18 @@ impl Property {
     pub(crate) fn value_type(&self) -> Option<&'static Type> {
         let table = table();
         table.classes.get(self.type_name).map(|index| &table.types[*index])
+    }
+
+    /// A key written there is the number it stands for and nothing to
+    /// evaluate, which is how Qt takes one for an enum or an `int`.
+    pub(crate) fn takes_key(&self) -> bool {
+        static ENUMS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+        let enums = ENUMS.get_or_init(|| {
+            let names = |enumeration: &'static Enum| std::iter::once(enumeration.name).chain(enumeration.alias);
+            table().types.iter().flat_map(|ty| ty.enums.iter().flat_map(names)).collect()
+        });
+        let name = self.type_name.rsplit("::").next().unwrap_or(self.type_name);
+        !self.is_list && (self.type_name == "int" || enums.contains(name))
     }
 }
 

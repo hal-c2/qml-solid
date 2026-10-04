@@ -1,7 +1,8 @@
-// `import QtCore`: Settings, kept in the browser's `localStorage`, and
-// StandardPaths, of which a page has none.
-import { untrack } from "solid-js";
-import { defineType, onChange, QtObject, whenComplete } from "../object.js";
+// `import QtCore`: Settings, kept in the browser's `localStorage`,
+// StandardPaths, of which a page has none, and LocationPermission, which is
+// the browser's to give.
+import { onCleanup, untrack } from "solid-js";
+import { defineType, onChange, QtObject, settle, slot, whenComplete } from "../object.js";
 import { application } from "../QtQml/application.js";
 import { Color, color } from "../QtQuick/color.js";
 
@@ -145,4 +146,65 @@ export const StandardPaths = Object.freeze({
   locate: () => "",
   locateAll: () => [],
   findExecutable: () => "",
+});
+
+const UNDETERMINED = 0;
+const GRANTED = 1;
+const DENIED = 2;
+
+// What the browser says of the page knowing where it is. A page has one
+// answer, whatever accuracy is asked for and however many ask: every
+// LocationPermission there is says the same.
+let answer = UNDETERMINED;
+let watched = false;
+const permissions = new Set();
+
+function answered(status) {
+  answer = status;
+  for (const self of permissions) slot(self, "status").write(status);
+  settle();
+}
+
+const states = { granted: GRANTED, denied: DENIED, prompt: UNDETERMINED };
+
+// The answer the browser has already, and every one it comes to later.
+function watch() {
+  if (watched) return;
+  watched = true;
+  if (!navigator.geolocation) return answered(DENIED);
+  navigator.permissions?.query({ name: "geolocation" }).then(
+    (permission) => {
+      answered(states[permission.state]);
+      permission.onchange = () => answered(states[permission.state]);
+    },
+    // A browser that does not say says so when asked.
+    () => {},
+  );
+}
+
+export const LocationPermission = defineType("LocationPermission", QtObject, {
+  properties: {
+    status: UNDETERMINED,
+    accuracy: 0,
+    availability: 0,
+  },
+  enums: { Approximate: 0, Precise: 1, WhenInUse: 0, Always: 1 },
+  methods: {
+    // Asking where the page is is how a browser is asked whether it may.
+    request() {
+      if (untrack(() => this.status) !== UNDETERMINED || !navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        () => answered(GRANTED),
+        // Not finding out where is not being forbidden to.
+        (error) => answered(error.code === error.PERMISSION_DENIED ? DENIED : GRANTED),
+        { enableHighAccuracy: untrack(() => this.accuracy) === 1 },
+      );
+    },
+  },
+  setup(self) {
+    permissions.add(self);
+    onCleanup(() => permissions.delete(self));
+    slot(self, "status").write(answer);
+    watch();
+  },
 });
