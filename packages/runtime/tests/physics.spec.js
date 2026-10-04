@@ -247,3 +247,45 @@ test("a program moves, resets, holds and stops bodies as in Qt", async ({ page }
   expect(stopped).toBe(20);
   near(seen.paused, [295.585, 294.604, 293.525], "paused", 0.002);
 });
+
+test("a character falls, walks, climbs and is put somewhere as in Qt", async ({ page }) => {
+  await begin(page, "physicscharacter");
+  const { seen, hits } = await until(page, 180);
+  // Where each was, and what it touched (4 is under it, 1 beside it), when
+  // these frames were done. Qt's engine is an older one than the page's,
+  // and has a character at rest far from the middle of the scene a little
+  // higher than it has one in the middle: by 0.003 at most.
+  const frames = {
+    // Falls to the floor, is told to walk in frame 40 and does from 42,
+    // meets a wall, and in frame 110 is put in the air somewhere else,
+    // where it falls again and steers as it does.
+    walker: { 1: [0, 100, 0, 0], 2: [0, 99.951, 0, 0], 20: [0, 82.293, 0, 0], 22: [0, 78.369, 0, 0], 23: [0, 76.26, 0, 4], 24: [0, 75.1, 0, 4], 41: [0, 75.1, 0, 4], 42: [2, 75.1, 0, 4], 77: [72, 75.1, 0, 4], 78: [74, 75.1, 0, 5], 79: [74.9, 75.1, 0, 5], 111: [74.9, 75.1, 0, 5], 112: [0, 300, 500, 0], 113: [2, 299.951, 500, 0], 179: [134, 79.815, 500, 4], 180: [136, 75.1, 500, 4] },
+    // Nothing pulls it: it goes where it is told at the speed it is told.
+    flier: { 1: [0, 500, 2000, 0], 2: [1, 500, 2000, 0], 41: [40, 500, 2000, 0], 42: [40, 500.5, 1999, 0], 43: [40, 501, 1998, 0], 180: [40, 569.5, 1861, 0] },
+    // With no `midAirControl` it falls where it is, and walks when it lands.
+    stiff: { 2: [0, 199.951, 4000, 0], 50: [0, 82.231, 4000, 0], 51: [0, 77.375, 4000, 4], 52: [0, 75.102, 4000, 4], 53: [1, 75.102, 4000, 4], 180: [128, 75.102, 4000, 4] },
+    // Scaled by 2, 3 and 1: 50 across and 300 tall between its round ends.
+    big: { 2: [0, 399.951, 6000, 0], 63: [0, 211.452, 6000, 0], 64: [0, 205.321, 6000, 4], 65: [0, 200.102, 6000, 4], 180: [0, 200.102, 6000, 4] },
+    // Up a step 20 high, and then one 40 higher.
+    climber: { 4: [0, 75.559, 8000, 0], 5: [0, 75.215, 8000, 4], 60: [19, 75.103, 8000, 4], 70: [29, 83.665, 8000, 4], 91: [50, 95.1, 8000, 4], 165: [124, 95.1, 8000, 4], 166: [125, 110.113, 8000, 4], 180: [139, 132.55, 8000, 4] },
+    // In a parent turned and twice the size: half as fast, in the parent.
+    child: { 1: [10, 0, 0, 0], 41: [10, 0, 0, 0], 42: [10.5, 0, 0, 0], 180: [79.5, 0, 0, 0] },
+  };
+  for (const [name, at] of Object.entries(frames)) {
+    for (const [frame, expected] of Object.entries(at)) near(seen[name][frame - 1], expected, `${name} at ${frame}`, 0.005);
+  }
+  // What `shapeHit` told the walker: the frame before the one it is told
+  // in, what it walked into, where, how far it was going, and which way
+  // the other faces.
+  near(
+    hits,
+    [
+      [22, "floor", [0, 0, 0], [0, -2.207, 0], [0, 1, 0]],
+      [23, "floor", [0, 0, 0], [0, -0.049, 0], [0, 1, 0]],
+      [24, "floor", [0, 0, 0], [0, -0.049, 0], [0, 1, 0]],
+      [77, "wall", [100, 50.1, 0], [2, 0, 0], [-1, 0, 0]],
+    ],
+    "hits",
+    0.002,
+  );
+});
