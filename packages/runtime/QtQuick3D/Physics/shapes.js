@@ -16,7 +16,7 @@
 // Not here: `enableDebugDraw`, which is kept and draws nothing; a mesh
 // shape's `geometry` (a shape made by a program), which is taken for no
 // shape; and a HeightFieldShape's `image`.
-import { defineType, derived, located } from "../../object.js";
+import { awaited, defineType, derived, located } from "../../object.js";
 import { Vector3d } from "../../QtQml/values.js";
 import * as math from "../math.js";
 import { column, read } from "../mesh.js";
@@ -30,14 +30,16 @@ const files = new Map();
 function file(url, took) {
   if (files.has(url)) return files.get(url);
   files.set(url, null);
-  fetch(url)
-    .then((answer) => (answer.ok ? answer.arrayBuffer() : Promise.reject(new Error(`${answer.status}`))))
-    .then((buffer) => took(buffer))
-    .catch((error) => ({ error: `could not be read: ${error.message}` }))
-    .then((made) => {
-      if (made.error) console.warn(`CollisionShape: ${url}: ${made.error}`);
-      files.set(url, made);
-    });
+  awaited(
+    fetch(url)
+      .then((answer) => (answer.ok ? answer.arrayBuffer() : Promise.reject(new Error(`${answer.status}`))))
+      .then((buffer) => took(buffer))
+      .catch((error) => ({ error: `could not be read: ${error.message}` }))
+      .then((made) => {
+        if (made.error) console.warn(`CollisionShape: ${url}: ${made.error}`);
+        files.set(url, made);
+      }),
+  );
   return null;
 }
 

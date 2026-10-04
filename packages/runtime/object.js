@@ -1509,6 +1509,19 @@ export function located(url) {
   return resources.get(url.replace(/^(qrc)?:\/+/, "qrc:/")) ?? url;
 }
 
+// What a scene still waits for, a file being read or a picture decoded, is
+// not on the page yet. `busy()` is how many of those there are, for a host
+// that wants the scene as it will be: what takes a picture of it.
+let awaiting = 0;
+export const busy = () => awaiting;
+
+export function awaited(promise) {
+  awaiting++;
+  const over = () => void awaiting--;
+  promise.then(over, over);
+  return promise;
+}
+
 // Creates a component's object apart from the tree that asked for it: a
 // delegate, a loaded item. `dispose` destroys it; so does the end of `owner`.
 export function instantiate(component, data, item, owner = item?.$owner ?? getOwner()) {

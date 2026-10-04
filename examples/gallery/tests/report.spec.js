@@ -98,6 +98,9 @@ for (const example of readManifest()) {
     // Its pictures and fonts are asked for when it is made: a busy server
     // may take longer over them than the wait that follows.
     await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+    // And what it reads once it has something else, as a scene its meshes
+    // once the engine that moves them is here.
+    await page.waitForFunction(() => window.gallery.busy() === 0, null, { timeout: 20000 }).catch(() => {});
     if (moving) await page.clock.runFor(example.qt?.settle ?? 1500);
     else await page.waitForTimeout(example.qt?.settle ?? 1500);
     // A window nothing shows is there and not to be seen: its QML does not

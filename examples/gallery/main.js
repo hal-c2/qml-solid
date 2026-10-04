@@ -2,9 +2,10 @@
 // its window; with no parameter every example is listed.
 //
 // What became of the example is on `window.gallery` (`status` is "loading",
-// then "rendered" or "failed", with the `error`) for whoever drives the page.
+// then "rendered" or "failed", with the `error`) for whoever drives the page,
+// and `busy()` is how many files the scene still waits for.
 import "qml-solid/runtime.css";
-import { mount } from "qml-solid/object";
+import { busy, mount } from "qml-solid/object";
 import examples from "virtual:examples";
 
 const stage = document.getElementById("stage");
@@ -37,7 +38,7 @@ function list() {
 }
 
 async function show(example) {
-  const state = (window.gallery = { id: example.id, status: "loading", error: null });
+  const state = (window.gallery = { id: example.id, status: "loading", error: null, busy });
   const fail = (error) => {
     state.status = "failed";
     state.error ??= String(error?.message ?? error);

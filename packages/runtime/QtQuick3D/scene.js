@@ -16,7 +16,7 @@
 // (`baseColorSingleChannelEnabled` and the like), and the colours of a
 // mesh's corners mask nothing.
 import { createSignal, untrack } from "solid-js";
-import { defineType, derived, effect, flush, group, located } from "../object.js";
+import { awaited, defineType, derived, effect, flush, group, located } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";
 import { color } from "../QtQuick/color.js";
 import * as math from "./math.js";
@@ -45,11 +45,13 @@ function file(url, kind, took) {
   if (record) return record;
   const [state, setState] = createSignal(null, WRITABLE);
   files.set(key, (record = { state }));
-  fetch(url)
-    .then((answer) => (answer.ok ? answer.arrayBuffer() : Promise.reject(new Error(`${answer.status}`))))
-    .then((buffer) => setState(took(buffer)))
-    .catch((error) => setState({ error: `could not be read: ${error.message}` }))
-    .then(() => flush());
+  awaited(
+    fetch(url)
+      .then((answer) => (answer.ok ? answer.arrayBuffer() : Promise.reject(new Error(`${answer.status}`))))
+      .then((buffer) => setState(took(buffer)))
+      .catch((error) => setState({ error: `could not be read: ${error.message}` }))
+      .then(() => flush()),
+  );
   return record;
 }
 
@@ -83,12 +85,19 @@ function picture(url) {
     const element = new Image();
     pictures.set(url, (record = { element, ready, sheer: false }));
     element.crossOrigin = "anonymous";
-    element.onload = () => {
-      record.sheer = seenThrough(element);
-      setReady(true);
-      flush();
-    };
-    element.onerror = () => console.warn(`Texture: ${url} could not be read`);
+    awaited(
+      new Promise((resolve, reject) => {
+        element.onload = resolve;
+        element.onerror = reject;
+      }).then(
+        () => {
+          record.sheer = seenThrough(element);
+          setReady(true);
+          flush();
+        },
+        () => console.warn(`Texture: ${url} could not be read`),
+      ),
+    );
     element.src = url;
   }
   return record.ready() ? record : null;

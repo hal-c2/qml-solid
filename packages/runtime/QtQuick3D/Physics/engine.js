@@ -10,6 +10,7 @@
 // Not here: more than one thread. The engine runs on the page's own.
 import glue from "physx-js-webidl/physx-js-webidl.mjs?url";
 import wasm from "physx-js-webidl/physx-js-webidl.wasm?url";
+import { awaited } from "../../object.js";
 
 let PhysX = null;
 let loading = null;
@@ -17,9 +18,11 @@ let loading = null;
 export const engine = () => PhysX;
 
 export function load() {
-  return (loading ??= import(/* @vite-ignore */ glue)
-    .then(({ default: make }) => make({ locateFile: () => wasm }))
-    .then((module) => (PhysX = module)));
+  return (loading ??= awaited(
+    import(/* @vite-ignore */ glue)
+      .then(({ default: make }) => make({ locateFile: () => wasm }))
+      .then((module) => (PhysX = module)),
+  ));
 }
 
 // One of the engine's named numbers: `flag("PxSceneFlagEnum", "eENABLE_CCD")`.
