@@ -238,7 +238,13 @@ export const ListModel = defineType("ListModel", AbstractListModel, {
   setup(self) {
     self.$blank = Object.create(null);
     // What its elements inherit: an accessor per role.
-    self.$element = {};
+    // What an element has is its roles, which are its model's to define:
+    // `JSON.stringify(model.get(0))` is asked for them here.
+    self.$element = Object.defineProperty({}, "toJSON", {
+      value() {
+        return Object.fromEntries(self.$roles.map((name) => [name, this[name]]));
+      },
+    });
   },
   adopt(self, props) {
     self.$elements = untrack(() =>
