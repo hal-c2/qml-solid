@@ -26,6 +26,7 @@
     "./QtQuick/LocalStorage": "./QtQuick/LocalStorage/index.js",
     "./QtQuick/Dialogs": "./QtQuick/Dialogs/index.js",
     "./QtQuick3D": "./QtQuick3D/index.js",
+    "./QtQuick3D/Physics": "./QtQuick3D/Physics/index.js",
     "./QtMultimedia": "./QtMultimedia/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtQml/Models": "./QtQml/Models/index.js",
@@ -53,6 +54,7 @@
     "vite": "^8.0.0"
   },
   "dependencies": {
+    "physx-js-webidl": "2.8.0",
     "sql.js": "^1.14.2"
   }
 }
