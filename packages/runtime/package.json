@@ -12,6 +12,7 @@
     "./QtQuick/Layouts": "./QtQuick/Layouts/index.js",
     "./QtQuick/Shapes": "./QtQuick/Shapes/index.js",
     "./QtQuick/Timeline": "./QtQuick/Timeline/index.js",
+    "./QtQuick/VectorImage": "./QtQuick/VectorImage/index.js",
     "./QtQuick/Window": "./QtQuick/Window/index.js",
     "./QtQuick/Particles": "./QtQuick/Particles/index.js",
     "./QtQuick/Templates": "./QtQuick/Templates/index.js",
