@@ -32,6 +32,7 @@
     "./QtCore": "./QtCore/index.js",
     "./QtWebSockets": "./QtWebSockets/index.js",
     "./QtPositioning": "./QtPositioning/index.js",
+    "./QtLocation": "./QtLocation/index.js",
     "./Qt/labs/settings": "./Qt/labs/settings/index.js",
     "./Qt/labs/folderlistmodel": "./Qt/labs/folderlistmodel/index.js",
     "./Qt/labs/synchronizer": "./Qt/labs/synchronizer/index.js",
