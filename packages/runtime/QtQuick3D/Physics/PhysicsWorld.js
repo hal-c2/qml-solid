@@ -325,9 +325,12 @@ export const PhysicsWorld = defineType("PhysicsWorld", QtObject, {
       ({ x, y, z }) => self.$sim?.scene.setGravity(vec(x, y, z)),
     );
     // Another scene has other bodies in it.
+    let had;
     effect(
       () => self.scene,
       (scene) => {
+        if (scene === had) return;
+        had = scene;
         for (const other of worlds) {
           if (other !== self && scene && untrack(() => other.scene) === scene) console.warn("Warning: scene already associated with physics world");
         }

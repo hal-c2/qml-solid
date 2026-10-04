@@ -155,3 +155,95 @@ test("a mesh's triangles, a mesh's hull and a picture of heights are shapes", as
   // A picture wider than it is high makes ground wider than it is deep.
   expect(read.extents).toEqual([100, 100, 50, 200, 50, 100]);
 });
+
+test("bodies are told what they touch and what they come into, when they ask", async ({ page }) => {
+  await begin(page, "physicstrigger");
+  const read = await until(page, 150);
+  // As Qt tells it, in Qt's order, with the frame each was told in. A body
+  // hears of a touch when it receives and the other sends; the one that
+  // was not the first of the two is told the way the touch faces turned
+  // round. A trigger tells of a body that sends, and a body that receives
+  // is told of the trigger; one that does neither passes unnoticed.
+  expect(read.told).toEqual([
+    [6, "hears", "bodyContact", "floor", 1, 1],
+    [6, "floor", "bodyContact", "sends", 1, -1],
+    [26, "zone", "bodyEntered", "both", 1],
+    [26, "both", "enteredTriggerBody", "zone"],
+    [26, "zone", "bodyEntered", "sender", 2],
+    [26, "receiver", "enteredTriggerBody", "zone"],
+    [39, "zone", "bodyExited", "both", 1],
+    [39, "both", "exitedTriggerBody", "zone"],
+    [39, "zone", "bodyExited", "sender", 0],
+    [39, "receiver", "exitedTriggerBody", "zone"],
+  ]);
+  expect(read.counts).toEqual([2, 0]);
+  // Nothing pulls a trigger down.
+  expect(read.zone).toEqual([0, 100, 0]);
+  // What is in group 1 passed through the slab that ignores it and lies on
+  // the floor; what is in group 2 lies on the slab; what ignores group 0
+  // fell through both, and is falling.
+  near(read.rest, [-2990.001, -2880, -3946.268], "rest", 0.02);
+});
+
+test("a program moves, resets, holds and stops bodies as in Qt", async ({ page }) => {
+  await begin(page, "physicskinematic");
+  const { seen, stopped } = await until(page, 40);
+  // A kinematic body is where `position` says for the world's first frame,
+  // and from the next where `kinematicPosition` does: nothing, when nothing
+  // was said. What is assigned in a frame is seen two frames on.
+  near(
+    seen.kin,
+    [
+      [0, 50, 0, 1, 0, 0, 0],
+      [0, 0, 0, 1, 0, 0, 0],
+      [0, 0, 0, 1, 0, 0, 0],
+      [0, 0, 0, 1, 0, 0, 0],
+      [100, 20, 0, 0.707, 0, 0.707, 0],
+      [100, 20, 0, 0.707, 0, 0.707, 0],
+    ],
+    "kin",
+    0.002,
+  );
+  near(seen.placed, [[500, 300, 0], ...Array(5).fill([500, 10, 0])], "placed", 0.002);
+  // A body made in frame 5 is the world's when frame 6 is over, and has
+  // fallen by frame 7.
+  near(seen.late, [0, 0, -0.0981, -0.2943, -0.5886], "late", 0.0002);
+  // Frames 10 to 13: `reset` in frame 10 has put the body there, turned
+  // and at rest, by frame 12. Its position is in the body's parent.
+  near(
+    seen.fallen,
+    [
+      [1000, -4.414, 0, 1, 0, 0, 0],
+      [1000, -5.395, 0, 1, 0, 0, 0],
+      [1000, 299.902, 0, 0.924, 0, 0, 0.383],
+      [1000, 299.706, 0, 0.924, 0, 0, 0.383],
+    ],
+    "fallen",
+    0.002,
+  );
+  near(
+    seen.inside,
+    [
+      [0, -2.207, 0],
+      [0, -2.698, 0],
+      [10, -0.049, 0],
+      [10, -0.147, 0],
+    ],
+    "inside",
+    0.002,
+  );
+  // Let into the world, or pulled, from frame 10.
+  near(seen.off, [0, 0, -0.098, -0.294], "off", 0.002);
+  near(seen.floating, [0, 0, -0.098, -0.294], "floating", 0.002);
+  // Sent off along `x` and `y` and spinning about all three, a body held
+  // along `y` and from turning about `x` and `z` goes along `x` and turns
+  // about `y`.
+  near(seen.sent, [[6000.801, 0, 0, 0.999, 0, 0.04, 0]], "sent", 0.002);
+  // A body is put where it is in its parent: this one's is turned a
+  // quarter and twice the size.
+  near(seen.child, [[46.763, 0, 0, 1, 0, 0, 0]], "child", 0.002);
+  // A world that is not running tells of no frame, and goes on from where
+  // it was when it runs again.
+  expect(stopped).toBe(20);
+  near(seen.paused, [295.585, 294.604, 293.525], "paused", 0.002);
+});
