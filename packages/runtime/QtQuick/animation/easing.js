@@ -223,9 +223,77 @@ const cubic = (p0, p1, p2, p3, t) => {
   return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
 };
 
+// A cube root as Qt's curve takes it: a guess from the bits of the number,
+// made better by one step of Halley's method. Near, not exact, and what a
+// curve is in Qt comes of it.
+const bits = new DataView(new ArrayBuffer(8));
+function root(d) {
+  const sign = d < 0 ? -1 : 1;
+  d *= sign;
+  bits.setFloat64(0, d);
+  bits.setUint32(0, Math.floor(bits.getUint32(0) / 3) + 715094163);
+  bits.setUint32(4, 0);
+  let t = bits.getFloat64(0);
+  const cube = t * t * t;
+  const under = cube + cube + d;
+  if (under !== 0) t = (t * (cube + d + d)) / under;
+  return t * sign;
+}
+
+const within = (t) => t >= -0.01 && t <= 1.01;
+const nearZero = (value) => value > -1e-3 && value < 1e-3;
+
+// The solution between 0 and 1 of `t^3 + a t^2 + b t + c = 0`, by Cardano's
+// formula. Where it has three real ones Qt takes the cosines from
+// polynomials that are near them, so its curve is a little off the true one;
+// so is this.
+function solve(a, b, c) {
+  if (c < 0.000001 && c > -0.000001) return 0;
+  const third = a / 3;
+  const p = b - a * third;
+  const q = (2 * a * a * a) / 27 - (a * b) / 3 + c;
+  const D = 0.25 * q * q + (p * p * p) / 27;
+  if (D >= 0) {
+    const rooted = sqrt(D);
+    const u = root(-q * 0.5 + rooted);
+    const v = root(-q * 0.5 - rooted);
+    const first = u + v - third;
+    return within(first) ? first : -u - third;
+  }
+  const rooted = sqrt(-p);
+  const f = sqrt(4 / 3) * rooted;
+  const g = (-q * 0.5 * (-3 * sqrt(3))) / (rooted * p);
+  const squared = g * g;
+  const over = sqrt(1 + g);
+  const below = sqrt(1 - g);
+  const first = f * (0.401644 * below + 0.0686804 * g - 0.401644 * over) - third;
+  if (within(first)) return first;
+  const second = f * (0.463614 - 0.0347815 * g + 0.00218245 * squared + 0.402421 * over) - third;
+  if (within(second)) return second;
+  return -f * (0.463614 + 0.402421 * below + 0.0347815 * g + 0.00218245 * squared) - third;
+}
+
+// Where along a segment its x is `x`.
+function along(p0, p1, p2, p3, x) {
+  const cubed = p3 - p0 + 3 * p1 - 3 * p2;
+  const squared = 3 * p0 - 6 * p1 + 3 * p2;
+  const once = -3 * p0 + 3 * p1;
+  const none = p0 - x;
+  if (!nearZero(cubed)) return solve(squared / cubed, once / cubed, none / cubed);
+  if (nearZero(squared)) return nearZero(once) ? 0 : -none / once;
+  const under = once * once - 4 * squared * none;
+  if (under < 0) return 0;
+  if (under === 0) return -once / (2 * squared);
+  const first = (-once + sqrt(under)) / (2 * squared);
+  if (first >= 0 && first <= 1) return first;
+  const second = (-once - sqrt(under)) / (2 * squared);
+  return second >= 0 && second <= 1 ? second : 0;
+}
+
 // `easing.bezierCurve`: cubic segments, each two control points and an end
 // point, from (0, 0) to (1, 1). The curve gives y for x, so the segment's
-// parameter at that x is found first; x rises along a valid curve.
+// parameter at that x is found first, as Qt finds it: by solving the cubic,
+// not by looking for it.
 function bezier(points) {
   const count = Math.floor(points.length / 6);
   if (!count) return plain[0];
@@ -241,19 +309,7 @@ function bezier(points) {
       at++;
     }
     const base = at * 6;
-    const x1 = points[base];
-    const x2 = points[base + 2];
-    const x3 = points[base + 4];
-    let low = 0;
-    let high = 1;
-    let t = 0.5;
-    for (let pass = 0; pass < 40; pass++) {
-      t = (low + high) / 2;
-      const found = cubic(x0, x1, x2, x3, t);
-      if (abs(found - x) < 1e-7) break;
-      if (found < x) low = t;
-      else high = t;
-    }
+    const t = along(x0, points[base], points[base + 2], points[base + 4], x);
     return cubic(y0, points[base + 1], points[base + 3], points[base + 5], t);
   };
 }
