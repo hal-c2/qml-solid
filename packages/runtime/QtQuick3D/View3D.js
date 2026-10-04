@@ -209,6 +209,16 @@ export const View3D = defineType("View3D", Item, {
     let first = null;
     self.$seeing = () => self.camera ?? first;
 
+    // The picture is drawn once for all that changed together, as Qt draws
+    // one for a frame: when what changed it is done, and not for each thing
+    // of several that a frame's animations and timers set.
+    let due = null;
+    const drawn = () => {
+      const scene = due;
+      due = null;
+      draw(scene, canvas, paper);
+    };
+
     effect(
       () => {
         const { width, height } = self;
@@ -232,7 +242,8 @@ export const View3D = defineType("View3D", Item, {
         // A camera maps to the view it was last seen through.
         first = seen.camera;
         if (seen.camera) Object.assign(seen.camera, { $width: seen.width, $height: seen.height });
-        draw({ ...seen, camera: seen.eye }, canvas, paper);
+        if (!due) queueMicrotask(drawn);
+        due = { ...seen, camera: seen.eye };
       },
     );
   },

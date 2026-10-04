@@ -1677,7 +1677,7 @@ export function draw(scene, canvas, paper) {
     // linear light: what nothing is seen through, over what is behind the
     // scene. Something that reads only how far that is, and is not seen
     // through, is itself of it, as in Qt.
-    const reading = [...solid, ...clear].filter(({ material }) => material.custom?.source.screen || material.custom?.source.depth);
+    const reading = [...solid, ...clear].filter(({ material }) => material?.custom?.source.screen || material?.custom?.source.depth);
     const back = reading.length ? behind(width, height) : null;
     if (back) {
       // Read while it is being drawn, there is nothing behind anything.

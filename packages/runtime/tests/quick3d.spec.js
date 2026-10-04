@@ -1353,6 +1353,7 @@ test("a FileInstancing has the entries Qt reads of its file", async ({ page }) =
     { position: [10, -200, 30], scale: [1, 1, 1], rotation: [0.866, 0, 0, 0.5], color: [0.259, 0, 0, 1], data: [10, 40, 0, 5] },
     { position: [1, 2, 3], scale: [1, 1, 1], rotation: [0.924, 0, 0, 0.383], color: [1, 1, 1, 0.502], data: [0, 0, 0, 0] },
   ];
+  await expect.poll(() => page.evaluate(() => window.scene.read().count)).toEqual([4, 4, 0]);
   near(await page.evaluate(() => window.scene.read()), { count: [4, 4, 0], written: entries, kept: entries });
 });
 
