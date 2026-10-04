@@ -2,8 +2,8 @@
 //
 // The file says what it is called; the browser is told that name, and the
 // weight and slant of the face, so that `font.bold` finds the bold file.
-import { createSignal, flush } from "solid-js";
-import { defineType, derived, effect, located, QtObject } from "../object.js";
+import { createSignal } from "solid-js";
+import { defineType, derived, effect, flush, located, QtObject } from "../object.js";
 import { lazy } from "./compute.js";
 import { fontsChanged } from "./font.js";
 

@@ -6,8 +6,8 @@
 // entered. With a transition the property has its new value at once, as with
 // a Behavior, and reads as what the transition's animations show until they
 // are done.
-import { createEffect, createMemo, createRoot, createSignal, flush, runWithOwner, untrack } from "solid-js";
-import { contents, defineType, group, QtObject, slot, whenComplete } from "../object.js";
+import { createEffect, createMemo, createRoot, createSignal, runWithOwner, untrack } from "solid-js";
+import { contents, defineType, flush, group, QtObject, slot, whenComplete } from "../object.js";
 import { follow, parallel } from "./animation/Animation.js";
 import { drain, later } from "./animation/clock.js";
 import { display, Property } from "./animation/property.js";

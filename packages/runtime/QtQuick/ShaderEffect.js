@@ -13,8 +13,8 @@
 // Not here: an item that is neither a picture, a Canvas nor another effect
 // as a texture (a page cannot draw its own elements into one), `blending:
 // false`, and a texture that follows a Canvas as it is painted.
-import { createSignal, flush, onCleanup } from "solid-js";
-import { defineType, effect, located, QtObject, slot } from "../object.js";
+import { createSignal, onCleanup } from "solid-js";
+import { defineType, effect, flush, located, QtObject, slot } from "../object.js";
 import { Size } from "../QtQml/values.js";
 import { Color, color } from "./color.js";
 import { drawn as shown } from "./drawn.js";

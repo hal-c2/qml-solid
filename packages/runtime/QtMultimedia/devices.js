@@ -1,8 +1,8 @@
 // MediaDevices: what there is to play sound on and to record with, as far
 // as the browser tells a page that has not asked for a microphone or a
 // camera: often one device of each kind, without a name.
-import { createSignal, flush } from "solid-js";
-import { defineType, derived, QtObject } from "../object.js";
+import { createSignal } from "solid-js";
+import { defineType, derived, flush, QtObject } from "../object.js";
 
 const WRITABLE = { ownedWrite: true };
 const NULL = 0;

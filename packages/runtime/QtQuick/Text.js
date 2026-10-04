@@ -5,8 +5,7 @@
 // out, so plain text is measured and broken into lines here and the element
 // is given the lines. Markup is the browser's to set: it is measured in an
 // element off the page.
-import { flush } from "solid-js";
-import { defineType, derived, effect, slot } from "../object.js";
+import { defineType, derived, effect, flush, slot } from "../object.js";
 import { css } from "./color.js";
 import { given, lazy, sized } from "./compute.js";
 import {

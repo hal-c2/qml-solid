@@ -2,8 +2,8 @@
 // `<input>` and a `<textarea>` bring the caret, the selection, the clipboard,
 // undo and the input methods. What QML reads of them (the text, where the
 // cursor is, how large the text is) is kept as properties.
-import { flush, untrack } from "solid-js";
-import { defineType, derived, effect, onChange, settle as settleAll, slot } from "../object.js";
+import { untrack } from "solid-js";
+import { defineType, derived, effect, flush, onChange, settle as settleAll, slot } from "../object.js";
 import { css } from "./color.js";
 import { lazy, rules, sized } from "./compute.js";
 import { forceActiveFocus, setFocus } from "./focus.js";

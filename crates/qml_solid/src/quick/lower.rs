@@ -97,6 +97,9 @@ struct Built<'a> {
     changes: Vec<Expression<'a>>,
     /// The properties it asks whoever makes it for.
     required: Vec<String>,
+    /// The properties whose value is an object written there: made with the
+    /// object, whether or not anything reads them.
+    made: Vec<String>,
 }
 
 /// The properties of `PropertyChanges` itself; any other name is a property
@@ -118,6 +121,9 @@ pub(crate) struct Lower<'a, 's> {
     frames: Vec<Vec<Statement<'a>>>,
     /// The object an instance's children go into.
     children: Option<String>,
+    /// The property they are the value of instead, and whether it is a list:
+    /// `default property list<QtObject> things`.
+    default: Option<(String, bool)>,
     specs: usize,
     /// The files the module names, each once: `$url1` is the first.
     urls: Vec<String>,
@@ -139,6 +145,7 @@ impl<'a, 's> Lower<'a, 's> {
             uses: Uses::default(),
             frames: Vec::new(),
             children: None,
+            default: None,
             specs: 0,
             urls: Vec::new(),
             enums: Vec::new(),
@@ -163,6 +170,7 @@ impl<'a, 's> Lower<'a, 's> {
         self.uses.handles.insert(handle.clone());
         self.uses.handles.insert(children.clone());
         let outer_children = self.children.replace(children);
+        let outer_default = std::mem::replace(&mut self.default, default_property(&root));
         let outer_frames = std::mem::take(&mut self.frames);
         let outer_enums = std::mem::take(&mut self.enums);
         self.frames.push(Vec::new());
@@ -171,6 +179,7 @@ impl<'a, 's> Lower<'a, 's> {
         self.frames = outer_frames;
         let enums = std::mem::replace(&mut self.enums, outer_enums);
         self.children = outer_children;
+        self.default = outer_default;
 
         self.uses.kernel.insert("$object");
         let mut statements = b.vec();
@@ -244,6 +253,7 @@ impl<'a, 's> Lower<'a, 's> {
             attach: Vec::new(),
             changes: Vec::new(),
             required: Vec::new(),
+            made: Vec::new(),
         };
         built.attributes.push(b.attr("$self", b.id(handle)));
         match &role {
@@ -325,8 +335,17 @@ impl<'a, 's> Lower<'a, 's> {
         if !built.changes.is_empty() {
             built.attributes.push(b.attr("$changes", b.array(built.changes)));
         }
+        if !built.made.is_empty() {
+            let names = built.made.iter().map(|name| b.string(name));
+            built.attributes.push(b.attr("$made", b.array(names)));
+        }
         if self.frames.len() == 1 && self.children.as_deref() == Some(handle) {
-            built.children.push(b.child(b.member(b.id("$props"), "children")));
+            match self.default.take() {
+                Some((name, is_list)) => {
+                    built.attributes.push(b.attr("$default", b.array([b.string(&name), b.boolean(is_list)])));
+                }
+                None => built.children.push(b.child(b.member(b.id("$props"), "children"))),
+            }
         }
         b.element(&tag, built.attributes, built.children)
     }
@@ -394,6 +413,20 @@ impl<'a, 's> Lower<'a, 's> {
             // Nothing takes a `Component` as a child: its id is how it is used.
             None if is_template => {}
             None => built.children.push(b.child(value)),
+        }
+    }
+
+    /// Whether a value is an object, or a list of them, that is made where it
+    /// is written: not a `Component`, which is made when something asks.
+    fn makes(&self, value: &QmlBindingValue<'a>) -> bool {
+        let made = |object: &QmlObject<'a>| {
+            let index = self.tree.index_of(object);
+            !self.tree.objects[index].is_template && !self.tree.is_root(index)
+        };
+        match value {
+            QmlBindingValue::Object(object) => made(object),
+            QmlBindingValue::Objects(objects) => objects.iter().any(made),
+            _ => false,
         }
     }
 
@@ -480,6 +513,9 @@ impl<'a, 's> Lower<'a, 's> {
             }
             None => {
                 let property = self.tree.property(self.types, index, &path).unwrap_or_default();
+                if self.makes(&binding.value) {
+                    built.made.push(path.join("$"));
+                }
                 self.value(binding.value, property)
             }
         };
@@ -589,6 +625,9 @@ impl<'a, 's> Lower<'a, 's> {
             built.required.push(name.to_string());
         }
         if let Some(value) = property.value {
+            if self.makes(&value) {
+                built.made.push(name.to_string());
+            }
             let value = self.value(value, types::declared_property(&declared, type_name.is_list));
             built.attributes.push(b.attr(name, value));
         }
@@ -763,6 +802,18 @@ fn default_of<'a>(b: B<'a>, type_name: &str, is_list: bool) -> Expression<'a> {
         name if name.starts_with(|c: char| c.is_ascii_uppercase()) => b.null(),
         _ => b.void_0(),
     }
+}
+
+/// `default property list<QtObject> things`: the property an instance's
+/// children are the value of, and whether it is a list. An alias names where
+/// they go instead.
+fn default_property(root: &QmlObject<'_>) -> Option<(String, bool)> {
+    root.members.iter().find_map(|member| {
+        let QmlMember::Property(property) = member else { return None };
+        let type_name = property.type_name.as_ref()?;
+        (property.is_default && type_name.name.to_string() != "alias")
+            .then(|| (property.name.name.to_string(), type_name.is_list))
+    })
 }
 
 /// `default property alias content: column.children`: the object the

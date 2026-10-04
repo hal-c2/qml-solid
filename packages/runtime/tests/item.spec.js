@@ -101,7 +101,8 @@ test("rotation turns about the transform origin, a Rotation about its own", asyn
 
 test("declared properties, signals and change handlers", async ({ page }) => {
   await open(page, "properties");
-  expect(await page.evaluate(() => window.objects.log)).toEqual(["completed 40"]);
+  // A binding's first value is a change of what the property had.
+  expect(await page.evaluate(() => window.objects.log)).toEqual(["width 40", "completed 40"]);
   expect((await rect(page, "follower")).width).toBe(40);
   const read = await page.evaluate(() => {
     const { root, follower } = window.objects;
@@ -111,6 +112,6 @@ test("declared properties, signals and change handlers", async ({ page }) => {
     return first;
   });
   expect(read).toEqual([10, 100]);
-  expect(await page.evaluate(() => window.objects.log)).toEqual(["completed 40", "width 100", "poked 3"]);
+  expect(await page.evaluate(() => window.objects.log)).toEqual(["width 40", "completed 40", "width 100", "poked 3"]);
   expect((await rect(page, "follower")).width).toBe(100);
 });

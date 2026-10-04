@@ -16,7 +16,7 @@ import {
   createRenderEffect,
   createRoot,
   createSignal,
-  flush,
+  flush as drain,
   getOwner,
   onCleanup,
   runWithOwner,
@@ -78,10 +78,92 @@ function settled(work, ...args) {
   }
 }
 
+// What a program is told of (a property that changed, a signal, an object
+// that is complete) it is told once what changed has settled: a handler that
+// assigns finds what depends on the assignment up to date, as it does in QML,
+// and inside Solid's flush nothing can be. So what is found out in a flush is
+// told after it.
+let told = [];
+let asked = false;
+
+// Whoever flushed tells; this is for a flush nobody here asked for.
+function ask() {
+  if (asked) return;
+  asked = true;
+  queueMicrotask(() => {
+    asked = false;
+    tell();
+  });
+}
+
+function after(work) {
+  told.push(work);
+  ask();
+}
+
+// After all there is to tell, and all that telling it brings: what Qt tells
+// of last, as a Loader that it has loaded once `item` and `status` changed.
+let late = [];
+export function last(work) {
+  late.push(work);
+  ask();
+}
+
+// Now, unless a flush is on.
+function soon(work) {
+  if (settling) after(work);
+  else untrack(work);
+}
+
+// What a handler changes is told of before the next handler is: its own
+// flush tells, and this goes on where it was.
+let telling = 0;
+function tell() {
+  telling++;
+  try {
+    for (;;) {
+      if (told.length === 0) {
+        if (telling > 1 || late.length === 0) return;
+        told = late;
+        late = [];
+      }
+      const mine = told;
+      told = [];
+      let index = 0;
+      try {
+        for (; index < mine.length; index++) untrack(mine[index]);
+      } finally {
+        if (index < mine.length) told.unshift(...mine.slice(index + 1));
+      }
+    }
+  } finally {
+    telling--;
+  }
+}
+
+// Solid's `flush`, and then what it found to tell.
+export function flush() {
+  drain();
+  tell();
+}
+
 // What a type's method does once it has changed something, so that what
 // depends on the change is up to date when it returns, as it is in QML.
 export function settle() {
   if (!settling) flush();
+}
+
+// What `work` emits and changes is told of once it is done, what it emitted
+// first: for what Qt tells of before it tells of the change that made it.
+export function gather(work) {
+  if (settling) return work();
+  settling++;
+  try {
+    return work();
+  } finally {
+    settling--;
+    flush();
+  }
 }
 
 // A binding that cannot be evaluated, as `game.over` before there is a
@@ -205,7 +287,7 @@ class Slot {
   // An assignment: it replaces the binding, as in QML, and what depends on
   // the property is up to date when it returns.
   set(value) {
-    if (this.write(value) && !settling) flush();
+    if (this.write(value)) settle();
   }
 
   // The same without settling what depends on it: for a type's own writes,
@@ -279,6 +361,38 @@ function defineProperty(Type, proto, name, initial) {
     enumerable: true,
     configurable: true,
   });
+  defineChange(proto, name);
+}
+
+// `widthChanged`: a property's changes are a signal like any other, to emit
+// and to connect to.
+function defineChange(object, name) {
+  const changed = `${name}Changed`;
+  Object.defineProperty(object, changed, {
+    get() {
+      return (this.$signals[changed] ??= changes(this, name));
+    },
+    configurable: true,
+  });
+}
+
+function changes(self, name) {
+  const handler = handlerName(`${name}Changed`);
+  const emit = signal(() => untrack(() => self.$props[handler]));
+  const { connect } = emit;
+  let watched = false;
+  // Nothing watches a property nobody hears of. `first` is told what the
+  // property is when the watch begins.
+  emit.watch = (first) => {
+    if (watched) return;
+    watched = true;
+    runWithOwner(self.$owner, () => onChange(self, name, emit, first));
+  };
+  emit.connect = (listener) => {
+    emit.watch();
+    connect(listener);
+  };
+  return emit;
 }
 
 function defineGroup(Type, proto, name, properties) {
@@ -320,10 +434,11 @@ const handlerName = (name) => `on${name[0].toUpperCase()}${name.slice(1)}`;
 // the object was given (`onClicked`) and whatever was connected since.
 export function signal(given) {
   const listeners = new Set();
-  const emit = (...args) => {
-    given?.()?.(...args);
-    for (const listener of [...listeners]) listener(...args);
-  };
+  const emit = (...args) =>
+    soon(() => {
+      given?.()?.(...args);
+      for (const listener of [...listeners]) listener(...args);
+    });
   emit.connect = (listener) => void listeners.add(listener);
   emit.disconnect = (listener) => void listeners.delete(listener);
   return emit;
@@ -383,6 +498,7 @@ export function defineType(name, base, spec = {}) {
 // component before it evaluates a binding, so that one may name any other.
 // `Component.onCompleted` handlers wait for the bindings too.
 let waiting = null;
+let watches = null;
 let completions = null;
 // The item whose children are being created.
 let parent = null;
@@ -403,15 +519,20 @@ export function effect(compute, apply) {
 function complete(make) {
   if (waiting) return make();
   const works = (waiting = []);
+  const watched = (watches = []);
   const handlers = (completions = []);
   let made;
   try {
     made = make();
   } finally {
-    waiting = completions = null;
+    waiting = watches = completions = null;
   }
   for (const work of works) work();
-  for (const handler of handlers) handler();
+  // What changes from here on is a change: everything is as it was made.
+  const firsts = [];
+  for (const watch of watched) watch(firsts);
+  for (const handler of firsts) soon(handler);
+  for (const handler of handlers) soon(handler);
   return made;
 }
 
@@ -444,7 +565,7 @@ function inherit(own, given) {
     const descriptor = Object.getOwnPropertyDescriptor(given, key);
     if (!(key in own)) Object.defineProperty(props, key, descriptor);
     else if (key === "$declare") props.$declare = [own.$declare, given.$declare].flat();
-    else if (key === "$attach") props.$attach = [...new Set([...own.$attach, ...given.$attach])];
+    else if (key === "$attach" || key === "$made") props[key] = [...new Set([...own[key], ...given[key]])];
     else if (key === "$functions" || key === "$aliases") props[key] = { ...own[key], ...given[key] };
     else if (HANDLER.test(key)) {
       props[key] = (...args) => {
@@ -453,6 +574,19 @@ function inherit(own, given) {
       };
     } else Object.defineProperty(props, key, descriptor);
   }
+  // `default property list<QtObject> things`: what is written inside an
+  // instance is the value of the property, not children of the object.
+  if (own.$default && "children" in given) {
+    const [name, list] = own.$default;
+    const get = () => {
+      const made = untrack(() => flatten(given.children, []));
+      return list ? made : (made.at(-1) ?? null);
+    };
+    Object.defineProperty(props, name, { get, enumerable: true, configurable: true });
+    props.$made = [...(props.$made ?? []), name];
+  }
+  // Who gave what, the component's own file first.
+  hidden(props, "$levels", [own, ...(given.$levels ?? [given])]);
   return props;
 }
 
@@ -496,6 +630,7 @@ function defineAlias(self, name, [target, ...path]) {
     enumerable: true,
     configurable: true,
   });
+  defineChange(self, name);
   if (!given) return;
   // What the instance binds to the alias is the target's binding.
   const key = path.join("$");
@@ -542,7 +677,8 @@ function create(Type, props) {
       const property = /^on([A-Z]\w*)Changed$/.exec(key)?.[1];
       if (!property) continue;
       const name = property[0].toLowerCase() + property.slice(1);
-      if (name in Type.slots || props.$aliases?.[name]) onChange(self, name, () => untrack(() => props[key])?.());
+      if (name in Type.slots) self[`${name}Changed`].watch((value, firsts) => first(self, name, key, value, firsts));
+      else if (props.$aliases?.[name]) self[`${name}Changed`].watch();
     }
     // `Keys.onPressed`, `Layout.fillWidth`: the attached object is what does
     // something about them, so it has to exist.
@@ -553,6 +689,12 @@ function create(Type, props) {
     }
     const completed = props.Component$onCompleted;
     if (completed) completions.push(() => untrack(completed));
+    // An object a property holds is made with the rest, whoever reads it.
+    if (props.$made) {
+      whenComplete(() => {
+        for (const name of props.$made) untrack(() => self[name]);
+      });
+    }
     const destruction = props.Component$onDestruction;
     if (destruction) onCleanup(() => destruction());
     // Whoever read the object before it existed reads it again.
@@ -578,24 +720,50 @@ function flatten(made, into) {
   return into;
 }
 
-// Runs `handler` when the property changes, not when it is first read.
-export function onChange(self, name, handler) {
-  let seen = false;
-  let last;
-  whenComplete(() =>
-    createEffect(
-      () => self[name],
-      (value) => {
-        // Reading it again is not a change: what it was computed from may
-        // have changed and left it as it was.
-        const changed = seen && !Object.is(value, last);
-        seen = true;
-        last = value;
-        // A handler reads what it likes: it is run, not kept up to date.
-        if (changed) settled(untrack, handler);
-      },
-    ),
-  );
+// Runs `handler` when the property changes from what it is now, or from what
+// it is once the objects being created all are.
+export function onChange(self, name, handler, first) {
+  const owner = getOwner();
+  const watch = (firsts) => {
+    let last = untrack(() => self[name]);
+    first?.(last, firsts);
+    runWithOwner(owner, () =>
+      createEffect(
+        () => self[name],
+        (value) => {
+          // Reading it again is not a change: what it was computed from may
+          // have changed and left it as it was.
+          if (Object.is(value, last)) return;
+          last = value;
+          after(handler);
+        },
+      ),
+    );
+  };
+  if (watches) watches.push(watch);
+  else watch();
+}
+
+// What an object is given as it is made is a change to whoever heard of the
+// property already: the handlers of the component it is made from, not one
+// written next to the value. A binding is evaluated when all of them hear.
+// Qt tells of every step from the default to the value; this of the last.
+function first(self, name, key, value, firsts) {
+  const levels = self.$props.$levels ?? [self.$props];
+  const top = levels.findLastIndex((level) => Object.hasOwn(level, name));
+  if (top < 0) return;
+  const given = Object.getOwnPropertyDescriptor(levels[top], name);
+  const initial = slot(self, name).initial;
+  let before = initial?.[DERIVED] ? untrack(() => initial[DERIVED](self)) : initial;
+  levels.forEach((level, index) => {
+    const descriptor = Object.getOwnPropertyDescriptor(level, name);
+    if (descriptor && !descriptor.get) before = descriptor.value;
+    const handler = Object.hasOwn(level, key) ? level[key] : null;
+    if (!handler || (!given.get && top <= index)) return;
+    if (Object.is(given.get ? value : given.value, before)) return;
+    if (firsts) firsts.push(handler);
+    else soon(handler);
+  });
 }
 
 // `target.onSignal` from outside the object: a signal it emits, or the change
@@ -855,7 +1023,7 @@ export function $signal(initial) {
       value = given;
     }
     bump(next);
-    if (!settling) flush();
+    settle();
     return given;
   };
   return [get, set];

@@ -795,3 +795,39 @@ fn a_file_of_a_module_of_qt_has_the_types_of_that_module() {
     let errors = errors(source);
     assert!(errors.iter().any(|error| error.contains("`Overlay` is not defined")), "{errors:?}");
 }
+
+#[test]
+fn an_object_a_property_holds_is_made_with_its_owner() {
+    let code = lowered(
+        r#"import QtQuick
+QtObject {
+    default property list<QtObject> things
+    property QtObject held: QtObject { objectName: "held" }
+    property Component part: Item {}
+}"#,
+    );
+    // Read or not, it is there once its owner is: a template is not.
+    assert_contains(&code, r#"$made={["held"]}"#);
+    // What an instance is given between its braces goes to the property the
+    // type says, a list here.
+    assert_contains(&code, r#"$default={["things", true]}"#);
+    assert_lacks(&code, "$props.children");
+
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    default property Item slot
+    Item {}
+}"#,
+    );
+    assert_contains(&code, r#"$default={["slot", false]}"#);
+    // An alias says where they go by what it names.
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    default property alias content: inner.children
+    Item { id: inner }
+}"#,
+    );
+    assert_lacks(&code, "$default");
+}

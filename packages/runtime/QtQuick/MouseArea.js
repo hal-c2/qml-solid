@@ -4,7 +4,7 @@
 // order Qt does it (`qquickmousearea.cpp`); who they are sent to is decided
 // in pointer.js.
 import { onCleanup, untrack } from "solid-js";
-import { defineType, derived, effect, group, onChange, settle, signal, slot } from "../object.js";
+import { defineType, derived, effect, gather, group, onChange, settle, signal, slot } from "../object.js";
 import { itemToScene, sceneToItem } from "./geometry.js";
 import { Item } from "./Item.js";
 import { LeftButton, NoButton } from "./keycodes.js";
@@ -298,14 +298,16 @@ function ungrabbed(self) {
   mine.stealMouse = mine.doubleClick = mine.overThreshold = mine.keep = false;
   cancel(mine.hold);
   setDragging(self, false);
-  slot(self, "pressed").write(false);
-  slot(self, "pressedButtons").write(NoButton);
-  if (mine.hovered && !underMouse(self)) {
-    mine.hovered = false;
-    slot(self, "containsMouse").write(false);
-  }
-  settle();
-  self.canceled();
+  // Qt tells of the cancel before it tells of what changed with it.
+  gather(() => {
+    self.canceled();
+    slot(self, "pressed").write(false);
+    slot(self, "pressedButtons").write(NoButton);
+    if (mine.hovered && !underMouse(self)) {
+      mine.hovered = false;
+      slot(self, "containsMouse").write(false);
+    }
+  });
 }
 
 // Qt's `sendMouseEvent`: a move or a release of a press that is a child's,

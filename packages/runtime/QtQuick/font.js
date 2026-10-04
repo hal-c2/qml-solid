@@ -1,8 +1,8 @@
 // Fonts: QML's `font` group as CSS, and how wide and how tall text set in
 // one is. Text is measured here, on a canvas, and not by laying out
 // elements: a binding reads `implicitWidth` before anything is in the page.
-import { createSignal, flush } from "solid-js";
-import { derived, group } from "../object.js";
+import { createSignal } from "solid-js";
+import { derived, flush, group } from "../object.js";
 import { given } from "./compute.js";
 
 // `Font.Bold`, `Font.AllUppercase`: the enums of the `font` value type.
