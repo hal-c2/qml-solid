@@ -14,6 +14,7 @@ export { CheckDelegate, ItemDelegate, RadioDelegate, SwitchDelegate } from "./It
 export { Label } from "./Label.js";
 export { PageIndicator } from "./PageIndicator.js";
 export { Frame, GroupBox, Page, Pane, ToolBar } from "./Pane.js";
+export { Overlay, Popup } from "./Popup.js";
 export { BusyIndicator, ProgressBar } from "./ProgressBar.js";
 export { RangeSlider } from "./RangeSlider.js";
 export { ScrollBar } from "./ScrollBar.js";

@@ -28,6 +28,8 @@ export function windowOf(item) {
   let top = item;
   for (let parent = parentOf(top); parent; parent = parentOf(top)) top = parent;
   if (top.$focusWindow) return top.$focusWindow;
+  // The item of a popup that is not open is in no window.
+  if (top.$popup) return { top, $subFocus: null, active: null };
   // A scope like the others, that always has active focus.
   const window = { top, $subFocus: null, active: null };
   top.$focusWindow = window;
@@ -269,12 +271,19 @@ function around(scope, item) {
   return false;
 }
 
+// What Tab does not leave: the popup the item is in (`$tabFence`), else the
+// window.
+function fenceOf(window, item) {
+  for (let at = item; at; at = parentOf(at)) if (at.$tabFence) return at;
+  return window.top;
+}
+
 // The next tab stop after `item` (before it, backwards) in the order the
 // items were declared in, around the whole window; `item` itself if there
 // is no other. From no item it is the first, or the last.
 export function nextInChain(window, item, forward = true) {
   const all = [];
-  walk(window.top, all);
+  walk(fenceOf(window, item), all);
   const count = all.length;
   const from = item ? all.indexOf(item) : forward ? -1 : count;
   for (let step = 1; step <= count; step++) {

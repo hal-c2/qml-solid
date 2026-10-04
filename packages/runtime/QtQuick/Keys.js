@@ -203,8 +203,9 @@ function deliver(item, press) {
   event.accepted = false;
   filter(item, press, false);
   if (event.accepted) return;
-  item[press ? "$keyPressed" : "$keyReleased"]?.(event);
-  if (event.accepted) return void (own = true);
+  const used = item[press ? "$keyPressed" : "$keyReleased"]?.(event);
+  // One that says it used the key leaves the browser nothing to do with it.
+  if (event.accepted) return void (own = used !== true);
   filter(item, press, true);
   if (event.accepted || !press || !item.activeFocusOnTab) return;
   tabbed(item);
