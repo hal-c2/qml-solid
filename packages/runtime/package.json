@@ -35,6 +35,8 @@
     "./QtQml/XmlListModel": "./QtQml/XmlListModel/index.js",
     "./QtCore": "./QtCore/index.js",
     "./QtWebSockets": "./QtWebSockets/index.js",
+    "./QtCharts": "./QtCharts/index.js",
+    "./QtGraphs": "./QtGraphs/index.js",
     "./QtPositioning": "./QtPositioning/index.js",
     "./QtSensors": "./QtSensors/index.js",
     "./QtLocation": "./QtLocation/index.js",
