@@ -1,6 +1,14 @@
 {
   "about": "The ratchet: examples that must keep rendering on the web. `mise run gallery` fails when one listed here does not render; `pixels` and `content`, when given, are the least its scores against Qt's picture may be. `GALLERY_RATCHET=1 mise run gallery` adds every example that renders now.",
   "examples": {
+    "android": {
+      "pixels": 0.98,
+      "content": 0.9
+    },
+    "calqlatr": {
+      "pixels": 0.98,
+      "content": 0.88
+    },
     "clocks": {
       "pixels": 0.95,
       "content": 0.9
