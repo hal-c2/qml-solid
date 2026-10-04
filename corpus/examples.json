@@ -635,9 +635,9 @@
         "qtjenny_consumer: BackEnd (Android APIs through JNI)"
       ],
       "qt": {
-        "runnable": false,
-        "reason": "Android only: Main.qml instantiates the C++ type BackEnd, which calls Android APIs."
-      }
+        "runnable": true
+      },
+      "notes": "Android only in C++: Main.qml instantiates the C++ type BackEnd, which calls Android APIs through JNI. corpus/standins/qtjennydemo stands in for it with a made-up phone, also for Qt's picture."
     },
     {
       "id": "robotarm",
