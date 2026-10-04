@@ -3,12 +3,17 @@
 // write it would not allow.
 import { expect, test as base } from "@playwright/test";
 
+// What a graphics driver says of how fast it was is no problem of the
+// page's: a picture bigger than a thumbnail read back from WebGL has one
+// say it waited.
+const DRIVER = /GL Driver Message \(OpenGL, Performance/;
+
 export const test = base.extend({
   page: async ({ page }, use) => {
     const problems = [];
     page.on("pageerror", (error) => problems.push(error.message));
     page.on("console", (message) => {
-      if (message.type() === "error" || message.type() === "warning") problems.push(message.text());
+      if ((message.type() === "error" || message.type() === "warning") && !DRIVER.test(message.text())) problems.push(message.text());
     });
     await use(page);
     expect(problems).toEqual([]);
