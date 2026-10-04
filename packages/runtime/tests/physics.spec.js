@@ -127,3 +127,31 @@ test("a body is as heavy as its density, shapes and scale make it", async ({ pag
   // A shape made for `collisionShapes` is inside its body.
   expect(read.parent).toEqual([true, 2]);
 });
+
+test("a mesh's triangles, a mesh's hull and a picture of heights are shapes", async ({ page }) => {
+  // The world's first frame waits for the files.
+  await begin(page, "physicsmesh");
+  const read = await until(page, 150);
+  // A hull is as heavy as what it encloses: a pyramid a third of its box,
+  // twice that when it is twice as long. Eleven steps after the push.
+  near(read.early, { hullFree: [33, 2000, 0, false], hullScaled: [16.5, 4000, 0, false] }, "early", 0.01);
+  // Where Qt has each at rest. The tray, scaled to twice its height, is 40
+  // up, and the ball on it has a radius of 10. The pyramid stands on the
+  // plane. The dark half of the picture is 24.9 under the middle of the
+  // ground and the bright half as far above it, along `x`; scaled, the
+  // ground is as high as its `extents` say.
+  near(
+    read.late,
+    {
+      onTray: [0, 50, 0, true],
+      hull: [1000, 0.001, -0.001, true],
+      low: [2970, 480.099, 10, true],
+      high: [3030, 529.901, 10, true],
+      onWide: [5100, 517.45, -30, true],
+    },
+    "late",
+    0.02,
+  );
+  // A picture wider than it is high makes ground wider than it is deep.
+  expect(read.extents).toEqual([100, 100, 50, 200, 50, 100]);
+});

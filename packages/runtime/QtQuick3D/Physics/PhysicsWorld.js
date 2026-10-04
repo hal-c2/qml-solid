@@ -10,7 +10,9 @@
 //
 // The engine is fetched when the first world is made (`engine.js`). Until
 // it is here nothing moves and nothing is told; the world starts when it
-// is.
+// is. It waits likewise for a file one of its bodies' shapes is, which Qt
+// reads there and then: a table that is a mesh is under the dice when they
+// begin to fall.
 //
 // What touches what is told when the step is over (`bodyContact`); what
 // came into a trigger or left it, as soon as the engine has found it.
@@ -25,7 +27,7 @@ import { Vector3d } from "../../QtQml/values.js";
 import { clock } from "../../QtQuick/animation/clock.js";
 import * as math from "../math.js";
 import { begin, end, sync } from "./backend.js";
-import { bodies, entered, left } from "./bodies.js";
+import { bodies, entered, left, list } from "./bodies.js";
 import { engine, flag, load, sdk, three, top, vec } from "./engine.js";
 
 // The worlds there are.
@@ -170,6 +172,15 @@ function within(self, node) {
   return false;
 }
 
+// Whether a shape of one of the world's bodies is a file not here yet.
+function waiting(self) {
+  for (const node of bodies) {
+    if (node.$body ? node.$body.world !== self : !within(self, node)) continue;
+    if (list(node.collisionShapes).some((shape) => shape?.$waiting?.())) return true;
+  }
+  return false;
+}
+
 // What is done when a step is over.
 function finished(self, seconds) {
   const sim = self.$sim;
@@ -217,7 +228,7 @@ function triggered(sim) {
 // A frame of the page.
 function frame(self, delta) {
   const sim = self.$sim;
-  if (!sim) return;
+  if (!sim || waiting(self)) return;
   const { minimumTimestep, maximumTimestep } = self;
   if (!sim.begun) {
     sim.begun = true;

@@ -92,46 +92,44 @@ export function pose(position, turn) {
 export const three = (v) => [v.x, v.y, v.z];
 export const four = (q) => [q.w, q.x, q.y, q.z];
 
-// Numbers put where the engine can read them: the address they are at,
-// which `PhysX._free` gives back.
-function lent(numbers, heap) {
-  const at = PhysX._malloc(numbers.byteLength);
-  PhysX[heap].set(numbers, at / numbers.BYTES_PER_ELEMENT);
-  return at;
-}
-
 // A mesh as the engine collides with one, made once for each file that is
 // one: null when the engine can make nothing of it.
 const cooked = new Map();
 export function cook(kind, key, mesh) {
   const name = `${kind} ${key}`;
   if (cooked.has(name)) return cooked.get(name);
-  const points = lent(mesh.points, "HEAPF32");
+  const count = mesh.points.length / 3;
+  const points = new PhysX.PxArray_PxVec3(count);
+  for (let index = 0; index < count; index++) points.set(index, vec(mesh.points[index * 3], mesh.points[index * 3 + 1], mesh.points[index * 3 + 2]));
   let made = null;
   if (kind === "convex") {
     const desc = new PhysX.PxConvexMeshDesc();
-    desc.points.count = mesh.points.length / 3;
+    desc.points.count = count;
     desc.points.stride = 12;
-    desc.points.data = points;
-    desc.flags = new PhysX.PxConvexFlags(flag("PxConvexFlagEnum", "eCOMPUTE_CONVEX"));
+    desc.points.data = points.begin();
+    const hull = new PhysX.PxConvexFlags(flag("PxConvexFlagEnum", "eCOMPUTE_CONVEX"));
+    desc.flags = hull;
     made = top().CreateConvexMesh(shared.cooking, desc);
+    PhysX.destroy(hull);
     PhysX.destroy(desc);
   } else {
     const desc = new PhysX.PxTriangleMeshDesc();
-    desc.points.count = mesh.points.length / 3;
+    desc.points.count = count;
     desc.points.stride = 12;
-    desc.points.data = points;
-    const triangles = mesh.indices ? lent(mesh.indices, "HEAPU32") : 0;
-    if (triangles) {
+    desc.points.data = points.begin();
+    // With no order to join them in, the corners are triangles as they come.
+    const corners = mesh.indices ? new PhysX.PxArray_PxU32(mesh.indices.length) : null;
+    if (corners) {
+      mesh.indices.forEach((corner, index) => corners.set(index, corner));
       desc.triangles.count = Math.floor(mesh.indices.length / 3);
       desc.triangles.stride = 12;
-      desc.triangles.data = triangles;
+      desc.triangles.data = corners.begin();
     }
     made = top().CreateTriangleMesh(shared.cooking, desc);
     PhysX.destroy(desc);
-    if (triangles) PhysX._free(triangles);
+    if (corners) PhysX.destroy(corners);
   }
-  PhysX._free(points);
+  PhysX.destroy(points);
   if (!made || made.ptr === 0) made = null;
   cooked.set(name, made);
   return made;

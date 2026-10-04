@@ -10,7 +10,8 @@
 // capsule lies along `x`.
 //
 // A body asks its shapes each frame what they are (`$form`), and makes
-// them again when one says something else.
+// them again when one says something else. A shape that is a file is read
+// by the page, and the world waits until it has been (`$waiting`).
 //
 // Not here: `enableDebugDraw`, which is kept and draws nothing; a mesh
 // shape's `geometry` (a shape made by a program), which is taken for no
@@ -87,6 +88,10 @@ export const CollisionShape = defineType("CollisionShape", Node, {
     $geometry() {
       return null;
     },
+    // Whether the shape is a file that is still being read.
+    $waiting() {
+      return false;
+    },
     // Where in its body the shape is, and how it is turned there.
     $pose(scale) {
       return [this.x * scale[0], this.y * scale[1], this.z * scale[2], ...turnOf(this)];
@@ -156,6 +161,10 @@ export const PlaneShape = defineType("PlaneShape", CollisionShape, {
 export const MeshShape = defineType("MeshShape", CollisionShape, {
   properties: { source: "", geometry: null },
   methods: {
+    $waiting() {
+      const given = String(this.source ?? "");
+      return given !== "" && file(located(given), corners) === null;
+    },
     $form(scale) {
       const given = String(this.source ?? "");
       if (!given) return null;
@@ -209,6 +218,10 @@ export const HeightFieldShape = defineType("HeightFieldShape", CollisionShape, {
     image: null,
   },
   methods: {
+    $waiting() {
+      const given = String(this.source ?? "");
+      return given !== "" && file(located(given), brightness) === null;
+    },
     $form(scale) {
       const picture = heights(this);
       if (!picture || picture.width < 2 || picture.height < 2) return null;
