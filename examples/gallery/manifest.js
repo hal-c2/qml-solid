@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 export const manifestFile = resolve(process.env.GALLERY_MANIFEST ?? join(here, "../../corpus/examples.json"));
 
+// The screen the references were taken on.
+export const readScreen = () => JSON.parse(readFileSync(manifestFile, "utf8")).screen;
+
 export function readManifest() {
   const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
   const corpus = dirname(manifestFile);
