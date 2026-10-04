@@ -8,6 +8,7 @@ export { Frame, GroupBox, Page, Pane, ToolBar } from "./Pane.js";
 export { ScrollBar } from "./ScrollBar.js";
 export { ScrollIndicator } from "./ScrollIndicator.js";
 export { ScrollView } from "./ScrollView.js";
+export { SplitHandle, SplitView } from "./SplitView.js";
 export { StackView } from "./StackView.js";
 export { SwipeView } from "./SwipeView.js";
 export { TabBar } from "./TabBar.js";
