@@ -1,0 +1,5 @@
+module ColorPalette
+RestService 1.0 RestService.qml
+BasicLogin 1.0 BasicLogin.qml
+PaginatedResource 1.0 PaginatedResource.qml
+internal AbstractResource AbstractResource.qml

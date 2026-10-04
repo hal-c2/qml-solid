@@ -1,0 +1,4 @@
+module LightningViewerModule
+singleton LightningController 1.0 LightningController.qml
+internal LightningItemModel LightningItemModel.qml
+internal LightningProvider LightningProvider.qml
