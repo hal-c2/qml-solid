@@ -1,4 +1,4 @@
-//! `qmlc [--emit js|lowered] [--out-dir DIR] [--root DIR] [--with DIR]... [--host MODULE] [--runtime MODULE] [--alone] FILE.qml...`
+//! `qmlc [--emit js|lowered] [--out-dir DIR] [--root DIR] [--with DIR]... [--select NAME]... [--host MODULE] [--runtime MODULE] [--alone] FILE.qml...`
 //! `qmlc --types URI...`
 //!
 //! Compiles each QML file to a JavaScript module, and each `.js` file as the
@@ -10,7 +10,9 @@
 //! whose `CMakeLists.txt` starts a project. `--with` names a directory with
 //! more of the project's modules, described by `qmldir` files likewise: the
 //! QML that stands in for the types a program has in C++, where there is no
-//! C++. With
+//! C++. `--select` names a file selector, as Qt has them: the style of the
+//! controls, say. A file with one of the same name in the directory `+NAME`
+//! next to it is read from there instead, and is still the file it was. With
 //! `--alone` it is compiled by itself: it takes only what it declares, and a
 //! type it does not know is taken to be a component.
 //!
@@ -22,9 +24,23 @@ use std::{
     collections::HashSet,
     path::{Component, Path, PathBuf},
     process::ExitCode,
+    sync::OnceLock,
 };
 
 use qml_solid::{Options, Project, compile, compile_script, discover, lowered_source, native_types};
+
+/// The file selectors given, the first to have a file deciding.
+static SELECTORS: OnceLock<Vec<String>> = OnceLock::new();
+
+/// What `file` says: what the one a selector puts in its place says, when
+/// there is one.
+fn read(file: &Path) -> std::io::Result<String> {
+    let chosen = SELECTORS.get().into_iter().flatten().find_map(|selector| {
+        let chosen = file.parent()?.join(format!("+{selector}")).join(file.file_name()?);
+        chosen.is_file().then_some(chosen)
+    });
+    std::fs::read_to_string(chosen.as_deref().unwrap_or(file))
+}
 
 /// The directory the project `path` is in starts at.
 fn project_root(path: &Path) -> PathBuf {
@@ -56,14 +72,21 @@ fn descriptions(root: &Path, found: &mut Vec<PathBuf>) {
     }
 }
 
-/// What a build or a package manager put there is not the project.
+/// What a build or a package manager put there is not the project, and
+/// neither are the files a selector chooses from: each is another by its
+/// name.
 fn is_source(name: &str) -> bool {
-    !name.starts_with('.') && !name.starts_with("build") && name != "node_modules" && name != "target"
+    !name.starts_with(['.', '+']) && !name.starts_with("build") && name != "node_modules" && name != "target"
 }
 
 /// The QML files in `directory` and under it, by their path from `base`:
 /// what a path put together when the program runs may name.
 fn qml_files(directory: &Path, base: &Path, found: &mut Vec<String>) {
+    walk(directory, base, &|name| name.ends_with(".qml"), found);
+}
+
+/// The files in `directory` and under it that `wanted` takes the name of.
+fn walk(directory: &Path, base: &Path, wanted: &dyn Fn(&str) -> bool, found: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(directory) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -71,9 +94,9 @@ fn qml_files(directory: &Path, base: &Path, found: &mut Vec<String>) {
         let name = name.to_string_lossy();
         if path.is_dir() {
             if is_source(&name) {
-                qml_files(&path, base, found);
+                walk(&path, base, wanted, found);
             }
-        } else if name.ends_with(".qml") {
+        } else if wanted(&name) {
             found.push(relative(base, &path));
         }
     }
@@ -109,7 +132,7 @@ fn modules(project: &mut Project, root: &Path, base: &Path) {
                 let path = relative(base, &file);
                 let Some(key) = path.strip_suffix(".qml") else { continue };
                 if !project.has(key) {
-                    let Ok(source) = std::fs::read_to_string(&file) else { continue };
+                    let Ok(source) = read(&file) else { continue };
                     if project.add(key, &source).is_err() {
                         continue;
                     }
@@ -154,7 +177,7 @@ fn project(path: &Path, project_root: Option<&Path>, with: &[PathBuf]) -> Projec
                 continue;
             }
             let (Some(stem), Ok(source)) =
-                (file.file_stem().and_then(|stem| stem.to_str()), std::fs::read_to_string(&file))
+                (file.file_stem().and_then(|stem| stem.to_str()), read(&file))
             else {
                 continue;
             };
@@ -176,7 +199,7 @@ fn project(path: &Path, project_root: Option<&Path>, with: &[PathBuf]) -> Projec
         for file in found {
             let Some(key) = file.strip_suffix(".qml") else { continue };
             if !project.has(key) {
-                if let Ok(source) = std::fs::read_to_string(base.join(&file)) {
+                if let Ok(source) = read(&base.join(&file)) {
                     let _ = project.add(key, &source);
                 }
             }
@@ -193,6 +216,7 @@ fn main() -> ExitCode {
     let mut out_dir = None;
     let mut root = None;
     let mut with = Vec::new();
+    let mut selectors = Vec::new();
     let mut files = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -202,6 +226,7 @@ fn main() -> ExitCode {
             "--out-dir" => out_dir = Some(value("--out-dir")),
             "--root" => root = Some(PathBuf::from(value("--root"))),
             "--with" => with.push(PathBuf::from(value("--with"))),
+            "--select" => selectors.push(value("--select")),
             "--host" => options.host_module = value("--host"),
             "--runtime" => options.runtime_module = value("--runtime"),
             "--alone" => alone = true,
@@ -210,6 +235,8 @@ fn main() -> ExitCode {
             _ => files.push(arg),
         }
     }
+
+    SELECTORS.get_or_init(|| selectors);
 
     if types {
         for uri in &files {
@@ -224,7 +251,7 @@ fn main() -> ExitCode {
     let (mut compiled, mut failed) = (0, 0);
     for file in &files {
         let path = Path::new(file);
-        let source = match std::fs::read_to_string(path) {
+        let source = match read(path) {
             Ok(source) => source,
             Err(error) => {
                 eprintln!("{file}: {error}");
@@ -236,15 +263,20 @@ fn main() -> ExitCode {
         let is_script = path.extension().is_some_and(|extension| extension == "js");
         options.name = stem.to_string();
         options.project = (!alone && !is_script).then(|| project(path, root.as_deref(), &with));
+        let directory = match path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => Path::new("."),
+        };
         options.files = (!alone).then(|| {
-            let directory = match path.parent() {
-                Some(parent) if !parent.as_os_str().is_empty() => parent,
-                _ => Path::new("."),
-            };
             let mut files = Vec::new();
             qml_files(directory, directory, &mut files);
             files.sort();
             files
+        });
+        options.pictures = (!alone).then(|| {
+            let mut pictures = Vec::new();
+            walk(directory, directory, &|name| !name.ends_with(".qml"), &mut pictures);
+            pictures
         });
         let result = if is_script {
             compile_script(&source, &options).map(|output| output.code)

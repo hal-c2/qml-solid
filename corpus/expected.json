@@ -33,6 +33,10 @@
       "pixels": 0.98,
       "content": 0.9
     },
+    "robotarm": {
+      "pixels": 0.99,
+      "content": 0.9
+    },
     "rssnews": {
       "pixels": 0.98,
       "content": 0.95
@@ -42,8 +46,8 @@
       "content": 0.75
     },
     "thermostat": {
-      "pixels": 0.9,
-      "content": 0.8
+      "pixels": 0.99,
+      "content": 0.98
     },
     "windowembedding": {}
   }

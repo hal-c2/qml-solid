@@ -435,8 +435,10 @@ function setState(self, name, immediate) {
 }
 
 // Qt's `updateAutoState`: the first state whose `when` holds is the state;
-// when the current one's no longer does, there is none.
-function auto(self) {
+// when the current one's no longer does, there is none. `current` is the
+// state there is: at the start, the one `state` names and nothing has
+// entered yet, which a `when` that does not hold takes away as well.
+function auto(self, current = self.$states.current) {
   const states = self.$states;
   if (states.applying) {
     states.again = true;
@@ -447,16 +449,17 @@ function auto(self) {
     for (const state of list(self.states)) {
       if (!slot(state, "when").explicit() || !state.name) continue;
       if (state.when) {
-        if (states.current === state.name) return false;
+        if (current === state.name) return false;
         setState(self, state.name, false);
         return true;
       }
-      if (state.name === states.current) revert = true;
+      if (state.name === current) revert = true;
     }
     if (!revert) return false;
-    const was = states.current !== "";
-    setState(self, "", false);
-    return was;
+    // One that was named and never entered is only heard to have gone.
+    if (current !== states.current) self.$props.onStateChanged?.();
+    else setState(self, "", false);
+    return current !== "";
   });
 }
 
@@ -532,10 +535,8 @@ export const stateful = {
       // holds is entered through its transition, a `state` set from the
       // start without one.
       states.starting = true;
-      if (!auto(self)) {
-        const first = states.early ?? untrack(named);
-        if (first) setState(self, first, true);
-      }
+      const first = states.early ?? untrack(named);
+      if (!auto(self, first) && first) setState(self, first, true);
       states.starting = false;
       createEffect(
         named,

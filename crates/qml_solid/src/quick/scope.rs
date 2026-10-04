@@ -21,6 +21,11 @@ pub(crate) struct Tree<'a> {
     /// Every id of the file, whichever component it is in.
     ids: HashSet<&'a str>,
     by_start: HashMap<u32, usize>,
+    /// What a PropertyChanges or an AnchorChanges changes, and the object it
+    /// is written in: Qt evaluates it as a binding of the target's.
+    changes: Vec<(Span, usize)>,
+    /// The id each of them names as its `target`.
+    targets: HashMap<usize, &'a str>,
 }
 
 pub(crate) struct Object<'a> {
@@ -38,6 +43,10 @@ pub(crate) struct Object<'a> {
     /// A `Component { }`: what is in it is a template, and its id names that.
     pub is_template: bool,
 }
+
+/// The properties of `PropertyChanges` itself; any other name is a property
+/// of its target.
+pub(crate) const CHANGES: &[&str] = &["target", "explicit", "restoreEntryValues"];
 
 pub(crate) enum Declared {
     Property(Property),
@@ -58,7 +67,14 @@ pub(crate) struct Context {
 impl<'a> Tree<'a> {
     pub(crate) fn analyze(document: &QmlDocument<'a>, types: Types<'_>, errors: &mut Vec<Error>) -> Self {
         let mut analysis = Analysis {
-            tree: Tree { objects: Vec::new(), contexts: Vec::new(), ids: HashSet::new(), by_start: HashMap::new() },
+            tree: Tree {
+                objects: Vec::new(),
+                contexts: Vec::new(),
+                ids: HashSet::new(),
+                by_start: HashMap::new(),
+                changes: Vec::new(),
+                targets: HashMap::new(),
+            },
             types,
             errors,
             handles: 0,
@@ -81,6 +97,31 @@ impl<'a> Tree<'a> {
             .rev()
             .find(|(_, object)| object.span.start <= offset && offset < object.span.end)
             .map_or(0, |(index, _)| index)
+    }
+
+    /// The object whose names an expression at `offset` may use as its own:
+    /// the one it is written in, or for what a state changes, the target
+    /// (`anchors.bottom: parent.bottom` is the bottom of the target's parent).
+    /// A target that is not named by its id is known only to the running
+    /// program, and the names are then those of where it is written.
+    pub(crate) fn scope_at(&self, offset: u32) -> usize {
+        let written = self.object_at(offset);
+        let changed = self
+            .changes
+            .iter()
+            .any(|(span, owner)| *owner == written && span.start <= offset && offset < span.end);
+        if !changed {
+            return written;
+        }
+        let Some(id) = self.targets.get(&written) else { return written };
+        let mut context = Some(self.objects[written].context);
+        while let Some(at) = context {
+            if let Some(target) = self.objects.iter().position(|object| object.context == at && object.handle == *id) {
+                return target;
+            }
+            context = self.contexts[at].outer;
+        }
+        written
     }
 
     /// The name of the binding that holds the context of the component the
@@ -277,6 +318,7 @@ impl<'a> Analysis<'a, '_, '_> {
                 QmlMember::Binding(binding) => {
                     let mut path = group.to_vec();
                     path.extend(binding.name.parts.iter().copied());
+                    self.change(binding, owner, &path);
                     let template = self
                         .tree
                         .property(self.types, owner, &path)
@@ -295,6 +337,27 @@ impl<'a> Analysis<'a, '_, '_> {
                 }
                 _ => {}
             }
+        }
+    }
+
+    /// A binding written in a PropertyChanges or an AnchorChanges: its
+    /// target, or something of the target's to change.
+    fn change(&mut self, binding: &QmlBinding<'a>, owner: usize, path: &[&'a str]) {
+        let class = self.tree.objects[owner].kind.as_ref().and_then(|kind| self.types.base(kind)).map(|ty| ty.class);
+        let changes = match class {
+            Some("QQuickPropertyChanges") => {
+                // `rect.width: 10` is a binding like any other.
+                !CHANGES.contains(&path[0]) && !(path.len() > 1 && self.tree.ids.contains(path[0]))
+            }
+            Some("QQuickAnchorChanges") => path[0] == "anchors",
+            _ => return,
+        };
+        if changes {
+            self.tree.changes.push((binding.span, owner));
+        } else if let (["target"], QmlBindingValue::Expression(oxc_ast::ast::Expression::Identifier(id))) =
+            (path, &binding.value)
+        {
+            self.tree.targets.insert(owner, id.name.as_str());
         }
     }
 

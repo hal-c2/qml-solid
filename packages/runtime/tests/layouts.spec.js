@@ -545,3 +545,25 @@ test("when the proxy that has the target is destroyed, or takes another, the nex
   expect(has).toEqual([true, true, true, true]);
   expect(await dump(page, "pb2")).toBe("0 0 80 20 implicit 30 20 | [0 0 80 20]");
 });
+
+test("a Repeater in a layout has no cell, and an item with no size has one", async ({ page }) => {
+  await open(page, "layoutrepeat");
+  expect(await page.evaluate(() => window.scene.read())).toEqual([
+    [
+      [48, 28, 50, 40],
+      [203, 28, 50, 40],
+      [48, 133, 50, 40],
+    ],
+    [0, 0, 0, 0],
+    [110, 90],
+    [
+      [0, 0, 50, 40],
+      [60, 0, 50, 40],
+      [0, 0, 0, 0],
+      [120, 20, 0, 0],
+      [130, 0, 50, 40],
+    ],
+    [180, 40],
+    [0, 1, 2, 3, 4],
+  ]);
+});

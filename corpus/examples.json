@@ -683,8 +683,8 @@
         "Backend: Backend (backend_mock/Backend is a QML stand-in for it)"
       ],
       "qt": {
-        "runnable": false,
-        "reason": "QtQuick3D is not installed. The C++ Backend has a QML mock, so nothing else is in the way."
+        "runnable": true,
+        "controlsConf": "qtquickcontrols2.conf"
       }
     },
     {
