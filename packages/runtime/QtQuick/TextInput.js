@@ -3,8 +3,8 @@
 // undo and the input methods. What QML reads of them (the text, where the
 // cursor is, how large the text is) is kept as properties.
 import { untrack } from "solid-js";
-import { defineType, derived, effect, flush, onChange, settle as settleAll, slot } from "../object.js";
-import { css } from "./color.js";
+import { $string, defineType, derived, effect, flush, kinds, onChange, settle as settleAll, slot, typed } from "../object.js";
+import { color, css } from "./color.js";
 import { lazy, rules, sized } from "./compute.js";
 import { forceActiveFocus, setFocus } from "./focus.js";
 import { advance, capitalized, describe, dress, font, fonts, metrics, overhang } from "./font.js";
@@ -266,9 +266,9 @@ const padding = derived((self) => self.padding);
 
 // What the two have in common.
 const shared = {
-  text: "",
+  text: $string,
   font,
-  color: "black",
+  color: typed(kinds.color, color("black")),
   selectionColor: "#000080",
   selectedTextColor: "white",
   horizontalAlignment: 1,

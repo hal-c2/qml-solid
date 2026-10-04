@@ -699,7 +699,14 @@ impl<'a, 's> Lower<'a, 's> {
             }
             return;
         }
-        built.properties.push((name.to_string(), default_of(b, &declared, type_name.is_list)));
+        let initial = match typed(&declared, type_name.is_list) {
+            Some(kind) => {
+                self.uses.kernel.insert(kind);
+                b.id(kind)
+            }
+            None => default_of(b, &declared, type_name.is_list),
+        };
+        built.properties.push((name.to_string(), initial));
         if property.is_required {
             built.required.push(name.to_string());
         }
@@ -965,15 +972,30 @@ fn qt_property(ty: &'static qt::Type, path: &[&str]) -> Option<Property> {
     Some(property)
 }
 
-/// What a declared property is before anything is bound to it.
+/// The runtime's name for a property of a type that what it is given is
+/// made into: `property int hours` holds an int, whatever it is assigned.
+fn typed(type_name: &str, is_list: bool) -> Option<&'static str> {
+    if is_list {
+        return None;
+    }
+    match type_name {
+        "int" => Some("$int"),
+        "real" | "double" | "float" => Some("$real"),
+        "bool" => Some("$bool"),
+        "string" => Some("$string"),
+        "color" => Some("$color"),
+        _ => None,
+    }
+}
+
+/// What a declared property of any other type is before anything is bound
+/// to it.
 fn default_of<'a>(b: B<'a>, type_name: &str, is_list: bool) -> Expression<'a> {
     if is_list {
         return b.array([]);
     }
     match type_name {
-        "int" | "real" | "double" | "float" => b.number(0.0),
-        "bool" => b.boolean(false),
-        "string" | "url" => b.string(""),
+        "url" => b.string(""),
         // An object that is not there yet.
         name if name.starts_with(|c: char| c.is_ascii_uppercase()) => b.null(),
         _ => b.void_0(),

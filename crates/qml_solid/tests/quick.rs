@@ -89,7 +89,8 @@ Item {
 }"#,
     );
     assert_contains(&code, "const Sample$ = {");
-    for property in ["hours: 0", r#"city: """#, "anything: void 0", "face: null", "hands: []", "night: false"] {
+    // A property of a type says which, for what it is given to be made one.
+    for property in ["hours: $int", "city: $string", "anything: void 0", "face: null", "hands: []", "night: $bool"] {
         assert_contains(&code, property);
     }
     assert_contains(&code, r#"signals: ["ticked"]"#);
@@ -467,7 +468,7 @@ Item {
 }"#,
         &["Sample.qml", "pages/About.qml", "pages/Home.qml", "parts/Dial.qml"],
     );
-    assert_contains(&code, r#"import { $file, $files, $object, $url } from "qml-solid/object";"#);
+    assert_contains(&code, r#"import { $file, $files, $object, $string, $url } from "qml-solid/object";"#);
     // `Qt` is still what makes a type of a module.
     assert_contains(&code, r#"import { Qt } from "qml-solid/QtQml";"#);
     assert_contains(&code, r#"import $file1 from "./parts/Dial.qml";"#);
@@ -619,7 +620,7 @@ Item {
         ("Mark", "import QtQuick\nItem { id: mark; width: board.width }"),
     ];
     let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
-    assert_contains(&code, r#"import { $context, $lookup, $object } from "qml-solid/object";"#);
+    assert_contains(&code, r#"import { $context, $int, $lookup, $object } from "qml-solid/object";"#);
     // An inline component is a component of its own: the file's ids are
     // those of whatever makes it, which is not always the file.
     assert_contains(&code, "const $scope1 = $context($props.$context, $1);");
@@ -821,7 +822,7 @@ QtObject {
     assert_contains(&code, "height={Units.Small}");
 
     let code = lowered_in(&files, "Units").unwrap_or_else(|errors| panic!("{errors:?}"));
-    assert_contains(&code, r#"import { $object, $singleton } from "qml-solid/object";"#);
+    assert_contains(&code, r#"import { $int, $object, $singleton } from "qml-solid/object";"#);
     assert_contains(&code, "function Units$component($props) {");
     assert_lacks(&code, "export default function");
     assert_contains(&code, "twice={Units().grid * 2}");
