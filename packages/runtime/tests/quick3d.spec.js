@@ -1592,6 +1592,15 @@ test("a View3D finds what Qt finds at a place and along a ray", async ({ page })
   }
 });
 
+test("a ReflectionProbe says of itself what Qt's says", async ({ page }) => {
+  await open(page, "reflection3d");
+  expect(await page.evaluate(() => window.scene.read())).toEqual({
+    plain: { quality: 1, clearColor: "#00000000", refreshMode: 1, timeSlicing: 0, parallaxCorrection: false, boxSize: [0, 0, 0], boxOffset: [0, 0, 0], debugView: false, texture: null, scenePosition: [0, 0, 0], scheduleUpdate: "function" },
+    asked: { quality: 4, clearColor: "#102030", refreshMode: 0, timeSlicing: 2, parallaxCorrection: true, boxSize: [3000, 0, 0], boxOffset: [0, 990, 0], debugView: false, texture: null, scenePosition: [10, 5, 0], scheduleUpdate: "function" },
+    enums: [0, 1, 2, 3, 4, 0, 1, 0, 1, 2],
+  });
+});
+
 test("a vector's members are set one by one, and assigning it as one unbinds them", async ({ page }) => {
   const told = { old: [0, 0.5, 0], turned: [0, -70, 0], placed: [-50, 0, 0], x: -50 };
   const states = [

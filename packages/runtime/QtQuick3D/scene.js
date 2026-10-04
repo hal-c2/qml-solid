@@ -6,7 +6,8 @@
 //
 // Not here: shadows, a sky box that is a cube of six
 // pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, a material's
-// own probe, an environment's `effects`, which are held and not run, and
+// own probe, what a ReflectionProbe would have the models round it mirror,
+// an environment's `effects`, which are held and not run, and
 // the distances a model draws the entries of its table between
 // (`instancingLodMin` and `instancingLodMax`). Of
 // a material's pictures: a height map moves nothing, nothing is let through
@@ -780,6 +781,32 @@ export const Fog = defineType("Fog", Object3D, {
     };
   },
 });
+
+// A reflection probe: a place the scene is looked at from all round, for
+// the models near it that take reflections to mirror.
+//
+// What it is asked for is held and nothing is looked at: a model mirrors
+// what its scene's light probe shows, as in Qt one does with no reflection
+// probe near it.
+export const ReflectionProbe = defineType("ReflectionProbe", Node, {
+  properties: {
+    quality: 1,
+    clearColor: "#00000000",
+    refreshMode: 1,
+    timeSlicing: 0,
+    parallaxCorrection: false,
+    boxSize: group({ x: 0, y: 0, z: 0 }),
+    boxOffset: group({ x: 0, y: 0, z: 0 }),
+    debugView: false,
+    texture: null,
+  },
+  enums: { VeryLow: 0, Low: 1, Medium: 2, High: 3, VeryHigh: 4, FirstFrame: 0, EveryFrame: 1, None: 0, AllFacesAtOnce: 1, IndividualFaces: 2 },
+  methods: {
+    scheduleUpdate() {},
+  },
+});
+
+vectors(ReflectionProbe, "boxSize", "boxOffset");
 
 const Transparent = 0;
 const Color = 2;

@@ -18,6 +18,7 @@ export {
   PerspectiveCamera,
   PointLight,
   PrincipledMaterial,
+  ReflectionProbe,
   SceneEnvironment,
   SpotLight,
   Texture,
