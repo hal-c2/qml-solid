@@ -10,7 +10,7 @@
 // Not here: a sprite's `lights`, `castsReflections` and a particle's
 // `hasTransparency` are kept and do nothing, and so is all of
 // ModelBlendParticle3D, which draws nothing.
-import { onCleanup } from "solid-js";
+import { onCleanup, untrack } from "solid-js";
 import { defineType, derived, effect, group, inside, instantiate, QtObject } from "../../object.js";
 import { Quaternion, Vector3d, Vector4d } from "../../QtQml/values.js";
 import { rgba } from "../../QtQuick/color.js";
@@ -120,16 +120,20 @@ export function evaluate(particle, system, now) {
           : null;
     if (aligned) turn = product(aligned, turn);
     current.turn = turn;
+    current.aligned = Boolean(aligned);
     const through = datum.life > 0 ? (seconds * 1000) / datum.life : 0;
     let scale = (datum.from + (datum.to - datum.from) * through) * current.scale;
     let alpha = current.a;
+    // It comes and goes by the time of its way, so one that goes backwards
+    // goes as it starts and comes as its life is over, as in Qt.
+    const gone = seconds * 1000;
     if (fadeInEffect !== FadeNone && fadeInDuration > 0) {
-      const fade = unit(age / fadeInDuration);
+      const fade = unit(gone / fadeInDuration);
       if (fadeInEffect === FadeScale) scale *= fade;
       else alpha *= fade;
     }
     if (fadeOutEffect !== FadeNone && fadeOutDuration > 0) {
-      const fade = unit((datum.life - age) / fadeOutDuration);
+      const fade = unit((datum.life - gone) / fadeOutDuration);
       if (fadeOutEffect === FadeScale) scale *= fade;
       else alpha *= fade;
     }
@@ -253,11 +257,16 @@ const ParticleInstancing = defineType("Instancing", Object3D, {
       return new Vector4d(0, 0, 0, 0);
     },
     // `one` is the model as it would be drawn alone: instead it is drawn
-    // where each particle is, in the node the model is in, turned and
-    // scaled as the particle is and then as the model is itself.
+    // where each particle is, in the node the model is in. As Qt places
+    // what is drawn many times: the model's own turn and size are inside
+    // the particle's, and where the model is put is outside them, so a
+    // model that is moved aside is so by as much whatever size its
+    // particles are.
     $instanced(one, model) {
-      const above = model.parent?.$spatial ? model.parent.$world() : math.IDENTITY;
-      const local = model.$local();
+      const local = [...model.$local()];
+      const aside = [...math.IDENTITY];
+      for (const at of [12, 13, 14]) [aside[at], local[at]] = [local[at], 0];
+      const above = math.multiply(model.parent?.$spatial ? model.parent.$world() : math.IDENTITY, aside);
       return this.$of.$alive().map((each) => {
         const size = each.scale;
         const placed = math.placed([each.x, each.y, each.z], [size, size, size], [0, 0, 0], each.turn);
@@ -297,7 +306,12 @@ export const ModelParticle3D = defineType("ModelParticle3D", Particle3D, {
         if (!component?.$component || !system) return;
         const { object, dispose } = instantiate(component, NOTHING, system, self.$owner);
         made = { object, dispose, above: system };
-        if (object?.$model) object.instancing = self.$table;
+        // Every model there is in what was made is drawn for each.
+        const each = (node) => {
+          if (node?.$model) node.instancing = self.$table;
+          for (const child of node?.children ?? []) each(child);
+        };
+        untrack(() => each(object));
         system.$add(object);
       },
     );

@@ -112,7 +112,9 @@ vec4 pictured(float frame) {
 void main() {
   vec4 tint = v_color;
   if (u_tabled) {
-    vec4 texel = texture(u_table, vec2(fract(v_look.y), v_look.z));
+    // The nearest of the table, and none from over its edge.
+    ivec2 size = textureSize(u_table, 0);
+    vec4 texel = texelFetch(u_table, min(ivec2(vec2(fract(v_look.y), v_look.z) * vec2(size)), size - 1), 0);
     tint *= vec4(toLinear(texel.rgb), texel.a);
   }
   if (u_pictured) {
@@ -268,6 +270,18 @@ function ordered(kind, alive) {
   return [...alive].sort((a, b) => after(a) - after(b));
 }
 
+// The turn of a sprite from its three angles: about z first, then y, then
+// x, which is the order Qt draws a sprite with and not the one it turns a
+// node or a model by. A sprite that is turned towards something has the
+// angles of that turn in a node's order, and is drawn by them in this one,
+// as in Qt.
+function about([pitch, yaw, roll]) {
+  const half = Math.PI / 360;
+  const [cx, sx, cy, sy, cz, sz] = [Math.cos(pitch * half), Math.sin(pitch * half), Math.cos(yaw * half), Math.sin(yaw * half), Math.cos(roll * half), Math.sin(roll * half)];
+  const [w, x, y, z] = [cx * cy, sx * cy, cx * sy, sx * sy];
+  return [w * cz - z * sz, x * cz + y * sz, y * cz - x * sz, w * sz + z * cz];
+}
+
 // The sprites there are of a kind, as the numbers they are drawn from.
 function sprites(kind, system) {
   const picture = kind.sprite;
@@ -291,7 +305,7 @@ function sprites(kind, system) {
     rows[at] = one.x + aside[0] * one.scale;
     rows[at + 1] = one.y + aside[1] * one.scale;
     rows[at + 2] = one.z;
-    rows.set(one.turn, at + 3);
+    rows.set(about(one.aligned ? math.toEuler(one.turn) : [one.rx, one.ry, one.rz]), at + 3);
     rows[at + 7] = datum.r / 255;
     rows[at + 8] = datum.g / 255;
     rows[at + 9] = datum.b / 255;
