@@ -192,9 +192,23 @@ function guarded(key, compute) {
 // while it is computed gets what it had, and is told when that has changed,
 // once. What it then makes of it is not told of again; the value itself is
 // never told. `first` is what it had before it was ever computed.
+//
+// A loop may also close once everything was computed: a property bound again
+// by a handler, `layout = Qt.binding(() => window.width < 480 ? ...)`, to what
+// depends on it. So each value knows which values it was computed from, and
+// one that asks for a value computed from itself gets what that one has, as
+// above. Such values are a ring, and a change goes round a ring once: the
+// value that began it is, as Qt has it, still telling of its change when what
+// the change made of the others comes back to it, and stays what it is.
+// (Qt would compute it again for what it had read before; here, for what it
+// read of what the change made.) Only a binding begins a change so: what a
+// type works out for itself, a picture's size, is computed whenever asked.
 export function looped(owner, compute, first) {
+  return ringed(owner, compute, first, false);
+}
+
+function ringed(owner, compute, first, binding) {
   let memo;
-  let node;
   let held = first;
   let evaluating = false;
   // Who asked while it was computed, and asks for what it had ever since:
@@ -203,6 +217,28 @@ export function looped(owner, compute, first) {
   let track = null;
   let bump = null;
   let echoing = false;
+  // Bound by an assignment: a change, where what a property is first given
+  // is not.
+  let beginning = false;
+  const record = {
+    node: null,
+    // What it was computed from, and what it has read while being computed.
+    from: null,
+    fresh: null,
+    // What is being computed with it, while it is.
+    outer: null,
+    done: false,
+    asked: false,
+    // When it last changed, and when it was last computed.
+    at: 0,
+    checked: 0,
+    ring: false,
+    // The change its value came of, and the one it began itself.
+    wave: 0,
+    began: 0,
+    heard: 0,
+    own: false,
+  };
   const echo = () => {
     echoing = true;
     try {
@@ -214,34 +250,144 @@ export function looped(owner, compute, first) {
     tell();
   };
   const evaluate = () => {
-    node = getObserver();
+    record.node = getObserver();
     const before = held;
+    let value;
+    record.outer = evaluated;
+    evaluated = record;
     evaluating = true;
+    record.heard = 0;
+    record.own = false;
     try {
-      held = compute();
+      value = compute();
     } finally {
       evaluating = false;
+      evaluated = record.outer;
+      record.outer = null;
+      // What it read this time is what it is computed from.
+      const spent = record.from;
+      record.from = record.fresh;
+      record.fresh = spent;
+      spent?.clear();
+      record.checked = clock;
     }
-    if (back && !echoing && !Object.is(before, held)) after(echo);
+    if (record.own) return held;
+    held = value;
+    const changed = !Object.is(before, held);
+    if (!record.done) {
+      record.done = true;
+      record.at = ++clock;
+      if (beginning) {
+        record.ring = true;
+        record.wave = record.began = ++waves;
+      } else if (record.ring) record.wave = record.heard;
+    } else if (changed) {
+      record.at = ++clock;
+      if (record.ring) {
+        record.wave = record.heard || (binding ? ++waves : 0);
+        record.began = record.heard ? 0 : record.wave;
+      }
+    }
+    if (back && !echoing && changed) after(echo);
+    return held;
+  };
+  // What the value being computed makes of this one, where both are of a
+  // ring: whether it is computed again for a change it began itself.
+  const hear = (asking) => {
+    if (!asking.ring || !record.ring || record.at <= asking.checked || !record.wave) return;
+    if (record.wave === asking.began) asking.own = true;
+    else asking.heard = record.wave;
+  };
+  const weak = (reader, asking) => {
+    if (asking) hear(asking);
+    if (!back) {
+      back = new WeakSet();
+      [track, bump] = createSignal(0, WRITABLE);
+      // Nothing computes a value that nothing asks for, and one that is
+      // only asked for what it had is to say when that has changed.
+      after(() => runWithOwner(owner, () => createRenderEffect(() => read.start()(), () => {})));
+    }
+    back.add(reader);
+    track();
     return held;
   };
   const read = () => {
     const reader = getObserver();
-    if (evaluating ? reader !== node : reader && back?.has(reader)) {
+    const asking = reader && evaluated !== null && evaluated.node === reader ? evaluated : null;
+    if (evaluating) {
+      if (reader === record.node) return held;
       if (!reader) return held;
-      back ??= new WeakSet();
-      back.add(reader);
-      if (!track) [track, bump] = createSignal(0, WRITABLE);
-      track();
-      return held;
+      // All that is being computed between the two is of the ring.
+      for (let inner = asking; inner; inner = inner === record ? null : inner.outer) inner.ring = true;
+      return weak(reader, asking);
     }
-    if (evaluating) return held;
-    return read.start()();
+    if (reader && back?.has(reader)) return weak(reader, asking);
+    if (!asking) return read.start()();
+    // Only what it did not read before can close a ring, and only around
+    // what something was computed from.
+    if (asking.done && asking.asked && !asking.from?.has(record) && !asking.fresh?.has(record)) {
+      if (between(record, asking)) {
+        // A value just given is the change that goes round.
+        if (record.at > asking.checked && !record.began) record.wave = record.began = ++waves;
+        return weak(reader, asking);
+      }
+    }
+    (asking.fresh ??= new Set()).add(record);
+    record.asked = true;
+    const value = read.start()();
+    hear(asking);
+    return value;
   };
   // Evaluated when first read, unless begun before.
   read.start = () => (memo ??= runWithOwner(owner, () => createMemo(evaluate, SYNC)));
+  // The same for a binding that an assignment gives.
+  read.begin = () => {
+    beginning = true;
+    return read.start();
+  };
   read.busy = () => evaluating;
   return read;
+}
+
+// The value being computed, innermost.
+let evaluated = null;
+// Counts the changes of values, and the changes that began of themselves.
+let clock = 0;
+let waves = 0;
+
+// Whether `goal` asking for `start` would close a ring: everything on a way
+// from `start` to `goal`, through what each was computed from, is of it then.
+function between(start, goal) {
+  const leads = new Map([
+    [goal, true],
+    [start, false],
+  ]);
+  const path = [start];
+  const rest = [sources(start)];
+  while (path.length) {
+    const step = rest[rest.length - 1].next();
+    if (step.done) {
+      rest.pop();
+      const record = path.pop();
+      if (path.length && leads.get(record)) leads.set(path[path.length - 1], true);
+      continue;
+    }
+    const known = leads.get(step.value);
+    if (known) leads.set(path[path.length - 1], true);
+    else if (known === undefined) {
+      leads.set(step.value, false);
+      path.push(step.value);
+      rest.push(sources(step.value));
+    }
+  }
+  if (!leads.get(start)) return false;
+  for (const [record, led] of leads) if (led) record.ring = true;
+  return true;
+}
+
+function* sources(record) {
+  if (record.from) yield* record.from;
+  if (record.fresh) yield* record.fresh;
 }
 
 class Slot {
@@ -286,9 +432,11 @@ class Slot {
     // What it reads of its own property, itself or through another's
     // binding, is what the property had.
     this.bound = descriptor?.get
-      ? looped(
+      ? ringed(
           self.$owner,
           guarded(key, () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key]))),
+          undefined,
+          true,
         )
       : null;
     this.given = descriptor && !descriptor.get ? descriptor.value : undefined;
@@ -375,8 +523,16 @@ class Slot {
   // the object.
   rebind(compute) {
     const self = this.self;
-    this.bound = looped(self.$owner, guarded(this.key, () => compute.call(self)));
-    this.bound.start();
+    // What it reads of its own property, itself or through another's
+    // binding, is what the property had.
+    const had = untrack(() => this.own());
+    this.bound = ringed(
+      self.$owner,
+      guarded(this.key, () => compute.call(self)),
+      had,
+      true,
+    );
+    this.bound.begin();
     this.assigned = false;
     this.value = undefined;
     this.changed();
@@ -1107,14 +1263,15 @@ export function $signal(initial) {
   const get = () => {
     version();
     if (assigned) return value;
-    bound ??= runWithOwner(owner, () => createMemo(initial, SYNC));
+    bound ??= ringed(owner, initial, undefined, true);
     return bound();
   };
   const set = (given) => {
     if (assigned && Object.is(value, given)) return given;
     if (typeof given === "function" && given[BINDING]) {
       // `count = Qt.binding(f)`: the binding is replaced, not the value.
-      bound = runWithOwner(owner, () => createMemo(() => given(), SYNC));
+      bound = ringed(owner, () => given(), untrack(get), true);
+      bound.begin();
       assigned = false;
       value = undefined;
     } else {
