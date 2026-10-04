@@ -909,6 +909,32 @@ Item {
 }
 
 #[test]
+fn a_script_to_run_is_a_function() {
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    id: item
+    property int count
+    states: State {
+        StateChangeScript { script: item.count = 1 }
+        AnchorChanges { target: item; anchors.left: item.parent.left }
+    }
+    SequentialAnimation {
+        ScriptAction { script: { item.count++ } }
+        ScriptAction { script: item.count }
+    }
+}"#,
+    );
+    // Run when its time comes, and worth nothing: not even what it ends on.
+    assert_contains(&code, "script={() => item.count = 1}");
+    assert_contains(&code, "script={() => {");
+    assert_contains(&code, "script={() => item.count}");
+    assert_lacks(&code, "return item.count++");
+    // A line to be anchored to is a script to Qt too, and a value here.
+    assert_contains(&code, "anchors$left={item.parent.left}");
+}
+
+#[test]
 fn a_state_changes_what_a_type_attaches() {
     let code = lowered(
         r#"import QtQuick

@@ -6,13 +6,18 @@ import { chosen, slot } from "../../object.js";
 import { styleHints } from "../../QtQml/application.js";
 import { Color, color } from "../color.js";
 import { Item } from "../Item.js";
+import { windowOf } from "../Window.js";
 
 // The attached object of `Type` that the one of `object` inherits from. One
 // is made for every object on the way up: only so does each hear of a change
 // above it.
 export function around(Type, object) {
-  if (Item.proto.isPrototypeOf(object)) return Type.attached(object.parent ?? object.$popup ?? object.$window) ?? null;
-  // A window is in the window it belongs to; a popup, in its parent's.
+  // The item of a popup is in the popup, wherever it is shown.
+  if (Item.proto.isPrototypeOf(object)) return Type.attached(object.$popup ?? object.parent ?? object.$window) ?? null;
+  // A popup is in the window of what it is shown over, as Qt has it, and not
+  // in that item.
+  if (object.$pop) return Type.attached(windowOf(object.parent)) ?? null;
+  // A window is in the window it belongs to.
   return Type.attached("transientParent" in object ? object.transientParent : object.parent) ?? null;
 }
 

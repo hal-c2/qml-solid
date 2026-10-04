@@ -179,3 +179,19 @@ test("a rotation goes the way it is told, a grouped property is animated, other 
     [10, 6, false],
   ]);
 });
+
+test("a script is run when its animation or its state comes to it, every time", async ({ page }) => {
+  await open(page, "scripts&still");
+  const read = () => page.evaluate(() => window.scene.read());
+  const step = (index) => page.evaluate((index) => window.scene.step(index), index);
+  expect(await read()).toEqual([0, []]);
+  // Qt's answers. A function a script is worth is not called.
+  await step(0);
+  expect(await read()).toEqual([5, ["block", "given called"]]);
+  await step(1);
+  expect(await read()).toEqual([6, ["lap 6"]]);
+  await page.evaluate(() => window.clock.advance(250));
+  expect(await read()).toEqual([8, ["lap 7", "lap 8"]]);
+  await step(2);
+  expect(await read()).toEqual([8, ["entered at 8"]]);
+});
