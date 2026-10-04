@@ -11,7 +11,7 @@
     "imports": "every other module its QML files import",
     "cpp": "what it needs from C++ of its own",
     "volatile": "why its picture is not the same twice: time, animation, network",
-    "qt": "`runnable`: the `qml` tool of the Qt installed here renders it, or `reason` why not. For the run: `style` or `controlsConf` (the Controls style its main.cpp or resources choose), `env` (environment its main.cpp sets), `module` (the URI its files import it by), `properties` (initial properties main.cpp sets), `offline`, `settle` (ms before the picture, default 1500)"
+    "qt": "`runnable`: the `qml` tool of the Qt installed here renders it, or `reason` why not. For the run: `style` or `controlsConf` (the Controls style its main.cpp or resources choose), `env` (environment its main.cpp sets), `module` (the URI its files import it by), `properties` (initial properties main.cpp sets), `offline`, `settle` (ms before the picture, default 1500), `shaders` (the shader sources its build compiles, in `dir`)"
   },
   "root": "qtdoc/examples",
   "screen": {
@@ -608,7 +608,8 @@
       ],
       "cpp": [],
       "qt": {
-        "runnable": true
+        "runnable": true,
+        "shaders": ["resources/shaders/gneiss.frag"]
       },
       "notes": "main.cpp is optional (it says so). The picture is the welcome slide show (resources/welcome.pdf through the PDF image plugin) over an empty surface; after it the example shows the pictures folder, which the reference run has none of."
     },

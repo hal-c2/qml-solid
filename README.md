@@ -61,7 +61,7 @@ mise run test           # test:compiler, test:web, test:runtime and test:gallery
 mise run gallery        # Qt's examples in a browser, against Qt's pictures of them
 mise run gallery:serve  # the same page, to look at
 mise run corpus         # how much of Qt's examples compiles, and what stops the rest
-mise run reference      # take Qt's pictures again (needs Qt 6's `qml` tool)
+mise run reference      # take Qt's pictures again (needs Qt 6's `qml` tool; `sway` for shader effects)
 mise run types          # the table of Qt's types, from the Qt installed here
 ```
 
