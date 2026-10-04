@@ -77,6 +77,9 @@ export const cursorOf = (shape) => CURSORS[shape] ?? "";
 // What the page itself answers a press on: under one of these nothing is
 // asked.
 const NATIVE = "input,textarea,select,button,[contenteditable]";
+// And what it turns itself with the wheel: a field of one line does nothing
+// with it, and what the field is in has it, as in Qt.
+const SCROLLED = "textarea,select,[contenteditable]";
 
 const remove = (list, one) => {
   const index = list.indexOf(one);
@@ -249,8 +252,8 @@ const sceneOf = (target) => target?.closest?.(".qq-window,.q-scene") ?? null;
 const NONE = Object.freeze([]);
 
 // The items that take pointer events under a point of the page, topmost
-// first.
-function hitsAt(scene, x, y, press) {
+// first. `native` is what of the page's own they are not looked for under.
+function hitsAt(scene, x, y, native) {
   const hits = [];
   for (const element of document.elementsFromPoint(x, y)) {
     if (element === scene) break;
@@ -258,14 +261,14 @@ function hitsAt(scene, x, y, press) {
     const item = receivers.get(element);
     if (item) {
       if (item.enabled) hits.push(item);
-    } else if (press && element.matches(NATIVE)) break;
+    } else if (native && element.matches(native)) break;
   }
   return hits;
 }
 
 // The same for where a point is: for an item that passes on what it did not
 // want.
-export const under = (point) => hitsAt(point.scene, point.clientX, point.clientY, true);
+export const under = (point) => hitsAt(point.scene, point.clientX, point.clientY, NATIVE);
 
 function pointOf(event) {
   let point = points.get(event.pointerId);
@@ -448,7 +451,7 @@ function onDown(event) {
     if (point.double) cancel(last.job);
     else after(DOUBLE_CLICK_INTERVAL, forgotten, last.job);
   }
-  const hits = hitsAt(scene, point.clientX, point.clientY, true);
+  const hits = hitsAt(scene, point.clientX, point.clientY, NATIVE);
   press(point, hits);
   point.claimed = Boolean(point.exclusive || point.passive.length || point.filters.length);
   if (point.primary) claimed = point.claimed;
@@ -486,7 +489,7 @@ function onMove(event) {
   point.button = NoButton;
   // Hover is for a mouse nobody holds, a button down or not.
   if (point.type !== "touch" && !point.exclusive && (hovers > 0 || point.hovered.length)) {
-    hover(point, hitsAt(scene, point.clientX, point.clientY, false));
+    hover(point, hitsAt(scene, point.clientX, point.clientY, null));
   }
   if (point.down && point.claimed) deliver(point, "$move");
 }
@@ -507,7 +510,7 @@ function onUp(event) {
   if (point.type === "touch") {
     points.delete(point.id);
   } else if (hovers > 0 || point.hovered.length) {
-    hover(point, hitsAt(point.scene, point.clientX, point.clientY, false));
+    hover(point, hitsAt(point.scene, point.clientX, point.clientY, null));
   }
 }
 
@@ -546,7 +549,7 @@ const turn = { x: 0, y: 0, angleX: 0, angleY: 0, pixelX: 0, pixelY: 0, buttons: 
 function onWheel(event) {
   const scene = sceneOf(event.target);
   if (!scene) return;
-  const hits = hitsAt(scene, event.clientX, event.clientY, true);
+  const hits = hitsAt(scene, event.clientX, event.clientY, SCROLLED);
   if (!hits.length) return;
   const { left, top, zoom } = frameOf(scene);
   const pixels = event.deltaMode === 0;
