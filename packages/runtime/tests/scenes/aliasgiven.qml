@@ -19,8 +19,13 @@ Item {
         subject: small
     }
 
+    Loader {
+        id: loaded
+        sourceComponent: framed.made
+    }
+
     function read() {
-        return [framed.width, framed.subject === small, framed.subject === large]
+        return [framed.width, framed.subject === small, framed.subject === large, loaded.item ? loaded.item.width : -1]
     }
 
     function step(index) {

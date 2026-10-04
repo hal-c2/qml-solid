@@ -687,7 +687,8 @@ function defineAlias(self, name, [target, ...path]) {
   Object.defineProperty(self, name, {
     get: path.length
       ? () => (early?.() ? self.$props[name] : holder()?.[last])
-      : () => (target.$type ? target : (target.$track(), null)),
+      : // A Component is what it is from the start; an object, once made.
+        () => (target.$type || !target.$track ? target : (target.$track(), null)),
     set(value) {
       const object = holder();
       if (path.length && object) object[last] = value;

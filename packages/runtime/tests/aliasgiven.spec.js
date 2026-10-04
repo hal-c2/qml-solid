@@ -6,9 +6,9 @@ import { expect, open, test } from "./open.js";
 test("what an instance gives an alias is read by bindings made before its target", async ({ page }) => {
   await open(page, "aliasgiven");
   const read = () => page.evaluate(() => window.scene.read());
-  expect(await read()).toEqual([60, true, false]);
+  expect(await read()).toEqual([60, true, false, 7]);
   await page.evaluate(() => window.scene.step(0));
-  expect(await read()).toEqual([80, true, false]);
+  expect(await read()).toEqual([80, true, false, 7]);
   await page.evaluate(() => window.scene.step(1));
-  expect(await read()).toEqual([160, false, true]);
+  expect(await read()).toEqual([160, false, true, 7]);
 });
