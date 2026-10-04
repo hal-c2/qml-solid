@@ -1473,6 +1473,9 @@ export function draw(scene, canvas, paper) {
         (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, lights, instances, placed, sheer: through });
       });
     }
+    // What nodes draw by themselves (`paints`), each with a program of its
+    // own, is among what is seen through: as far away as the node is.
+    for (const paint of scene.paints ?? []) clear.push({ paint, distance: -math.point(view, ...paint.at)[2] });
     solid.sort((a, b) => a.distance - b.distance);
     clear.sort((a, b) => b.distance - a.distance);
 
@@ -1486,6 +1489,12 @@ export function draw(scene, canvas, paper) {
     gl.enable(gl.BLEND);
     gl.depthMask(false);
     for (const piece of clear) {
+      if (piece.paint) {
+        const own = gl.getParameter(gl.CURRENT_PROGRAM);
+        piece.paint({ gl, view, projection: scene.projection, tonemap: environment.tonemap, bound });
+        gl.useProgram(own);
+        continue;
+      }
       // What is drawn is already times its own alpha.
       const { blend } = piece.material;
       if (blend === 1) gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);

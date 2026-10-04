@@ -32,6 +32,7 @@ document.adoptedStyleSheets.push(sheet);
 function found(self) {
   const models = [];
   const lights = [];
+  const paints = [];
   let camera = null;
   const walk = (node, above) => {
     if (!node.visible) return;
@@ -41,6 +42,9 @@ function found(self) {
       if (shape) models.push({ node, shape, world: node.$world(), bones: node.$bones(), instances: node.$instances(), materials: node.$materials().map((material) => material?.$material?.() ?? null), opacity });
     } else if (node.$light) lights.push(node.$light());
     else if (node.$camera) camera ??= node;
+    // What a node draws by itself.
+    const paint = node.$paint?.(opacity);
+    if (paint) paints.push(paint);
     for (const child of inside(node)) walk(child, opacity);
   };
   for (const node of inside(self.$scene)) walk(node, 1);
@@ -50,7 +54,7 @@ function found(self) {
   if (lights.some((light) => light.scope)) {
     for (const model of models) model.lights = lights.filter((light) => !light.scope || under(model.node, light.scope));
   }
-  return { models, lights, camera };
+  return { models, lights, paints, camera };
 }
 
 function under(node, scope) {
@@ -208,7 +212,7 @@ export const View3D = defineType("View3D", Item, {
     effect(
       () => {
         const { width, height } = self;
-        const { models, lights, camera: any } = found(self);
+        const { models, lights, paints, camera: any } = found(self);
         const camera = self.camera ?? any;
         return {
           width,
@@ -216,6 +220,7 @@ export const View3D = defineType("View3D", Item, {
           camera,
           models,
           lights,
+          paints,
           eye: camera?.$world() ?? null,
           projection: camera?.$projection(width, height) ?? null,
           far: camera?.clipFar ?? 0,
