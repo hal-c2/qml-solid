@@ -4,9 +4,13 @@
 //
 // These say what there is; `render.js` draws it.
 //
-// Not here: shadows, a light's `scope`, light probes and sky boxes, the maps
-// of a material other than its colour's, and of a PrincipledMaterial what
-// only a reflected surrounding shows (it is lit by the lights alone).
+// Not here: shadows, a light's `scope`, light probes and sky boxes, and of a
+// PrincipledMaterial what only a reflected surrounding shows (it is lit by
+// the lights alone). Of a material's pictures: a height map moves nothing,
+// nothing is let through (`transmissionFactor` and its maps), a specular
+// map and a translucency map are not read, a picture is read whole where
+// Qt can read one channel of it (`baseColorSingleChannelEnabled` and the
+// like), and the colours of a mesh's corners mask nothing.
 import { createSignal } from "solid-js";
 import { defineType, derived, flush, located } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";
@@ -237,6 +241,23 @@ export const Material = defineType("Material", Object3D, {
   },
 });
 
+// The pictures a material reads besides its colour's: for each that is
+// set, how it is sampled and which channel of it is read, which a property
+// of the material says or is always the same one. `waiting` is
+// whether any is not here yet.
+function mapped(self, base, named) {
+  const maps = {};
+  let waiting = Boolean(base) && !base.$texture?.();
+  for (const [name, [property, channel]] of Object.entries(named)) {
+    const texture = self[property];
+    if (!texture) continue;
+    const map = texture.$texture?.();
+    if (map) maps[name] = { ...map, channel: typeof channel === "string" ? self[channel] : (channel ?? 0) };
+    else waiting = true;
+  }
+  return { map: base?.$texture?.() ?? null, maps, waiting };
+}
+
 const NoLighting = 0;
 const FragmentLighting = 1;
 const SHADING = { NoLighting, FragmentLighting, SourceOver: 0, Screen: 1, Multiply: 2 };
@@ -277,8 +298,14 @@ export const DefaultMaterial = defineType("DefaultMaterial", Material, {
     self.$material = () => ({
       lit: self.lighting !== NoLighting,
       color: linear(self.diffuseColor),
-      map: self.diffuseMap?.$texture?.() ?? null,
-      waiting: Boolean(self.diffuseMap) && !self.diffuseMap.$texture?.(),
+      ...mapped(self, self.diffuseMap, {
+        normal: ["normalMap"],
+        bump: ["bumpMap"],
+        emissive: ["emissiveMap"],
+        opacity: ["opacityMap", 3],
+      }),
+      // How far a picture of the way it faces, or of heights, turns it.
+      bump: self.bumpAmount,
       emissive: vec(self.emissiveFactor),
       // How much of a light a surface that faces between it and the eye
       // gives back, and how tight the spot of it is.
@@ -338,7 +365,31 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
     minHeightMapSamples: 8,
     maxHeightMapSamples: 32,
     clearcoatAmount: 0,
+    clearcoatMap: null,
+    clearcoatChannel: 0,
     clearcoatRoughnessAmount: 0,
+    clearcoatRoughnessMap: null,
+    clearcoatRoughnessChannel: 1,
+    clearcoatNormalMap: null,
+    clearcoatNormalStrength: 1,
+    clearcoatFresnelPower: 5,
+    clearcoatFresnelScaleBiasEnabled: false,
+    clearcoatFresnelScale: 1,
+    clearcoatFresnelBias: 0,
+    fresnelScaleBiasEnabled: false,
+    fresnelScale: 1,
+    fresnelBias: 0,
+    baseColorSingleChannelEnabled: false,
+    baseColorChannel: 0,
+    specularSingleChannelEnabled: false,
+    specularChannel: 0,
+    emissiveSingleChannelEnabled: false,
+    emissiveChannel: 0,
+    transmissionMap: null,
+    transmissionChannel: 0,
+    thicknessMap: null,
+    thicknessChannel: 1,
+    vertexColorsMaskEnabled: false,
     transmissionFactor: 0,
     thicknessFactor: 0,
     attenuationDistance: Infinity,
@@ -356,13 +407,32 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
       return {
         lit: self.lighting !== NoLighting,
         color: [r, g, b, mode === Opaque ? 1 : a],
-        map: self.baseColorMap?.$texture?.() ?? null,
-        waiting: Boolean(self.baseColorMap) && !self.baseColorMap.$texture?.(),
+        ...mapped(self, self.baseColorMap, {
+          normal: ["normalMap"],
+          roughness: ["roughnessMap", "roughnessChannel"],
+          metalness: ["metalnessMap", "metalnessChannel"],
+          occlusion: ["occlusionMap", "occlusionChannel"],
+          emissive: ["emissiveMap"],
+          opacity: ["opacityMap", "opacityChannel"],
+          coat: ["clearcoatMap", "clearcoatChannel"],
+          coatRoughness: ["clearcoatRoughnessMap", "clearcoatRoughnessChannel"],
+          coatNormal: ["clearcoatNormalMap"],
+        }),
+        bump: self.normalStrength,
+        coat: self.clearcoatAmount,
+        coatRoughness: self.clearcoatRoughnessAmount,
+        coatBump: self.clearcoatNormalStrength,
+        coatEdge: [self.clearcoatFresnelPower, ...(self.clearcoatFresnelScaleBiasEnabled ? [self.clearcoatFresnelScale, self.clearcoatFresnelBias] : [1, 0])],
+        occlusion: self.occlusionAmount,
+        inverted: self.invertOpacityMapValue,
         emissive: vec(self.emissiveFactor),
         // A surface that is not metal gives back a little of a light as it
-        // is, and a metal all of it in its own colour.
+        // is, or as much in its own colour as `specularTint` says, and a
+        // metal all of it in its own colour. One that is neither metal nor
+        // gives any back has no shine at all, nor has its coat.
         specular: self.specularAmount,
-        tint: [1, 1, 1],
+        tint: [r, g, b].map((c) => 1 + (c - 1) * self.specularTint),
+        shiny: self.specularAmount > 0.01 || self.metalness > 0.01,
         roughness: self.roughness,
         metalness: self.metalness,
         principled: true,

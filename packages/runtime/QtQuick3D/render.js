@@ -21,16 +21,21 @@ layout(location = 2) in vec2 attr_uv0;
 layout(location = 3) in vec4 attr_color;
 layout(location = 4) in vec4 attr_joints;
 layout(location = 5) in vec4 attr_weights;
+layout(location = 6) in vec2 attr_uv1;
+layout(location = 7) in vec3 attr_textan;
+layout(location = 8) in vec3 attr_binormal;
 uniform mat4 u_all;
 uniform mat4 u_world;
 uniform mat3 u_facing;
-uniform mat3 u_picture;
 uniform float u_point;
 uniform bool u_skinned;
 uniform highp sampler2D u_bones;
 out vec3 v_position;
 out vec3 v_normal;
 out vec2 v_uv;
+out vec2 v_uv1;
+out vec3 v_tangent;
+out vec3 v_binormal;
 out vec4 v_color;
 
 // One of the matrices of the joints: the one that moves a corner at an even
@@ -49,18 +54,26 @@ mat4 bone(int index) {
 void main() {
     vec4 position = vec4(attr_pos, 1.0);
     vec3 facing = attr_norm;
+    vec3 tangent = attr_textan;
+    vec3 binormal = attr_binormal;
     // A corner no joint has a hold of stays where the mesh has it.
     if (u_skinned && attr_weights != vec4(0.0)) {
         ivec4 joints = ivec4(attr_joints);
         vec4 w = attr_weights;
-        position = (bone(joints.x * 2) * w.x + bone(joints.y * 2) * w.y + bone(joints.z * 2) * w.z + bone(joints.w * 2) * w.w) * position;
+        mat4 moved = bone(joints.x * 2) * w.x + bone(joints.y * 2) * w.y + bone(joints.z * 2) * w.z + bone(joints.w * 2) * w.w;
+        position = moved * position;
         facing = (mat3(bone(joints.x * 2 + 1)) * w.x + mat3(bone(joints.y * 2 + 1)) * w.y + mat3(bone(joints.z * 2 + 1)) * w.z + mat3(bone(joints.w * 2 + 1)) * w.w) * facing;
+        tangent = mat3(moved) * tangent;
+        binormal = mat3(moved) * binormal;
     }
     v_position = (u_world * position).xyz;
     // The way a corner faces is made one long here, before it is spread
     // over the triangle, as Qt makes it.
     v_normal = normalize(u_facing * facing);
-    v_uv = (u_picture * vec3(attr_uv0, 1.0)).xy;
+    v_tangent = mat3(u_world) * tangent;
+    v_binormal = mat3(u_world) * binormal;
+    v_uv = attr_uv0;
+    v_uv1 = attr_uv1;
     v_color = attr_color;
     gl_Position = u_all * position;
     gl_PointSize = u_point;
@@ -74,18 +87,61 @@ const float PI = 3.14159265359;
 in vec3 v_position;
 in vec3 v_normal;
 in vec2 v_uv;
+in vec2 v_uv1;
+in vec3 v_tangent;
+in vec3 v_binormal;
 in vec4 v_color;
 uniform vec4 u_color;
 uniform float u_opacity;
 uniform vec3 u_emissive;
 uniform bool u_lit;
-uniform bool u_mapped;
+uniform bool u_framed;
+uniform bool u_inverted;
+uniform float u_bump;
+uniform float u_occlusion;
 uniform bool u_colors;
 uniform bool u_sided;
 uniform bool u_principled;
 uniform bool u_solid;
 uniform float u_cutoff;
+// The pictures a material reads: its colour's, the way it faces, how rough
+// and how much a metal it is, how much of the light reaches it, what it
+// gives off, how much of it is there, and how much of a clear coat is over
+// it and how rough that is. Of each: whether there is one,
+// which channel of it is read and which of a corner's two places in a
+// picture it is read at, and how that place is moved.
+const int BASE = 0;
+const int NORMAL = 1;
+const int ROUGHNESS = 2;
+const int METALNESS = 3;
+const int OCCLUSION = 4;
+const int EMISSIVE = 5;
+const int OPACITY = 6;
+const int BUMP = 7;
+const int COAT = 8;
+const int COAT_ROUGHNESS = 9;
+const int COAT_NORMAL = 10;
+const int MAPS = 11;
 uniform sampler2D u_map;
+uniform sampler2D u_normalMap;
+uniform sampler2D u_roughnessMap;
+uniform sampler2D u_metalnessMap;
+uniform sampler2D u_occlusionMap;
+uniform sampler2D u_emissiveMap;
+uniform sampler2D u_opacityMap;
+uniform sampler2D u_coatMap;
+uniform sampler2D u_coatRoughnessMap;
+uniform sampler2D u_coatNormalMap;
+uniform float u_coat;
+uniform float u_coatRoughness;
+// How far a picture turns the coat, and how what the coat gives back grows
+// as it is turned from the eye: the power of it, and a scale and a bias.
+uniform float u_coatBump;
+uniform vec3 u_coatEdge;
+uniform vec3 u_tint;
+uniform bool u_shiny;
+uniform vec3 u_reads[MAPS];
+uniform mat3 u_places[MAPS];
 uniform float u_specular;
 uniform float u_shine;
 uniform float u_roughness;
@@ -129,6 +185,22 @@ vec3 tonemap(vec3 c) {
     return c;
 }
 
+bool has(int which) {
+    return u_reads[which].x > 0.5;
+}
+
+vec2 placed(int which) {
+    return (u_places[which] * vec3(u_reads[which].z > 0.5 ? v_uv1 : v_uv, 1.0)).xy;
+}
+
+float channel(sampler2D map, int which) {
+    return texture(map, placed(which))[int(u_reads[which].y)];
+}
+
+float average(vec4 read) {
+    return (read.r + read.g + read.b) / 3.0;
+}
+
 float schlick(float value) {
     float n = 1.0 - value;
     float n2 = n * n;
@@ -169,28 +241,91 @@ vec3 ggx(vec3 N, vec3 L, vec3 V, vec3 f0, float roughness) {
 void main() {
     vec4 base = u_color;
     if (u_colors) base *= v_color;
-    if (u_mapped) {
-        vec4 picture = texture(u_map, v_uv);
+    if (has(BASE)) {
+        vec4 picture = texture(u_map, placed(BASE));
         base *= vec4(toLinear(picture.rgb), picture.a);
     }
+    // How much of the colour is there is all of it where the material says
+    // nothing is seen through it; how much of the material is, is its own.
+    if (u_cutoff >= 0.0 && base.a < u_cutoff) discard;
+    if (u_solid) base.a = 1.0;
     float alpha = base.a * u_opacity;
-    if (u_cutoff >= 0.0) {
-        if (alpha < u_cutoff) discard;
-        alpha = 1.0;
+    if (has(OPACITY)) {
+        float there = channel(u_opacityMap, OPACITY);
+        alpha *= u_inverted ? 1.0 - there : there;
     }
-    if (u_solid) alpha = 1.0;
     vec3 sum = base.rgb;
     if (u_lit) {
         vec3 N = normalize(v_normal);
-        if (u_sided && !gl_FrontFacing) N = -N;
+        float side = u_sided && !gl_FrontFacing ? -1.0 : 1.0;
+        // The frame a way of facing read from a picture is in: the mesh's
+        // own, or where it has none, the way the first of the pictures
+        // lies across the surface.
+        int turned = has(BUMP) ? BUMP : has(NORMAL) ? NORMAL : has(COAT_NORMAL) ? COAT_NORMAL : -1;
+        vec3 T = vec3(0.0);
+        vec3 B = vec3(0.0);
+        if (turned >= 0) {
+            if (u_framed) {
+                T = normalize(v_tangent);
+                B = normalize(v_binormal);
+            } else {
+                vec2 at = placed(turned);
+                vec2 across = dFdx(at);
+                vec2 down = dFdy(at);
+                T = (down.y * dFdx(v_position) - across.y * dFdy(v_position)) / (across.x * down.y - across.y * down.x);
+                T = normalize(T - dot(N, T) * N);
+                B = cross(N, T);
+            }
+            T *= side;
+            B *= side;
+        }
+        N *= side;
+        // A clear coat faces as the shape does, or as its own picture says,
+        // whatever a picture says of what is under it.
+        vec3 coated = N;
+        if (has(COAT_NORMAL)) {
+            vec3 way = texture(u_coatNormalMap, placed(COAT_NORMAL)).xyz * 2.0 - vec3(1.0);
+            coated = normalize(mat3(T, B, N) * (way * vec3(u_coatBump, u_coatBump, 1.0)));
+        }
+        if (has(BUMP)) {
+            // A picture of heights: how it rises to the right and upward
+            // is how far the surface leans from them.
+            vec2 at = placed(BUMP);
+            vec2 unit = 1.0 / vec2(textureSize(u_normalMap, 0));
+            float here = average(texture(u_normalMap, at));
+            float du = average(texture(u_normalMap, vec2(at.x + unit.x, at.y))) - here;
+            float dv = average(texture(u_normalMap, vec2(at.x, at.y + unit.y))) - here;
+            vec3 n = normalize(vec3(-u_bump * du, -u_bump * dv, 1.0));
+            N = normalize(N + n.x * T + n.y * B + n.z * N);
+        } else if (has(NORMAL)) {
+            vec3 way = texture(u_normalMap, placed(NORMAL)).xyz * 2.0 - vec3(1.0);
+            N = normalize(mat3(T, B, N) * (way * vec3(u_bump, u_bump, 1.0)));
+        }
+        float roughness = u_roughness;
+        if (has(ROUGHNESS)) roughness *= channel(u_roughnessMap, ROUGHNESS);
+        float metalness = u_metalness;
+        if (has(METALNESS)) metalness = clamp(metalness * channel(u_metalnessMap, METALNESS), 0.0, 1.0);
+        float reached = 1.0;
+        if (has(OCCLUSION)) reached = channel(u_occlusionMap, OCCLUSION) * u_occlusion;
+        vec3 given = u_emissive;
+        if (has(EMISSIVE)) given *= toLinear(texture(u_emissiveMap, placed(EMISSIVE)).rgb);
+        float coat = u_coat;
+        if (has(COAT)) coat *= channel(u_coatMap, COAT);
+        float coatRoughness = u_coatRoughness;
+        if (has(COAT_ROUGHNESS)) coatRoughness = clamp(coatRoughness * channel(u_coatRoughnessMap, COAT_ROUGHNESS), 0.0, 1.0);
+        vec3 coating = vec3(0.0);
         vec3 V = normalize(u_eye - v_position);
-        vec3 diffuse = u_ambient * (1.0 - u_metalness) * base.rgb;
+        vec3 diffuse = u_ambient * (1.0 - metalness) * base.rgb;
         vec3 shine = vec3(0.0);
         float plain = ((u_ior - 1.0) * (u_ior - 1.0)) / ((u_ior + 1.0) * (u_ior + 1.0));
-        vec3 f0 = vec3(plain) * (1.0 - u_metalness) + base.rgb * u_metalness;
+        vec3 f0 = vec3(plain) * (1.0 - metalness) + base.rgb * metalness;
+        bool coats = u_principled && u_coat > 0.0;
+        // What a surface that is no metal gives back of a light can take
+        // the surface's own colour.
+        vec3 tint = mix(vec3(1.0), u_tint, 1.0 - metalness);
         float NdotV = clamp(dot(N, V), 0.0, 1.0);
         float edge = u_fresnel == 0.0 ? 1.0 : pow(1.0 - NdotV, u_fresnel);
-        vec3 amount = u_specular * (f0 + (max(vec3(1.0 - u_roughness), f0) - f0) * edge);
+        vec3 amount = u_specular * (f0 + (max(vec3(1.0 - roughness), f0) - f0) * edge);
         for (int index = 0; index < u_count; index++) {
             vec3 L = -u_lightWay[index];
             float fade = 1.0;
@@ -208,15 +343,31 @@ void main() {
             }
             vec3 light = u_lightColor[index] * fade;
             if (u_principled) {
-                diffuse += base.rgb * light * burley(N, L, V, u_roughness);
-                shine += light * ggx(N, L, V, f0, u_roughness);
+                // Qt takes what is metal out of the light here, and out of
+                // the sum of them once more below.
+                diffuse += base.rgb * light * (1.0 - metalness) * burley(N, L, V, roughness);
+                if (u_shiny) {
+                    shine += light * tint * ggx(N, L, V, f0, roughness);
+                    if (coats) coating += light * ggx(coated, L, V, vec3(plain), coatRoughness);
+                }
             } else {
                 diffuse += base.rgb * light * max(0.0, dot(N, L));
                 if (u_specular > 0.0) shine += light * amount * pow(max(0.0, dot(normalize(V + L), N)), u_shine);
             }
         }
-        if (u_principled) diffuse *= 1.0 - u_metalness;
-        sum = diffuse + shine + u_emissive;
+        // What a light gives a surface all round is less where less of the
+        // light reaches it.
+        diffuse *= reached;
+        if (u_principled) diffuse *= 1.0 - metalness;
+        sum = diffuse + shine + given;
+        // What is under a clear coat shows less the more the coat itself
+        // gives back, which is more the further it is turned from the eye.
+        if (coats) {
+            float turn = clamp(pow(clamp(dot(coated, V), 0.0, 1.0), u_coatEdge.x), 0.0, 1.0);
+            vec3 back = vec3(plain) + (vec3(1.0) - vec3(plain)) * (1.0 - turn);
+            back = clamp(vec3(u_coatEdge.z) + u_coatEdge.y * back, 0.0, 1.0);
+            sum = sum * (1.0 - coat * back) + coating * coat;
+        }
     }
     fragColor = vec4(tonemap(sum) * alpha, alpha);
 }
@@ -226,7 +377,6 @@ const UNIFORMS = [
   "u_all",
   "u_world",
   "u_facing",
-  "u_picture",
   "u_point",
   "u_skinned",
   "u_bones",
@@ -234,7 +384,27 @@ const UNIFORMS = [
   "u_opacity",
   "u_emissive",
   "u_lit",
-  "u_mapped",
+  "u_framed",
+  "u_inverted",
+  "u_bump",
+  "u_occlusion",
+  "u_normalMap",
+  "u_roughnessMap",
+  "u_metalnessMap",
+  "u_occlusionMap",
+  "u_emissiveMap",
+  "u_opacityMap",
+  "u_coatMap",
+  "u_coatRoughnessMap",
+  "u_coatNormalMap",
+  "u_coat",
+  "u_coatRoughness",
+  "u_coatBump",
+  "u_coatEdge",
+  "u_tint",
+  "u_shiny",
+  "u_reads",
+  "u_places",
   "u_colors",
   "u_sided",
   "u_principled",
@@ -291,6 +461,7 @@ function context() {
   for (const name of UNIFORMS) at[name] = gl.getUniformLocation(program, name);
   gl.uniform1i(at.u_map, 0);
   gl.uniform1i(at.u_bones, 1);
+  SAMPLERS.forEach((name, index) => name && gl.uniform1i(at[name], UNITS[index]));
   // A picture's first row is its bottom one to a mesh, as it is to Qt.
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   // What a mesh says nothing of: it faces the eye, and is white.
@@ -299,13 +470,23 @@ function context() {
   gl.vertexAttrib4f(3, 1, 1, 1, 1);
   gl.vertexAttrib4f(4, 0, 0, 0, 0);
   gl.vertexAttrib4f(5, 0, 0, 0, 0);
+  gl.vertexAttrib2f(6, 0, 0);
+  gl.vertexAttrib3f(7, 1, 0, 0);
+  gl.vertexAttrib3f(8, 0, 1, 0);
   return gl;
 }
 
 // What a number of a mesh is to OpenGL, by Qt's number for its kind.
 const KINDS = { 1: 0x1401, 2: 0x1400, 3: 0x1403, 4: 0x1402, 5: 0x1405, 6: 0x1404, 9: 0x140b, 10: 0x1406 };
 const MODES = { 1: 0, 2: 3, 3: 2, 4: 1, 5: 5, 6: 6, [Triangles]: 4 };
-const ATTRIBUTES = ["attr_pos", "attr_norm", "attr_uv0", "attr_color", "attr_joints", "attr_weights"];
+const ATTRIBUTES = ["attr_pos", "attr_norm", "attr_uv0", "attr_color", "attr_joints", "attr_weights", "attr_uv1", "attr_textan", "attr_binormal"];
+
+// The pictures of a material besides its colour's, in the order the shader
+// has them, and what each is read through. A picture of heights is read
+// where the way of facing would be: a material has one or the other.
+const MAPS = ["map", "normal", "roughness", "metalness", "occlusion", "emissive", "opacity", "bump", "coat", "coatRoughness", "coatNormal"];
+const SAMPLERS = [null, "u_normalMap", "u_roughnessMap", "u_metalnessMap", "u_occlusionMap", "u_emissiveMap", "u_opacityMap", "u_normalMap", "u_coatMap", "u_coatRoughnessMap", "u_coatNormalMap"];
+const UNITS = [0, 2, 3, 4, 5, 6, 7, 2, 8, 9, 10];
 
 // A shape as OpenGL holds it: its corners as the mesh file has them, each
 // part of a corner said where it is in the row.
@@ -335,7 +516,8 @@ function held(shape) {
   }
   gl.bindVertexArray(null);
   const jointed = Boolean(shape.entries.attr_joints && shape.entries.attr_weights);
-  shapes.set(shape, (made = { array, kind, size, mode: MODES[shape.drawMode] ?? gl.TRIANGLES, colors: Boolean(shape.entries.attr_color), jointed }));
+  const framed = Boolean(shape.entries.attr_textan && shape.entries.attr_binormal);
+  shapes.set(shape, (made = { array, kind, size, mode: MODES[shape.drawMode] ?? gl.TRIANGLES, colors: Boolean(shape.entries.attr_color), jointed, framed }));
   return made;
 }
 
@@ -343,12 +525,12 @@ const WRAPS = { 1: 0x812f, 2: 0x8370, 3: 0x2901 };
 
 // A picture as a texture, sampled as its Texture says.
 const textures = new WeakMap();
-function bound(map) {
+function bound(map, unit = 0) {
   const { element } = map;
   let made = textures.get(element);
   const fresh = !made;
   if (fresh) textures.set(element, (made = { texture: gl.createTexture(), mipped: false }));
-  gl.activeTexture(gl.TEXTURE0);
+  gl.activeTexture(gl.TEXTURE0 + unit);
   gl.bindTexture(gl.TEXTURE_2D, made.texture);
   if (fresh || map.live) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, element);
@@ -364,6 +546,7 @@ function bound(map) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, map.mag === 1 ? gl.NEAREST : gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, WRAPS[map.horizontal] ?? gl.REPEAT);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, WRAPS[map.vertical] ?? gl.REPEAT);
+  if (unit) gl.activeTexture(gl.TEXTURE0);
 }
 
 // Where edges are to be smooth, everything is drawn several times to the
@@ -401,7 +584,6 @@ function jointed(bones) {
   gl.activeTexture(gl.TEXTURE0);
 }
 
-const PICTURE = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 const UNTURNED = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
 // One part of a shape, with the material it is drawn with.
@@ -430,13 +612,28 @@ function part(piece) {
   gl.uniform1f(at.u_metalness, material.metalness);
   gl.uniform1f(at.u_ior, material.ior);
   gl.uniform1f(at.u_fresnel, material.fresnel);
-  const { map } = material;
-  gl.uniform1i(at.u_mapped, map ? 1 : 0);
-  if (map) {
-    bound(map);
+  gl.uniform1i(at.u_framed, made.framed ? 1 : 0);
+  gl.uniform1i(at.u_inverted, material.inverted ? 1 : 0);
+  gl.uniform1f(at.u_bump, material.bump ?? 1);
+  gl.uniform1f(at.u_occlusion, material.occlusion ?? 1);
+  gl.uniform1f(at.u_coat, material.coat ?? 0);
+  gl.uniform1f(at.u_coatRoughness, material.coatRoughness ?? 0);
+  gl.uniform1f(at.u_coatBump, material.coatBump ?? 1);
+  gl.uniform3fv(at.u_coatEdge, material.coatEdge ?? [5, 1, 0]);
+  gl.uniform3fv(at.u_tint, material.tint ?? [1, 1, 1]);
+  gl.uniform1i(at.u_shiny, material.shiny === false ? 0 : 1);
+  const reads = new Float32Array(MAPS.length * 3);
+  const places = new Float32Array(MAPS.length * 9);
+  MAPS.forEach((name, index) => {
+    const map = name === "map" ? material.map : material.maps?.[name];
+    if (!map) return;
+    bound(map, UNITS[index]);
+    reads.set([1, map.channel ?? 0, map.index ? 1 : 0], index * 3);
     const m = map.transform;
-    gl.uniformMatrix3fv(at.u_picture, false, [m[0], m[1], 0, m[4], m[5], 0, m[12], m[13], 1]);
-  } else gl.uniformMatrix3fv(at.u_picture, false, PICTURE);
+    places.set([m[0], m[1], 0, m[4], m[5], 0, m[12], m[13], 1], index * 9);
+  });
+  gl.uniform3fv(at.u_reads, reads);
+  gl.uniformMatrix3fv(at.u_places, false, places);
   // Which side of a triangle is its front is the other one in a mirror.
   const anticlockwise = (shape.winding !== 1) !== math.mirrors(world);
   gl.frontFace(anticlockwise ? gl.CCW : gl.CW);
@@ -452,7 +649,7 @@ function part(piece) {
 
 // Whether something is seen through what a material draws.
 const sheer = (material, opacity) =>
-  !material.solid && (material.blended || material.blend !== 0 || opacity * material.opacity < 1 || material.color[3] < 1 || Boolean(material.map?.sheer));
+  material.blended || material.blend !== 0 || opacity * material.opacity < 1 || Boolean(material.maps?.opacity) || (!material.solid && (material.color[3] < 1 || Boolean(material.map?.sheer)));
 
 // Draws `scene` (`{ width, height, environment, projection, camera, models,
 // lights }`) and hands the picture to `paper`, the context of `canvas`.
