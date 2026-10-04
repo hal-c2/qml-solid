@@ -993,6 +993,38 @@ Item {
 }
 
 #[test]
+fn a_name_in_what_a_state_changes_is_the_targets() {
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    id: root
+    property int size: 7
+    Item { id: box; Item { id: a } }
+    states: State {
+        PropertyChanges { target: a; width: parent.width / 2; height: width + 1; x: size }
+        PropertyChanges { a.y: parent.height }
+        PropertyChanges { target: box.children[0]; z: parent.z }
+        AnchorChanges { target: a; anchors.right: parent.right }
+        ParentChange { target: a; parent: box; width: parent.width }
+    }
+}"#,
+    );
+    // As Qt evaluates them: with the target as the object the names are of,
+    // and the root after it.
+    assert_contains(&code, "() => a.parent.width / 2");
+    assert_contains(&code, "() => a.width + 1");
+    assert_contains(&code, "() => root.size");
+    assert_contains(&code, "anchors$right={a.parent.right}");
+    // A property named through an id is a binding where it is written, and
+    // so is one of a target only the running program knows.
+    assert_contains(&code, "() => root.parent.height");
+    assert_contains(&code, "() => root.parent.z");
+    // A ParentChange has a `parent` of its own.
+    assert_contains(&code, ".parent.width}");
+    assert_lacks(&code, "width={a.parent.width}");
+}
+
+#[test]
 fn a_source_with_no_suffix_is_the_picture_qt_finds() {
     let source = r#"import QtQuick
 Item {

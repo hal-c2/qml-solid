@@ -226,3 +226,13 @@ test("a state entered from the start changes what a property of the item holds",
   await page.evaluate(() => window.scene.step(1));
   expect(await read()).toEqual(["big", 56, 62, 244]);
 });
+
+test("a name in what a state changes is the target's before it is the root's", async ({ page }) => {
+  await open(page, "statescope");
+  const read = () => page.evaluate(() => window.scene.read());
+  expect(await read()).toEqual([100, 101, 7, 180, 80, 80, 7]);
+  await page.evaluate(() => window.scene.step(0));
+  expect(await read()).toEqual([150, 151, 7, 280, 80, 80, 7]);
+  await page.evaluate(() => window.scene.step(1));
+  expect(await read()).toEqual([20, 20, 0, 0, 0, 20, 0]);
+});
