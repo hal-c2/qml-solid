@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Take the pictures real Qt renders of its examples: corpus/reference (needs Qt 6's qml tool)"
+#MISE description="Take the pictures real Qt renders of its examples: corpus/reference (needs Qt 6's qml tool, and sway to have shader effects in them)"
 #MISE depends=["install"]
 set -euo pipefail
 git submodule update --init --depth 1 corpus/qtdoc

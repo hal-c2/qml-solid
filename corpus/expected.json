@@ -15,7 +15,7 @@
     },
     "coffee": {
       "pixels": 0.98,
-      "content": 0.86
+      "content": 0.89
     },
     "hangman": {
       "pixels": 0.95,
@@ -26,12 +26,12 @@
       "content": 0.95
     },
     "photosurface": {
-      "pixels": 0.65,
-      "content": 0.55
+      "pixels": 0.95,
+      "content": 0.93
     },
     "qtjennydemo": {
-      "pixels": 0.9,
-      "content": 0.45
+      "pixels": 0.98,
+      "content": 0.9
     },
     "rssnews": {
       "pixels": 0.98,

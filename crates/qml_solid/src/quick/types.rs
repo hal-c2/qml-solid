@@ -53,6 +53,9 @@ pub(crate) struct Property {
     /// (What an AnchorChanges or a ParentChange is given is a script to Qt
     /// too, but one that is worth a value: a binding.)
     pub is_script: bool,
+    /// A key of an enum written there is a constant: the property holds an
+    /// enum or an `int`.
+    pub takes_key: bool,
     /// An object written there is a list of one.
     pub is_list: bool,
     /// The type of the value, for the properties under it: `font.bold`.
@@ -311,6 +314,7 @@ pub(crate) fn qt_property(property: &'static qt::Property) -> Property {
         is_component: property.is_component,
         is_url: property.type_name == "QUrl" && !property.is_list,
         is_script: property.type_name == "QQmlScriptString" && property.name == "script",
+        takes_key: property.takes_key(),
         is_list: property.is_list,
         value: property.value_type(),
     }
@@ -332,6 +336,7 @@ pub(crate) fn declared_property(type_name: &str, is_list: bool) -> Property {
         is_component: type_name == "Component" && !is_list,
         is_url: type_name == "url" && !is_list,
         is_script: false,
+        takes_key: type_name == "int" && !is_list,
         is_list,
         value: None,
     }
