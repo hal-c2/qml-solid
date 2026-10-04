@@ -4,7 +4,7 @@
 //
 // These say what there is; `render.js` draws it.
 //
-// Not here: shadows, a light's `scope`, a sky box that is a cube of six
+// Not here: shadows, a sky box that is a cube of six
 // pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, a material's
 // own probe, an environment's `effects`, which are held and not run, and
 // the distances a model draws the entries of its table between
@@ -518,7 +518,8 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
 });
 
 // A light: its colour times how bright it is, and what it adds to every
-// surface wherever that is (`ambientColor`).
+// surface wherever that is (`ambientColor`). One with a `scope` lights, and
+// adds to, only what is that node or inside it.
 export const Light = defineType("Light", Node, {
   properties: {
     color: "#ffffff",
@@ -560,6 +561,8 @@ export const Light = defineType("Light", Node, {
         kind: self.$lit,
         color: [r * by, g * by, b * by],
         ambient: linear(self.ambientColor).slice(0, 3),
+        // The node it is for, where it is not for the whole scene.
+        scope: self.scope ?? null,
         // A light shines along its own z, away from the eye.
         direction: math.normalized(math.turned(math.normal(world), 0, 0, -1)),
         position: world.slice(12, 15),

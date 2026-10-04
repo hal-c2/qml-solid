@@ -26,14 +26,24 @@ function found(self) {
     const opacity = above * node.opacity;
     if (node.$model) {
       const shape = node.$shape();
-      if (shape) models.push({ shape, world: node.$world(), bones: node.$bones(), instances: node.$instances(), materials: node.$materials().map((material) => material?.$material?.() ?? null), opacity });
+      if (shape) models.push({ node, shape, world: node.$world(), bones: node.$bones(), instances: node.$instances(), materials: node.$materials().map((material) => material?.$material?.() ?? null), opacity });
     } else if (node.$light) lights.push(node.$light());
     else if (node.$camera) camera ??= node;
     for (const child of inside(node)) walk(child, opacity);
   };
   for (const node of inside(self.$scene)) walk(node, 1);
   if (self.importScene?.$spatial) walk(self.importScene, 1);
+  // A light that is for a node lights what is that node or inside it: a
+  // model has the lights that are for everything and those that are for it.
+  if (lights.some((light) => light.scope)) {
+    for (const model of models) model.lights = lights.filter((light) => !light.scope || under(model.node, light.scope));
+  }
   return { models, lights, camera };
+}
+
+function under(node, scope) {
+  for (let at = node; at; at = at.parent) if (at === scope) return true;
+  return false;
 }
 
 const NOWHERE = () => new Vector3d(0, 0, 0);

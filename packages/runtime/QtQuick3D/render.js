@@ -1286,10 +1286,31 @@ function farthestFirst(data, count, way) {
 
 const UNTURNED = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
+// The lights a part is lit by, which are the scene's unless one of them is
+// for some of it only: said again when they are others than the last
+// part's.
+let shining = null;
+function shone(all) {
+  if (all === shining) return;
+  shining = all;
+  const lights = all.slice(0, LIGHTS);
+  const ambient = [0, 0, 0];
+  for (const light of all) for (let index = 0; index < 3; index++) ambient[index] += light.ambient[index];
+  gl.uniform3fv(at.u_ambient, ambient);
+  gl.uniform1i(at.u_count, lights.length);
+  if (!lights.length) return;
+  gl.uniform3fv(at.u_lightColor, lights.flatMap((light) => light.color));
+  gl.uniform4fv(at.u_lightPlace, lights.flatMap((light) => [...light.position, light.kind]));
+  gl.uniform3fv(at.u_lightWay, lights.flatMap((light) => light.direction));
+  gl.uniform3fv(at.u_lightFade, lights.flatMap((light) => light.fade));
+  gl.uniform2fv(at.u_lightCone, lights.flatMap((light) => [light.cone, light.inner]));
+}
+
 // One part of a shape, with the material it is drawn with.
 function part(piece) {
   const { shape, subset, world, material, opacity } = piece;
   const made = held(shape);
+  shone(piece.lights);
   gl.bindVertexArray(made.array);
   gl.uniformMatrix4fv(at.u_all, false, piece.all);
   gl.uniformMatrix4fv(at.u_world, false, world);
@@ -1409,25 +1430,14 @@ export function draw(scene, canvas, paper) {
     if (probe && environment.sky) backdrop(probe, environment, scene.projection, eye, tonemap);
     gl.uniform4f(at.u_probing, probe ? 1 : 0, probe ? probe.levels - 1 : 0, environment.probe?.horizon ?? -1, environment.probe?.exposure ?? 0);
     gl.uniformMatrix3fv(at.u_probeTurn, false, environment.probe?.turn ?? UNTURNED);
-    const lights = scene.lights.slice(0, LIGHTS);
-    const ambient = [0, 0, 0];
-    for (const light of scene.lights) for (let index = 0; index < 3; index++) ambient[index] += light.ambient[index];
+    shining = null;
     gl.uniform3fv(at.u_eye, eye.slice(12, 15));
     gl.uniform4fv(at.u_fog, environment.fog?.color ?? NONE);
     gl.uniform4fv(at.u_fogDepth, environment.fog?.depth ?? NONE);
     gl.uniform4fv(at.u_fogHeight, environment.fog?.height ?? NONE);
     gl.uniform2fv(at.u_fogLet, environment.fog?.through ?? NONE.slice(0, 2));
     gl.uniform1f(at.u_far, scene.far ?? 0);
-    gl.uniform3fv(at.u_ambient, ambient);
     gl.uniform1i(at.u_tonemap, tonemap);
-    gl.uniform1i(at.u_count, lights.length);
-    if (lights.length) {
-      gl.uniform3fv(at.u_lightColor, lights.flatMap((light) => light.color));
-      gl.uniform4fv(at.u_lightPlace, lights.flatMap((light) => [...light.position, light.kind]));
-      gl.uniform3fv(at.u_lightWay, lights.flatMap((light) => light.direction));
-      gl.uniform3fv(at.u_lightFade, lights.flatMap((light) => light.fade));
-      gl.uniform2fv(at.u_lightCone, lights.flatMap((light) => [light.cone, light.inner]));
-    }
 
     // Each part of each shape with a material is a thing to draw. A shape
     // with fewer materials than parts has the last for the rest; one with
@@ -1436,6 +1446,7 @@ export function draw(scene, canvas, paper) {
     const clear = [];
     for (const model of scene.models) {
       const { shape, materials, opacity, bones } = model;
+      const lights = model.lights ?? scene.lights;
       let { instances } = model;
       if (instances && !instances.count) continue;
       // A bent shape is where its joints put it, wherever its model is. One
@@ -1455,7 +1466,7 @@ export function draw(scene, canvas, paper) {
         // How far in front of the eye it is: the eye looks down its own z.
         const distance = -math.point(view, ...middle)[2];
         const through = sheer(material, opacity) || Boolean(instances?.sheer);
-        (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, instances, placed, sheer: through });
+        (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, lights, instances, placed, sheer: through });
       });
     }
     solid.sort((a, b) => a.distance - b.distance);

@@ -1394,3 +1394,23 @@ test("a Model is drawn once for each entry of its table, where Qt draws it", asy
     near(await painted(page, points), points.map(([, colour]) => colour), call, 3);
   }
 });
+
+test("a light with a scope lights what is in it, as Qt's does", async ({ page }) => {
+  // What is behind, the two rectangles in the node the red light is for,
+  // the one no light is for, and the model the green light is for with the
+  // model inside it.
+  const at = [[20, 20], [40, 100], [95, 100], [150, 100], [205, 100], [260, 100]];
+  const states = [
+    // What a light adds wherever a surface faces it adds in its scope only.
+    ["", [[11, 11, 11], [218, 124, 153], [218, 124, 153], [124, 124, 124], [124, 218, 124], [124, 218, 124]]],
+    ["unscoped()", [[11, 11, 11], [218, 124, 153], [218, 124, 153], [218, 124, 153], [218, 218, 153], [218, 218, 153]]],
+    ["rescoped()", [[11, 11, 11], [124, 124, 124], [124, 124, 124], [124, 124, 124], [218, 218, 153], [218, 218, 153]]],
+    // A light for a node with nothing in it lights nothing.
+    ["hidden()", [[11, 11, 11], [124, 124, 124], [124, 124, 124], [124, 124, 124], [124, 218, 124], [124, 218, 124]]],
+  ];
+  for (const [call, colours] of states) {
+    await open(page, "scoped3d");
+    if (call) await page.evaluate(`window.scene.${call}`);
+    near(await painted(page, at.map((point, index) => [point, colours[index]])), colours, call, 3);
+  }
+});
