@@ -39,7 +39,7 @@ export function linear(value) {
 // A file, once read: one record for everything that names it. `state()` is
 // null until it is here, then what `took` made of it, or `{ error }`.
 const files = new Map();
-function file(url, kind, took) {
+export function file(url, kind, took) {
   const key = `${kind} ${url}`;
   let record = files.get(key);
   if (record) return record;

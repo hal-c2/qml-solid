@@ -26,10 +26,17 @@
 // A shape drawn by a table of instances is drawn once for each entry, by
 // one call: where each is and what colour it is times are the entry's.
 //
+// What a CustomMaterial draws is drawn by a program of its own, made of its
+// shaders and this file's (`shaders.js`), and put over what is there as the
+// material says. One that reads what is behind it has that drawn for it
+// first: the scene without what something is seen through, in linear light,
+// and how far each place of it is.
+//
 // Not here: a probe that is a canvas is folded once, as it is when first
 // drawn, and a material's own probe is not looked at.
 import * as math from "./math.js";
 import { Triangles } from "./mesh.js";
+import { customised } from "./shaders.js";
 
 // As many lights as Qt lets a surface have.
 const LIGHTS = 15;
@@ -937,6 +944,7 @@ function context() {
   gl.vertexAttrib2f(6, 0, 0);
   gl.vertexAttrib3f(7, 1, 0, 0);
   gl.vertexAttrib3f(8, 0, 1, 0);
+  gl.vertexAttrib4f(13, 0, 0, 0, 0);
   return gl;
 }
 
@@ -1236,6 +1244,39 @@ function finished(grade) {
   gl.useProgram(shaded.program);
 }
 
+// What is behind what reads it, drawn into: a picture of the scene, of
+// fractions where one can be drawn into, and one of how far each place of
+// it is.
+let background = null;
+function behind(width, height) {
+  if (background?.width === width && background.height === height) return background;
+  if (background) {
+    gl.deleteTexture(background.color);
+    gl.deleteTexture(background.depth);
+    gl.deleteFramebuffer(background.frame);
+  }
+  const made = (format, levels, filter, wrap) => {
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texStorage2D(gl.TEXTURE_2D, levels, format, width, height);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+    return texture;
+  };
+  // Read past its edge, the picture is there again, and how far is as at
+  // the edge: Qt has both so.
+  const color = made(fractions ? gl.RGBA16F : gl.RGBA8, Math.floor(Math.log2(Math.max(width, height))) + 1, gl.LINEAR, gl.REPEAT);
+  const depth = made(gl.DEPTH_COMPONENT24, 1, gl.NEAREST, gl.CLAMP_TO_EDGE);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  const frame = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth, 0);
+  return (background = { width, height, color, depth, frame });
+}
+
 // The joints of a bent shape, as a texture the corners look their matrices
 // up in.
 let skeleton = null;
@@ -1252,10 +1293,11 @@ function jointed(bones) {
 }
 
 // The entries of a table, as OpenGL holds them: each is three rows of a
-// matrix, a colour, and four numbers of its own, which nothing here reads.
-// A table whose entries are put in order for every picture has one buffer
-// for them all.
+// matrix, a colour, and four numbers of its own, which the shaders of a
+// CustomMaterial may read. A table whose entries are put in order for every
+// picture has one buffer for them all.
 const ENTRY = 20;
+const ROWS = ENTRY / 4;
 const tables = new WeakMap();
 let ordered = null;
 function entered(instances) {
@@ -1264,7 +1306,7 @@ function entered(instances) {
   if (!buffer) tables.set(instances.data, (buffer = gl.createBuffer()));
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
   if (fresh) gl.bufferData(gl.ARRAY_BUFFER, instances.data, instances.fresh ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
-  for (let row = 0; row < 4; row++) {
+  for (let row = 0; row < ROWS; row++) {
     gl.enableVertexAttribArray(9 + row);
     gl.vertexAttribPointer(9 + row, 4, gl.FLOAT, false, ENTRY * 4, row * 16);
     gl.vertexAttribDivisor(9 + row, 1);
@@ -1306,8 +1348,148 @@ function shone(all) {
   gl.uniform2fv(at.u_lightCone, lights.flatMap((light) => [light.cone, light.inner]));
 }
 
-// One part of a shape, with the material it is drawn with.
+// What every program is told once for a picture: of the eye, of the
+// surroundings and of the fog. A program of a CustomMaterial's is told when
+// it first draws in it.
+let telling = null;
+function tell() {
+  gl.uniform4fv(at.u_probing, telling.probing);
+  gl.uniformMatrix3fv(at.u_probeTurn, false, telling.probeTurn);
+  gl.uniform3fv(at.u_eye, telling.eye);
+  gl.uniform4fv(at.u_fog, telling.fog);
+  gl.uniform4fv(at.u_fogDepth, telling.fogDepth);
+  gl.uniform4fv(at.u_fogHeight, telling.fogHeight);
+  gl.uniform2fv(at.u_fogLet, telling.fogLet);
+  gl.uniform1f(at.u_far, telling.far);
+  gl.uniform1i(at.u_tonemap, telling.tonemap);
+  if (!("u_view" in at)) return;
+  gl.uniformMatrix4fv(at.u_view, false, telling.view);
+  gl.uniformMatrix4fv(at.u_projection, false, telling.projection);
+  gl.uniformMatrix4fv(at.u_seen, false, telling.seen);
+  gl.uniformMatrix4fv(at.u_unprojected, false, telling.unprojected);
+  gl.uniform3fv(at.u_looking, telling.looking);
+  gl.uniform2fv(at.u_clips, telling.clips);
+}
+
+// What the shaders of a CustomMaterial are told besides, and where what
+// they may read is: what is behind them and how far it is, a picture that
+// is white all over, and after those the material's own pictures.
+const MORE = ["u_view", "u_projection", "u_seen", "u_unprojected", "u_looking", "u_clips", "u_screen", "u_depth", "u_white"];
+const SCREEN = 13;
+const DEPTH = 14;
+const WHITE = 15;
+const OWN = 16;
+
+// Qt's numbers for how what is drawn is put over what is there, as OpenGL
+// has them. The first is for none.
+const FACTORS = [0, 0, 1, 0x300, 0x301, 0x306, 0x307, 0x302, 0x303, 0x304, 0x305, 0x8001, 0x8002, 0x8003, 0x8004, 0x308];
+
+// A picture of one colour all over.
+const flats = new Map();
+function flat(...rgba) {
+  const key = rgba.join(" ");
+  let made = flats.get(key);
+  if (!made) {
+    flats.set(key, (made = gl.createTexture()));
+    gl.bindTexture(gl.TEXTURE_2D, made);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(rgba));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  }
+  return made;
+}
+
+function pictured(unit, texture) {
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.activeTexture(gl.TEXTURE0);
+}
+
+// The program a CustomMaterial is drawn with, made once of its shaders:
+// null where they make none, which is said once.
+const tailored = new WeakMap();
+function tailor(source) {
+  let made = tailored.get(source);
+  if (made !== undefined) return made;
+  const { vertex, fragment } = customised({ vertex: VERTEX, fragment: FRAGMENT }, source);
+  const own = program(vertex, fragment, []);
+  made = null;
+  if (own) {
+    const where = (name) => gl.getUniformLocation(own.program, name);
+    made = { program: own.program, at: Object.fromEntries([...UNIFORMS, ...MORE].map((name) => [name, where(`qt_${name}`)])), own: new Map(), told: null, shining: null };
+    gl.useProgram(made.program);
+    gl.uniform1i(made.at.u_map, 0);
+    gl.uniform1i(made.at.u_bones, 1);
+    gl.uniform1i(made.at.u_probe, PROBE);
+    SAMPLERS.forEach((name, index) => name && gl.uniform1i(made.at[name], UNITS[index]));
+    gl.uniform1i(made.at.u_screen, SCREEN);
+    gl.uniform1i(made.at.u_depth, DEPTH);
+    gl.uniform1i(made.at.u_white, WHITE);
+    source.samplers.forEach((name, index) => gl.uniform1i(where(name), OWN + index));
+    gl.useProgram(shaded.program);
+    pictured(WHITE, flat(255, 255, 255, 255));
+  }
+  tailored.set(source, made);
+  return made;
+}
+
+// What a material's own properties are to its shaders, handed over. A
+// picture that is not there reads as black, nothing seen through it, as in
+// Qt.
+function handed(own, uniforms) {
+  let unit = OWN;
+  for (const { name, type, value } of uniforms) {
+    if (type === "sampler2D") {
+      if (value) bound(value, unit++);
+      else pictured(unit++, flat(0, 0, 0, 255));
+      continue;
+    }
+    let where = own.own.get(name);
+    if (where === undefined) own.own.set(name, (where = gl.getUniformLocation(own.program, name)));
+    if (!where) continue;
+    if (type === "float") gl.uniform1f(where, value);
+    else if (type === "int" || type === "bool") gl.uniform1i(where, value);
+    else if (type === "vec2") gl.uniform2fv(where, value);
+    else if (type === "vec3") gl.uniform3fv(where, value);
+    else if (type === "vec4") gl.uniform4fv(where, value);
+    else if (type === "mat4") gl.uniformMatrix4fv(where, false, value);
+  }
+}
+
+// One part of a shape, with the material it is drawn with. A
+// CustomMaterial's is drawn by its own program: put over what is there as
+// the material says and no other way, and saying how far it is where what
+// nothing is seen through says it, unless the material has it otherwise.
 function part(piece) {
+  const { custom } = piece.material;
+  if (!custom) return drawn(piece);
+  const own = tailor(custom.source);
+  if (!own) return;
+  const lit = shining;
+  gl.useProgram(own.program);
+  at = own.at;
+  if (own.told !== telling) {
+    own.told = telling;
+    own.shining = null;
+    tell();
+  }
+  shining = own.shining;
+  handed(own, custom.uniforms);
+  if (custom.blend) {
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(...custom.blend.map((factor) => FACTORS[factor]));
+  } else gl.disable(gl.BLEND);
+  gl.depthMask(piece.sheer ? custom.depth === 1 : custom.depth !== 2);
+  drawn(piece);
+  if (piece.sheer) gl.enable(gl.BLEND);
+  gl.depthMask(!piece.sheer);
+  own.shining = shining;
+  shining = lit;
+  at = shaded.at;
+  gl.useProgram(shaded.program);
+}
+
+function drawn(piece) {
   const { shape, subset, world, material, opacity } = piece;
   const made = held(shape);
   shone(piece.lights);
@@ -1380,12 +1562,14 @@ function part(piece) {
   if (made.kind) gl.drawElementsInstanced(made.mode, subset.count, made.kind, subset.offset * made.size, instances.count);
   else gl.drawArraysInstanced(made.mode, subset.offset, subset.count, instances.count);
   // The shape is held once, for what draws it once as well.
-  for (let row = 0; row < 4; row++) gl.disableVertexAttribArray(9 + row);
+  for (let row = 0; row < ROWS; row++) gl.disableVertexAttribArray(9 + row);
 }
 
 // Whether something is seen through what a material draws.
 const sheer = (material, opacity) =>
-  material.blended || material.blend !== 0 || opacity * material.opacity < 1 || Boolean(material.maps?.opacity) || (!material.solid && (material.color[3] < 1 || Boolean(material.map?.sheer)));
+  material.custom
+    ? material.custom.through
+    : material.blended || material.blend !== 0 || opacity * material.opacity < 1 || Boolean(material.maps?.opacity) || (!material.solid && (material.color[3] < 1 || Boolean(material.map?.sheer)));
 
 // Draws `scene` (`{ width, height, environment, projection, camera, models,
 // lights }`) and hands the picture to `paper`, the context of `canvas`.
@@ -1428,16 +1612,26 @@ export function draw(scene, canvas, paper) {
     const view = math.inverse(eye) ?? math.IDENTITY;
     const seen = math.multiply(scene.projection, view);
     if (probe && environment.sky) backdrop(probe, environment, scene.projection, eye, tonemap);
-    gl.uniform4f(at.u_probing, probe ? 1 : 0, probe ? probe.levels - 1 : 0, environment.probe?.horizon ?? -1, environment.probe?.exposure ?? 0);
-    gl.uniformMatrix3fv(at.u_probeTurn, false, environment.probe?.turn ?? UNTURNED);
+    const told = {
+      probing: [probe ? 1 : 0, probe ? probe.levels - 1 : 0, environment.probe?.horizon ?? -1, environment.probe?.exposure ?? 0],
+      probeTurn: environment.probe?.turn ?? UNTURNED,
+      eye: eye.slice(12, 15),
+      fog: environment.fog?.color ?? NONE,
+      fogDepth: environment.fog?.depth ?? NONE,
+      fogHeight: environment.fog?.height ?? NONE,
+      fogLet: environment.fog?.through ?? NONE.slice(0, 2),
+      far: scene.far ?? 0,
+      tonemap,
+      view,
+      projection: scene.projection,
+      seen,
+      unprojected: math.inverse(scene.projection) ?? math.IDENTITY,
+      looking: [-eye[8], -eye[9], -eye[10]],
+      clips: [scene.near ?? 0, scene.far ?? 0],
+    };
+    telling = told;
+    tell();
     shining = null;
-    gl.uniform3fv(at.u_eye, eye.slice(12, 15));
-    gl.uniform4fv(at.u_fog, environment.fog?.color ?? NONE);
-    gl.uniform4fv(at.u_fogDepth, environment.fog?.depth ?? NONE);
-    gl.uniform4fv(at.u_fogHeight, environment.fog?.height ?? NONE);
-    gl.uniform2fv(at.u_fogLet, environment.fog?.through ?? NONE.slice(0, 2));
-    gl.uniform1f(at.u_far, scene.far ?? 0);
-    gl.uniform1i(at.u_tonemap, tonemap);
 
     // Each part of each shape with a material is a thing to draw. A shape
     // with fewer materials than parts has the last for the rest; one with
@@ -1471,6 +1665,44 @@ export function draw(scene, canvas, paper) {
     }
     solid.sort((a, b) => a.distance - b.distance);
     clear.sort((a, b) => b.distance - a.distance);
+
+    // What is behind what reads it is drawn for it first, as it is in
+    // linear light: what nothing is seen through, over what is behind the
+    // scene. Something that reads only how far that is, and is not seen
+    // through, is itself of it, as in Qt.
+    const reading = [...solid, ...clear].filter(({ material }) => material.custom?.source.screen || material.custom?.source.depth);
+    const back = reading.length ? behind(width, height) : null;
+    if (back) {
+      // Read while it is being drawn, there is nothing behind anything.
+      pictured(SCREEN, flat(0, 0, 0, 255));
+      pictured(DEPTH, flat(0, 0, 0, 255));
+      gl.bindFramebuffer(gl.FRAMEBUFFER, back.frame);
+      gl.depthMask(true);
+      gl.clearColor(red * alpha, green * alpha, blue * alpha, alpha);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      if (probe && environment.sky) backdrop(probe, environment, scene.projection, eye, -1);
+      telling = { ...told, tonemap: -1 };
+      tell();
+      shining = null;
+      if (environment.depth) gl.enable(gl.DEPTH_TEST);
+      else gl.disable(gl.DEPTH_TEST);
+      gl.depthFunc(gl.LEQUAL);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+      for (const piece of solid) part(piece);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (grade ? linear.frame : null));
+      const mipped = reading.some(({ material }) => material.custom.source.mips);
+      gl.activeTexture(gl.TEXTURE0 + DEPTH);
+      gl.bindTexture(gl.TEXTURE_2D, back.depth);
+      gl.activeTexture(gl.TEXTURE0 + SCREEN);
+      gl.bindTexture(gl.TEXTURE_2D, back.color);
+      if (mipped) gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mipped ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+      gl.activeTexture(gl.TEXTURE0);
+      telling = told;
+      tell();
+      shining = null;
+    }
 
     if (environment.depth) gl.enable(gl.DEPTH_TEST);
     else gl.disable(gl.DEPTH_TEST);

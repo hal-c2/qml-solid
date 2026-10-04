@@ -1636,3 +1636,95 @@ test("with the surroundings behind them, the nearer of two shapes is over the fu
   ];
   near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
 });
+
+// Every number here is what Qt 6.11 paints of the same scene.
+test("a CustomMaterial is drawn by its own shaders, handed what Qt hands them", async ({ page }) => {
+  await open(page, "custom3d");
+  const points = [
+    // Not lit: a colour handed over is in linear light, and is written as
+    // the shader says it.
+    [[25, 25], [8, 34, 81]],
+    // Where its own corners put it, in what a real, an int, a bool and
+    // vectors of two, three and four are to it.
+    [[65, 25], [64, 255, 191]],
+    [[85, 25], [255, 128, 64]],
+    // A picture, read as it is.
+    [[108, 18], [0, 255, 0]],
+    [[115, 30], [255, 0, 0]],
+    [[135, 30], [0, 0, 255]],
+    [[110, 34], [255, 0, 0]],
+    // Blended as it says: over what is there, added to it, and not at all,
+    // whatever is seen through its colour or its model.
+    [[175, 25], [152, 24, 24]],
+    [[225, 25], [13, 13, 13]],
+    [[275, 25], [255, 16, 16]],
+    [[325, 25], [0, 255, 0]],
+    // From behind, where it has both sides.
+    [[375, 25], [255, 0, 255]],
+    // Lit: as a PrincipledMaterial that gives back half is, beside it.
+    [[25, 75], [68, 209, 111]],
+    [[75, 75], [72, 210, 114]],
+    [[125, 75], [253, 212, 129]],
+    [[110, 60], [210, 175, 106]],
+    [[140, 90], [255, 255, 158]],
+    // By what its own functions make of the light all round and of each
+    // light, of the shine of them, and of the sum.
+    [[225, 75], [140, 33, 51]],
+    [[275, 75], [128, 153, 126]],
+    [[325, 75], [194, 0, 137]],
+    // Its model seen through, and its colour: neither is blended unless
+    // it says so.
+    [[375, 75], [255, 27, 27]],
+    [[125, 125], [255, 26, 26]],
+    [[175, 125], [152, 29, 29]],
+    // Raised by its corners, which lean the way it faces.
+    [[15, 117], [181, 132, 6]],
+    [[35, 117], [182, 181, 179]],
+    [[25, 100], [182, 180, 179]],
+    [[25, 140], [32, 32, 32]],
+    // A picture as the colour of what is lit, and what it gives off.
+    [[65, 125], [190, 10, 90]],
+    [[85, 125], [11, 10, 205]],
+    [[58, 118], [11, 190, 90]],
+    // One of many, in its entry's colour: not lit, and lit.
+    [[235, 115], [255, 55, 0]],
+    [[265, 135], [0, 55, 255]],
+    [[285, 115], [255, 133, 11]],
+    [[315, 135], [11, 133, 255]],
+    // What is behind it, as it is in linear light, and nothing where
+    // nothing is.
+    [[35, 175], [55, 13, 255]],
+    [[15, 175], [0, 0, 0]],
+    [[60, 175], [255, 128, 64]],
+    // And how far it is: what is blended reads of what is behind it and
+    // of nothing, what is not blended of itself.
+    [[135, 175], [128, 13, 242]],
+    [[110, 175], [255, 255, 0]],
+    [[325, 175], [125, 13, 242]],
+    // Where the eye is, which way it looks and how far it sees.
+    [[225, 175], [128, 64, 51]],
+    // Where a corner is to the eye, by the matrices, and the way it faces.
+    [[265, 165], [167, 40, 128]],
+    [[285, 165], [218, 40, 128]],
+    [[265, 185], [0, 0, 128]],
+    // How much of it is there, blended by itself.
+    [[375, 175], [144, 16, 16]],
+    [[300, 250], [32, 32, 32]],
+  ];
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+
+  // And what it is handed is what its properties are now.
+  await page.evaluate(() => {
+    window.scene.retint();
+    window.scene.shifted();
+  });
+  const later = [
+    [[25, 25], [81, 34, 8]],
+    [[65, 25], [32, 255, 191]],
+    [[85, 25], [255, 128, 64]],
+    [[65, 7], [32, 32, 32]],
+    [[65, 47], [32, 255, 191]],
+    [[65, 51], [32, 32, 32]],
+  ];
+  near(await painted(page, later), later.map(([, colour]) => colour), "", 3);
+});

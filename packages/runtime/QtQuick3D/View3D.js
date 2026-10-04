@@ -219,6 +219,7 @@ export const View3D = defineType("View3D", Item, {
           eye: camera?.$world() ?? null,
           projection: camera?.$projection(width, height) ?? null,
           far: camera?.clipFar ?? 0,
+          near: camera?.clipNear ?? 0,
           environment: (self.environment ?? SceneEnvironment).$environment?.() ?? PLAIN,
         };
       },
