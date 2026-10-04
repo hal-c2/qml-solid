@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use oxc_allocator::{ArenaBox, ArenaVec};
 use oxc_ast::ast::*;
+use oxc_ast_visit::Visit;
 use oxc_parser::qml::ast::*;
 use oxc_span::Span;
 
@@ -537,7 +538,28 @@ impl<'a, 's> Lower<'a, 's> {
                         .unwrap_or_default(),
                     (_, None) => Vec::new(),
                 };
-                self.handler(binding.value, &parameters, span)
+                let carried = match (path.len(), held) {
+                    (1, _) => self.tree.carried(self.types, index, &signal),
+                    (_, Some(held)) => types::carried(held, &signal),
+                    (_, None) => None,
+                };
+                // `onTextChanged: note(text)` names the argument or the
+                // property, which are the same: only a script that names
+                // the argument is given it.
+                let takes = match &binding.value {
+                    QmlBindingValue::Expression(
+                        Expression::FunctionExpression(_) | Expression::ArrowFunctionExpression(_),
+                    ) => true,
+                    value => parameters.first().is_some_and(|name| mentions(value, name)),
+                };
+                let mut handler = self.handler(binding.value, &parameters, span);
+                if let Some(property) = carried.filter(|_| takes) {
+                    let mut told = vec![self.tree.objects[index].handle.as_str()];
+                    told.extend(&path[..path.len() - 1]);
+                    told.push(property);
+                    self.told(&mut handler, &told);
+                }
+                handler
             }
             None => {
                 let property = self.tree.property(self.types, index, &path).unwrap_or_default();
@@ -716,10 +738,19 @@ impl<'a, 's> Lower<'a, 's> {
     fn function(&mut self, mut function: ArenaBox<'a, Function<'a>>, index: usize, built: &mut Built<'a>) {
         let Some(name) = function.id.as_ref().map(|id| id.name.to_string()) else { return };
         function.r#type = FunctionType::FunctionExpression;
-        let expression = Expression::FunctionExpression(function);
+        let mut expression = Expression::FunctionExpression(function);
         // In a `Connections`, `function onClicked() { }` is a handler of its
         // target's signal.
-        if self.is_class(index, "QQmlConnections") && types::handled(&name).is_some() {
+        if self.is_class(index, "QQmlConnections")
+            && let Some(signal) = types::handled(&name)
+        {
+            let tree = self.tree;
+            // What the signal carries is known of a target named by its id.
+            if let Some(target) = tree.target(index)
+                && let Some(property) = tree.carried(self.types, target, &signal)
+            {
+                self.told(&mut expression, &[tree.objects[target].handle.as_str(), property]);
+            }
             built.attributes.push(self.b.attr(&name, expression));
         } else {
             built.functions.push((name, expression));
@@ -757,6 +788,27 @@ impl<'a, 's> Lower<'a, 's> {
                 b.void_0()
             }
         }
+    }
+
+    /// `(text = label.text) => ...`: a handler of a change Qt tells with what
+    /// the property now is. The runtime tells of a property's change and of
+    /// nothing more, so the argument is the property when nothing is given;
+    /// a signal the runtime emits itself gives what it carries.
+    fn told(&mut self, handler: &mut Expression<'a>, path: &[&str]) {
+        let b = self.b;
+        let parameters = match handler {
+            Expression::ArrowFunctionExpression(arrow) => &mut arrow.params,
+            Expression::FunctionExpression(function) => &mut function.params,
+            _ => return,
+        };
+        let Some(parameter) = parameters.items.first_mut() else { return };
+        if parameter.initializer.is_some() || !matches!(parameter.pattern, BindingPattern::BindingIdentifier(_)) {
+            return;
+        }
+        let Some((object, rest)) = path.split_first() else { return };
+        self.uses.handles.insert((*object).to_string());
+        let value = rest.iter().fold(b.id(object), |value, name| b.member(value, name));
+        parameter.initializer = Some(ArenaBox::new_in(value, &b.allocator()));
     }
 
     fn statements(&self, statement: Statement<'a>) -> ArenaVec<'a, Statement<'a>> {
@@ -943,4 +995,24 @@ fn children_target(root: &QmlObject<'_>) -> Option<String> {
             _ => None,
         }
     })
+}
+
+/// Whether a script names `name`.
+fn mentions(value: &QmlBindingValue<'_>, name: &str) -> bool {
+    struct Mentions<'n> {
+        name: &'n str,
+        found: bool,
+    }
+    impl<'a> Visit<'a> for Mentions<'_> {
+        fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+            self.found |= identifier.name == self.name;
+        }
+    }
+    let mut mentions = Mentions { name, found: false };
+    match value {
+        QmlBindingValue::Expression(expression) => mentions.visit_expression(expression),
+        QmlBindingValue::Statement(statement) => mentions.visit_statement(statement),
+        QmlBindingValue::Object(_) | QmlBindingValue::Objects(_) => {}
+    }
+    mentions.found
 }

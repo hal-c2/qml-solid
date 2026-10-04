@@ -660,6 +660,8 @@ function defineGroup(Type, proto, name, properties) {
     enumerable: true,
     configurable: true,
   });
+  Type.groups[name] = Object.keys(properties);
+  defineChange(proto, name);
 }
 
 const handlerName = (name) => `on${name[0].toUpperCase()}${name.slice(1)}`;
@@ -716,6 +718,7 @@ export function defineType(name, base, spec = {}) {
   Type.spec = spec;
   Type.proto = proto;
   Type.slots = Object.create(base ? base.slots : null);
+  Type.groups = Object.create(base ? base.groups : null);
   Type.chain = base ? [...base.chain, Type] : [Type];
   Type.adopt = spec.adopt ?? base?.adopt;
   for (const [property, initial] of Object.entries(spec.properties ?? {})) {
@@ -1003,16 +1006,21 @@ function flatten(made, into) {
 // it is once the objects being created all are.
 export function onChange(self, name, handler, first) {
   const owner = getOwner();
+  // `fontChanged`: a group is the one object whatever is in it, and changes
+  // when anything in it does.
+  const members = self.$type?.groups[name];
+  const read = members ? () => members.map((member) => self[name][member]) : () => self[name];
+  const same = members ? (value, last) => value.every((member, index) => Object.is(member, last[index])) : Object.is;
   const watch = (firsts) => {
-    let last = untrack(() => self[name]);
+    let last = untrack(read);
     first?.(last, firsts);
     runWithOwner(owner, () =>
       createEffect(
-        () => self[name],
+        read,
         (value) => {
           // Reading it again is not a change: what it was computed from may
           // have changed and left it as it was.
-          if (Object.is(value, last)) return;
+          if (same(value, last)) return;
           last = value;
           after(handler);
         },

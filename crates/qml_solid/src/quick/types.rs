@@ -276,6 +276,27 @@ impl<'p> Types<'p> {
         None
     }
 
+    /// The property whose value the signal `name` carries to its handlers,
+    /// when it is one of a Qt type's: [`carried`]. What a component declares
+    /// by that name is its own, and carries what it says.
+    pub(crate) fn carried<'n>(&self, kind: &Kind, name: &'n str) -> Option<&'n str> {
+        let property = name.strip_suffix("Changed")?;
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            match kind {
+                Kind::Qt(ty) => return carried(ty, name),
+                Kind::Component(key) => {
+                    let shape = self.project.shape(&key)?;
+                    if shape.signals.contains_key(name) || shape.properties.contains_key(property) {
+                        return None;
+                    }
+                    kind = self.root(&key, shape)?;
+                }
+            }
+        }
+        None
+    }
+
     /// The properties whoever makes an object of the type has to set.
     pub(crate) fn required(&self, kind: &Kind) -> Vec<String> {
         let mut required = Vec::new();
@@ -366,6 +387,20 @@ fn shape_member(shape: &Shape, name: &str) -> Option<Member> {
 }
 
 /// `onClicked` → `clicked`: the signal a handler's name stands for.
+/// The property whose new value Qt's signal `name` carries: `text`, of the
+/// `textChanged(text)` of a Text. Qt says it signal by signal, and most carry
+/// nothing: `widthChanged()`, and the change of any property QML declares.
+pub(crate) fn carried<'n>(ty: &'static qt::Type, name: &'n str) -> Option<&'n str> {
+    let property = name.strip_suffix("Changed")?;
+    let [parameter] = ty.signal(name)?.parameters.as_slice() else { return None };
+    // Not the value, by the name Qt gives it: by how much a handler moved
+    // (`scaleChanged(delta)`), the event (`mouseXChanged(mouse)`).
+    if matches!(*parameter, "delta" | "mouse") {
+        return None;
+    }
+    ty.property(property).map(|_| property)
+}
+
 pub(crate) fn handled(name: &str) -> Option<String> {
     let rest = name.strip_prefix("on")?;
     let first = rest.chars().next()?;

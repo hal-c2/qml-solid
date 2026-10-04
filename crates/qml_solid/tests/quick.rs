@@ -130,6 +130,57 @@ MouseArea {
 }
 
 #[test]
+fn a_handler_of_a_change_is_given_what_qt_tells_it() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Templates as T
+Item {
+    id: root
+    property int count: 0
+    onCountChanged: (value) => console.log(value)
+    onWidthChanged: (width) => console.log(width)
+    onFocusChanged: (focus) => console.log(focus)
+    onStateChanged: function(state) { console.log(state) }
+    Text {
+        onTextChanged: console.log(text)
+        onFontChanged: console.log("changed")
+        onLineHeightChanged: (height = 1) => console.log(height)
+    }
+    T.Button { id: button; action.onTextChanged: (text) => console.log(text) }
+    MouseArea { onMouseXChanged: (mouse) => console.log(mouse.x) }
+    PinchHandler { onScaleChanged: (delta) => console.log(delta) }
+    Connections {
+        target: button
+        function onFocusChanged(focus) { console.log(focus) }
+        function onWidthChanged(width) { console.log(width) }
+    }
+}"#,
+    );
+    // `focusChanged(bool)`, `stateChanged(string)`, `textChanged(string)`:
+    // Qt's signal carries what the property now is. The runtime tells of a
+    // change and of nothing more, so that is what the argument is then.
+    assert_contains(&code, "onFocusChanged={(focus = root.focus) => console.log(focus)}");
+    assert_contains(&code, "onStateChanged={function(state = root.state) {");
+    assert_contains(&code, "onTextChanged={(text = $1.text) => console.log(text)}");
+    // Of the object a property holds, too.
+    assert_contains(&code, "action$onTextChanged={(text = button.action.text) => console.log(text)}");
+    // And a Connections of a target it names by its id.
+    assert_contains(&code, "onFocusChanged={function onFocusChanged(focus = button.focus) {");
+    // `widthChanged()` carries nothing, nor does the change of a property
+    // QML declares: an argument the handler names is undefined, as in Qt.
+    assert_contains(&code, "onCountChanged={(value) => console.log(value)}");
+    assert_contains(&code, "onWidthChanged={(width) => console.log(width)}");
+    assert_contains(&code, "onWidthChanged={function onWidthChanged(width) {");
+    // A script that does not name the argument is given none, and one that
+    // says what it is without it keeps what it says.
+    assert_contains(&code, r#"onFontChanged={(font) => console.log("changed")}"#);
+    assert_contains(&code, "onLineHeightChanged={(height = 1) => console.log(height)}");
+    // What Qt carries there is not the property: the event, by how much.
+    assert_contains(&code, "onMouseXChanged={(mouse) => console.log(mouse.x)}");
+    assert_contains(&code, "onScaleChanged={(delta) => console.log(delta)}");
+}
+
+#[test]
 fn a_type_is_read_for_its_enums_and_for_what_it_attaches() {
     let code = lowered(
         r#"import QtQuick
