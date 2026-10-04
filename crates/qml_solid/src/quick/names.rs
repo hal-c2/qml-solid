@@ -84,6 +84,10 @@ struct Resolver<'a, 's, 'p> {
     errors: &'s mut Vec<Error>,
 }
 
+/// What a state changes of a target that is not named by its id is given
+/// the target as: [`Tree::aimed`].
+pub(crate) const TARGET: &str = "$target";
+
 /// What `Type.name` is.
 enum Access {
     /// A member of the type itself: an enum key, a property of a singleton.
@@ -111,6 +115,14 @@ impl<'a> Resolver<'a, '_, '_> {
         self.b.id(handle)
     }
 
+    /// The object whose names what is written at `offset` may use as its own.
+    fn scope(&mut self, offset: u32) -> Expression<'a> {
+        if self.tree.aimed(offset) {
+            return self.b.id(TARGET);
+        }
+        self.handle(self.tree.scope_at(offset))
+    }
+
     /// What reads `name` where it is written; None to leave it as it is.
     /// `written` when it is assigned to: then it has to be one place.
     fn bare(&mut self, name: &str, span: Span, written: bool) -> Option<Expression<'a>> {
@@ -124,6 +136,9 @@ impl<'a> Resolver<'a, '_, '_> {
 
         let inside = tree.object_at(span.start);
         let scope = tree.scope_at(span.start);
+        // The target's names come first, and nothing of the PropertyChanges
+        // it is written in is in sight.
+        let aimed = tree.aimed(span.start);
         let mut context = tree.objects[inside].context;
         // What the delegates the expression is in are given, innermost first.
         // What that is depends on the model, which only the running program
@@ -135,7 +150,8 @@ impl<'a> Resolver<'a, '_, '_> {
             let root = tree.contexts[context].root;
             // Only the innermost context has a scope object: further out, a
             // name is a member of the component's root or nothing.
-            let candidates = if first && scope != root { [Some(scope), Some(root)] } else { [Some(root), None] };
+            let candidates =
+                if first && scope != root && !aimed { [Some(scope), Some(root)] } else { [Some(root), None] };
             first = false;
             if let Some(object) =
                 candidates.into_iter().flatten().find(|object| tree.member(self.types, *object, name).is_some())
@@ -184,6 +200,15 @@ impl<'a> Resolver<'a, '_, '_> {
             self.uses.kernel.insert("$lookup");
             read = Some(b.call(b.id("$lookup"), [b.id(&scope), b.string(name)]));
             self.uses.handles.insert(scope);
+        }
+        if aimed {
+            // `"name" in $target ? $target.name : root.name`. A name nothing
+            // else has is the target's, or nothing.
+            let own = b.member(b.id(TARGET), name);
+            return Some(match read {
+                Some(outer) => b.conditional(b.binary(b.string(name), BinaryOperator::In, b.id(TARGET)), own, outer),
+                None => own,
+            });
         }
         if read.is_none() {
             self.errors.push(Error::new(format!("`{name}` is not defined"), span));
@@ -270,8 +295,7 @@ impl<'a> Resolver<'a, '_, '_> {
             Access::Enum => *expression = b.id(name),
             Access::Singleton => member.object = b.call(b.id(name), []),
             Access::Attached => {
-                let scope = self.tree.scope_at(span.start);
-                let attachee = self.handle(scope);
+                let attachee = self.scope(span.start);
                 member.object = b.call(b.member(b.id(name), "attached"), [attachee]);
             }
         }
@@ -365,7 +389,7 @@ impl<'a> Resolver<'a, '_, '_> {
             Attaching::Here(namespace) => {
                 let ty = b.member(b.id(&namespace), &name);
                 self.uses.namespaces.insert(namespace);
-                let attachee = self.handle(self.tree.scope_at(span.start));
+                let attachee = self.scope(span.start);
                 b.call(b.member(ty, "attached"), [attachee])
             }
             Attaching::Through(namespace) => {

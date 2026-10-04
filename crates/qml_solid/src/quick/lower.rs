@@ -27,6 +27,7 @@ use oxc_parser::qml::ast::*;
 use oxc_span::Span;
 
 use super::{
+    names,
     paths::{Paths, is_absolute, is_resolved},
     scope::{self, Tree},
     types::{self, Member, Origin, Property, Types},
@@ -652,12 +653,15 @@ impl<'a, 's> Lower<'a, 's> {
         } else {
             (None, path)
         };
+        // A target only the running program knows is given to what is
+        // changed of it, for the names that are its own.
+        let given: &[&str] = if self.tree.aimed(span.start) { &[names::TARGET] } else { &[] };
         let value = match value {
-            QmlBindingValue::Expression(expression) => b.arrow(&[], expression),
-            QmlBindingValue::Statement(statement) => b.arrow_block(&[], self.worth(statement)),
+            QmlBindingValue::Expression(expression) => b.arrow(given, expression),
+            QmlBindingValue::Statement(statement) => b.arrow_block(given, self.worth(statement)),
             value => {
                 let value = self.value(value, Property::default());
-                b.arrow(&[], value)
+                b.arrow(given, value)
             }
         };
         let mut entry = vec![b.string(&path.join(".")), value];

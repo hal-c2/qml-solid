@@ -566,7 +566,8 @@ export const State = defineType("State", QtObject, {
 // `$changes` is `[name, value, target, type]` for each property changed:
 // `value` the binding, `target` what `rect.width: 10` names when it is not
 // `target`, `type` what attaches the object the property is of
-// (`Layout.preferredWidth: 10`).
+// (`Layout.preferredWidth: 10`). The binding is given the target, whose
+// names are the first it finds when the target is not known by its id.
 export const PropertyChanges = defineType("PropertyChanges", QtObject, {
   properties: { target: undefined, explicit: false, restoreEntryValues: true },
   methods: {
@@ -575,14 +576,20 @@ export const PropertyChanges = defineType("PropertyChanges", QtObject, {
       if (!changes) return;
       const restoring = Boolean(this.restoreEntryValues);
       const explicit = Boolean(this.explicit);
+      const target = this.target;
+      // A memo is of the target it was made for: another has other names.
+      if (this.$aimed !== target) this.$memos = null;
+      this.$aimed = target;
       const memos = (this.$memos ??= []);
       for (let index = 0; index < changes.length; index++) {
         const [name, value, where, type] = changes[index];
-        let object = where ? where() : this.target;
+        let object = where ? where() : target;
         if (object != null && type) object = type.attached?.(object);
         if (object == null) continue;
         const property = new Property(object, name);
-        if (property.valid) actions.push(binding(states, this, property, value, memos, index, restoring, explicit));
+        if (!property.valid) continue;
+        const given = where ? value : () => value(target);
+        actions.push(binding(states, this, property, given, memos, index, restoring, explicit));
       }
     },
   },

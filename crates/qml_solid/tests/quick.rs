@@ -1132,7 +1132,7 @@ Item {
     states: State {
         PropertyChanges { target: a; width: parent.width / 2; height: width + 1; x: size }
         PropertyChanges { a.y: parent.height }
-        PropertyChanges { target: box.children[0]; z: parent.z }
+        PropertyChanges { target: box.children[0]; z: parent.z; x: size; y: Math.round(text.length) }
         AnchorChanges { target: a; anchors.right: parent.right }
         ParentChange { target: a; parent: box; width: parent.width }
     }
@@ -1144,10 +1144,14 @@ Item {
     assert_contains(&code, "() => a.width + 1");
     assert_contains(&code, "() => root.size");
     assert_contains(&code, "anchors$right={a.parent.right}");
-    // A property named through an id is a binding where it is written, and
-    // so is one of a target only the running program knows.
+    // A property named through an id is a binding where it is written.
     assert_contains(&code, "() => root.parent.height");
-    assert_contains(&code, "() => root.parent.z");
+    // A target only the running program knows is given to the binding: a
+    // name is the target's if it has it, and the root's if not.
+    assert_contains(&code, "($target) => (\"parent\" in $target ? $target.parent : root.parent).z");
+    assert_contains(&code, "($target) => \"size\" in $target ? $target.size : root.size");
+    // A name nothing else has is the target's, and a global is itself.
+    assert_contains(&code, "($target) => Math.round($target.text.length)");
     // A ParentChange has a `parent` of its own.
     assert_contains(&code, ".parent.width}");
     assert_lacks(&code, "width={a.parent.width}");

@@ -236,3 +236,33 @@ test("a name in what a state changes is the target's before it is the root's", a
   await page.evaluate(() => window.scene.step(1));
   expect(await read()).toEqual([20, 20, 0, 0, 0, 20, 0]);
 });
+
+test("a name in what a state changes is the target's when the target is not named by its id", async ({ page }) => {
+  await open(page, "statetarget");
+  const read = await page.evaluate(() => {
+    const { scene } = window;
+    const seen = [scene.read()];
+    for (let i = 0; i < 8; i++) {
+      scene.step(i);
+      window.flush();
+      seen.push(scene.read());
+    }
+    return seen;
+  });
+  // Qt 6.11: [state, kid.said, kid.heard, kid.height, other.said, label.said].
+  expect(read).toEqual([
+    ["", "", "", 21, "", ""],
+    // `tag`, `width` and `parent` are the target's, `amount` the root's.
+    ["expression", "kid:20:7", "box", 40, "other:30:7", ""],
+    // They are bindings: the target's width is followed.
+    ["expression", "kid:25:7", "box", 50, "other:30:7", ""],
+    // Another target is not taken up while the state lasts.
+    ["expression", "kid:25:7", "box", 50, "other:30:7", ""],
+    ["call", "kid/25", "", 21, "", "label/label"],
+    ["call", "kid/26", "", 21, "", "label/label"],
+    ["property", "", "", 21, "", "label#40#7"],
+    // It is when the state is entered again, with its own names.
+    ["expression", "kid:26:7", "box", 52, "", "label:40:7"],
+    ["", "", "", 21, "", ""],
+  ]);
+});
