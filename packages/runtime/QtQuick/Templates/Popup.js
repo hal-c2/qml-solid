@@ -295,7 +295,13 @@ function asked(held) {
   return held.assigned ? held.value : held.bound ? held.bound() : held.given;
 }
 
-const overlap = (at, length, from, room) => Math.max(0, Math.min(at + length, from + room) - Math.max(at, from));
+// How much of a rectangle is inside another, across and down: nothing either
+// way where they do not meet.
+function meet(x, y, w, h, bx, by, bw, bh) {
+  const across = Math.min(x + w, bx + bw) - Math.max(x, bx);
+  const down = Math.min(y + h, by + bh) - Math.max(y, by);
+  return across > 0 && down > 0 ? [across, down] : [0, 0];
+}
 
 // Where the popup's item goes in the overlay, and how big it is made to fit:
 // Qt's `QQuickPopupPositioner::reposition`.
@@ -346,12 +352,12 @@ function position(self) {
   const bh = overlay.height - by - Math.max(0, bottom);
   // What does not fit on one side of its parent is tried on the other.
   if (self.$flipX && (x < bx || x + w > bx + bw)) {
-    const flipped = map(parent.width - px - w, py).x;
-    if (overlap(flipped, w, bx, bw) > overlap(x, w, bx, bw)) x = flipped;
+    const flipped = map(parent.width - px - w, py);
+    if (meet(flipped.x, flipped.y, w, h, bx, by, bw, bh)[0] > meet(x, y, w, h, bx, by, bw, bh)[0]) x = flipped.x;
   }
   if (self.$flipY && (y < by || y + h > by + bh)) {
-    const flipped = map(px, parent.height - py - h).y;
-    if (overlap(flipped, h, by, bh) > overlap(y, h, by, bh)) y = flipped;
+    const flipped = map(px, parent.height - py - h);
+    if (meet(flipped.x, flipped.y, w, h, bx, by, bw, bh)[1] > meet(x, y, w, h, bx, by, bw, bh)[1]) y = flipped.y;
   }
   // A margin that was given keeps the popup inside it.
   if (self.$moveY) {
@@ -548,6 +554,8 @@ function show(self) {
       slot(item, "z").provide(Math.max(over.$item.z, item.z));
     }
     slot(item, "visible").write(true);
+    pop.shown = true;
+    self.$appeared(true);
     wheels();
   }
   const overlay = pop.overlay;
@@ -576,6 +584,7 @@ function show(self) {
     slot(self, "opened").changed();
     settle();
     self.$opened();
+    self.$came();
   });
 }
 
@@ -604,8 +613,9 @@ function hide(self) {
   run(self, self.exit, () => finish(self));
 }
 
-// Takes the popup's item out of the overlay.
-function leave(self) {
+// Takes the popup's item out of the overlay. One that is destroyed tells
+// nobody.
+function leave(self, told = true) {
   const pop = self.$pop;
   const item = self.$item;
   self.$setPlacing(false);
@@ -613,6 +623,8 @@ function leave(self) {
   pop.overlay.$remove(item);
   slot(item, "parent").write(null);
   slot(item, "visible").write(false);
+  pop.shown = false;
+  if (told) self.$appeared(false);
   undim(self);
 }
 
@@ -780,7 +792,8 @@ export const Popup = defineType("Popup", QtObject, {
       const given = own();
       return given?.$node ? given : (given?.$contentItem ?? null);
     },
-    visible: (self) => self.$pop.visible,
+    // A popup whose item is gone is not seen, though it has yet to say so.
+    visible: (self) => self.$pop.visible && self.$pop.shown,
     opened: (self) => self.$pop.visible && self.$pop.phase === IDLE,
   },
   signals: ["closed", "aboutToShow", "aboutToHide"],
@@ -830,6 +843,10 @@ export const Popup = defineType("Popup", QtObject, {
     $show(shown) {
       untrack(() => (shown ? show(this) : hide(this)));
     },
+    // What a type of popup does when its item comes and goes, and once it
+    // is open: a tool tip has a clock to start and stop.
+    $appeared() {},
+    $came() {},
     // What closes the popup of itself: a dialog is rejected.
     $dismiss() {
       this.close();
@@ -851,6 +868,7 @@ export const Popup = defineType("Popup", QtObject, {
     const pop = (self.$pop = {
       phase: IDLE,
       visible: false,
+      shown: false,
       x: 0,
       y: 0,
       overlay: null,
@@ -922,7 +940,7 @@ export const Popup = defineType("Popup", QtObject, {
     onCleanup(() => {
       if (!pop.overlay) return;
       stop(pop);
-      untrack(() => leave(self));
+      untrack(() => leave(self, false));
       pop.overlay = null;
     });
   },

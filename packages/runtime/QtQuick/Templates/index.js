@@ -28,3 +28,4 @@ export { SwipeView } from "./SwipeView.js";
 export { Switch } from "./Switch.js";
 export { TabBar } from "./TabBar.js";
 export { MenuSeparator, ToolSeparator } from "./ToolSeparator.js";
+export { ToolTip } from "./ToolTip.js";
