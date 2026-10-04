@@ -44,6 +44,7 @@ use qmlfile::QmlFile;
 const MODULES: &[&str] = &[
     "Qt.labs.assetdownloader",
     "Qt.labs.folderlistmodel",
+    "Qt.labs.qmlmodels",
     "Qt.labs.synchronizer",
     "QtCharts",
     "QtCore",

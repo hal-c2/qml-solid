@@ -189,14 +189,49 @@ impl<'p> Types<'p> {
     }
 
     /// What `member` is to the enums a component declares: `Some(true)` an
-    /// enum (`Type.Theme`, of `Type.Theme.Dark`), `Some(false)` a key.
+    /// enum (`Type.Theme`, of `Type.Theme.Dark`), `Some(false)` a key. The
+    /// enums of the component its root is are its own too.
     pub(crate) fn declared_enum(&self, kind: &Kind, member: &str) -> Option<bool> {
-        let Kind::Component(key) = kind else { return None };
-        let shape = self.project.shape(key)?;
-        if shape.enums.values().any(|keys| keys.iter().any(|key| key == member)) {
-            return Some(false);
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            let Kind::Component(key) = kind else { return None };
+            let shape = self.project.shape(&key)?;
+            if shape.enums.values().any(|keys| keys.iter().any(|key| key == member)) {
+                return Some(false);
+            }
+            if shape.enums.contains_key(member) {
+                return Some(true);
+            }
+            kind = self.root(&key, shape)?;
         }
-        shape.enums.contains_key(member).then_some(true)
+        None
+    }
+
+    /// Whether `Type.key`, or `Type.scope.key`, is a key of an enum of the
+    /// type: one a component in its chain declares, or one of the Qt type
+    /// the chain ends in.
+    pub(crate) fn is_key(&self, kind: &Kind, scope: Option<&str>, key: &str) -> bool {
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            let file = match kind {
+                Kind::Qt(ty) => {
+                    return ty.enum_value(key).is_some_and(|value| {
+                        let enumeration = value.enumeration;
+                        scope.is_none_or(|scope| scope == enumeration.name || Some(scope) == enumeration.alias)
+                    });
+                }
+                Kind::Component(file) => file,
+            };
+            let Some(shape) = self.project.shape(&file) else { return false };
+            if shape.enums.iter().any(|(name, keys)| {
+                scope.is_none_or(|scope| scope == name) && keys.iter().any(|known| known == key)
+            }) {
+                return true;
+            }
+            let Some(root) = self.root(&file, shape) else { return false };
+            kind = root;
+        }
+        false
     }
 
     /// Whether `name` is what the file imports something `as`.
@@ -268,20 +303,59 @@ impl<'p> Types<'p> {
         None
     }
 
-    /// The properties whoever makes an object of the type has to set.
-    pub(crate) fn required(&self, kind: &Kind) -> Vec<String> {
-        let mut required = Vec::new();
+    /// The property whose value the signal `name` carries to its handlers,
+    /// when it is one of a Qt type's: [`carried`]. What a component declares
+    /// by that name is its own, and carries what it says.
+    pub(crate) fn carried<'n>(&self, kind: &Kind, name: &'n str) -> Option<&'n str> {
+        let property = name.strip_suffix("Changed")?;
         let mut kind = kind.clone();
         for _ in 0..64 {
-            let Kind::Component(key) = kind else { break };
-            let Some(shape) = self.project.shape(&key) else { break };
-            for name in &shape.required {
-                if !required.contains(name) {
-                    required.push(name.clone());
+            match kind {
+                Kind::Qt(ty) => return carried(ty, name),
+                Kind::Component(key) => {
+                    let shape = self.project.shape(&key)?;
+                    if shape.signals.contains_key(name) || shape.properties.contains_key(property) {
+                        return None;
+                    }
+                    kind = self.root(&key, shape)?;
                 }
             }
-            let Some(root) = self.root(&key, shape) else { break };
-            kind = root;
+        }
+        None
+    }
+
+    /// The properties whoever makes an object of the type has to set: what
+    /// the components in its chain require, and what the Qt type the chain
+    /// ends in does, in its C++ (`tableView` of a TableViewDelegate) or in
+    /// the QML of a style (`row`, `column` and `model` of Basic's).
+    pub(crate) fn required(&self, kind: &Kind) -> Vec<String> {
+        let mut required: Vec<String> = Vec::new();
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            match kind {
+                Kind::Qt(ty) => {
+                    let mut ty = Some(ty);
+                    while let Some(found) = ty {
+                        for property in found.properties.iter().filter(|property| property.is_required) {
+                            if !required.iter().any(|name| name == property.name) {
+                                required.push(property.name.to_string());
+                            }
+                        }
+                        ty = found.prototype();
+                    }
+                    break;
+                }
+                Kind::Component(key) => {
+                    let Some(shape) = self.project.shape(&key) else { break };
+                    for name in &shape.required {
+                        if !required.contains(name) {
+                            required.push(name.clone());
+                        }
+                    }
+                    let Some(root) = self.root(&key, shape) else { break };
+                    kind = root;
+                }
+            }
         }
         required
     }
@@ -358,6 +432,20 @@ fn shape_member(shape: &Shape, name: &str) -> Option<Member> {
 }
 
 /// `onClicked` → `clicked`: the signal a handler's name stands for.
+/// The property whose new value Qt's signal `name` carries: `text`, of the
+/// `textChanged(text)` of a Text. Qt says it signal by signal, and most carry
+/// nothing: `widthChanged()`, and the change of any property QML declares.
+pub(crate) fn carried<'n>(ty: &'static qt::Type, name: &'n str) -> Option<&'n str> {
+    let property = name.strip_suffix("Changed")?;
+    let [parameter] = ty.signal(name)?.parameters.as_slice() else { return None };
+    // Not the value, by the name Qt gives it: by how much a handler moved
+    // (`scaleChanged(delta)`), the event (`mouseXChanged(mouse)`).
+    if matches!(*parameter, "delta" | "mouse") {
+        return None;
+    }
+    ty.property(property).map(|_| property)
+}
+
 pub(crate) fn handled(name: &str) -> Option<String> {
     let rest = name.strip_prefix("on")?;
     let first = rest.chars().next()?;

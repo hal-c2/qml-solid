@@ -471,6 +471,95 @@ module Qt.labs.folderlistmodel
 		method isFolder
 		method get
 		method indexOf
+module Qt.labs.qmlmodels
+	DelegateChoice QQmlDelegateChoice
+	DelegateChooser QQmlDelegateChooser
+	TableModel QQmlTableModel
+	TableModelColumn QQmlTableModelColumn
+	TreeModel QQmlTreeModel
+	type QQmlAbstractColumnModel
+		prototype QAbstractItemModel
+		default columns
+		prop columnCount int readonly
+		prop columns QQmlTableModelColumn list readonly
+		signal columnCountChanged
+		signal rowsChanged
+		method data
+		method setData
+	type QQmlDelegateChoice DelegateChoice
+		prototype QObject
+		default delegate
+		prop roleValue QVariant
+		prop row int
+		prop index int
+		prop column int
+		prop delegate QQmlComponent pointer
+		signal roleValueChanged
+		signal rowChanged
+		signal indexChanged
+		signal columnChanged
+		signal delegateChanged
+		signal changed
+	type QQmlDelegateChooser DelegateChooser
+		prototype QQmlAbstractDelegateComponent
+		default choices
+		prop role QString
+		prop choices QQmlDelegateChoice list readonly
+		signal roleChanged
+	type QQmlTableModel TableModel
+		prototype QQmlAbstractColumnModel
+		default columns
+		prop rowCount int readonly
+		prop rows QVariant
+		signal rowCountChanged
+		method appendRow
+		method clear
+		method getRow
+		method insertRow
+		method moveRow
+		method removeRow
+		method setRow
+	type QQmlTableModelColumn TableModelColumn
+		prototype QObject
+		prop display QJSValue
+		prop decoration QJSValue
+		prop edit QJSValue
+		prop toolTip QJSValue
+		prop statusTip QJSValue
+		prop whatsThis QJSValue
+		prop font QJSValue
+		prop textAlignment QJSValue
+		prop background QJSValue
+		prop foreground QJSValue
+		prop checkState QJSValue
+		prop accessibleText QJSValue
+		prop accessibleDescription QJSValue
+		prop sizeHint QJSValue
+		signal indexChanged
+		signal displayChanged
+		signal decorationChanged
+		signal editChanged
+		signal toolTipChanged
+		signal statusTipChanged
+		signal whatsThisChanged
+		signal fontChanged
+		signal textAlignmentChanged
+		signal backgroundChanged
+		signal foregroundChanged
+		signal checkStateChanged
+		signal accessibleTextChanged
+		signal accessibleDescriptionChanged
+		signal sizeHintChanged
+	type QQmlTreeModel TreeModel
+		prototype QQmlAbstractColumnModel
+		default columns
+		prop rows QVariant
+		method appendRow
+		method clear
+		method getRow
+		method removeRow
+		method setRow
+		method index
 module Qt.labs.synchronizer
 	Synchronizer QQmlSynchronizer
 	type QQmlSynchronizer Synchronizer
@@ -4827,26 +4916,6 @@ module QtQml.Models
 		prototype QQmlComponent
 		is uncreatable
 		signal delegateChanged
-	type QQmlDelegateChoice DelegateChoice
-		prototype QObject
-		default delegate
-		prop roleValue QVariant
-		prop row int
-		prop index int
-		prop column int
-		prop delegate QQmlComponent pointer
-		signal roleValueChanged
-		signal rowChanged
-		signal indexChanged
-		signal columnChanged
-		signal delegateChanged
-		signal changed
-	type QQmlDelegateChooser DelegateChooser
-		prototype QQmlAbstractDelegateComponent
-		default choices
-		prop role QString
-		prop choices QQmlDelegateChoice list readonly
-		signal roleChanged
 	type QQmlDelegateModel DelegateModel
 		prototype QQmlInstanceModel
 		attached QQmlDelegateModelAttached

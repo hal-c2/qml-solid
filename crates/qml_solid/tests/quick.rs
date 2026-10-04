@@ -130,6 +130,57 @@ MouseArea {
 }
 
 #[test]
+fn a_handler_of_a_change_is_given_what_qt_tells_it() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Templates as T
+Item {
+    id: root
+    property int count: 0
+    onCountChanged: (value) => console.log(value)
+    onWidthChanged: (width) => console.log(width)
+    onFocusChanged: (focus) => console.log(focus)
+    onStateChanged: function(state) { console.log(state) }
+    Text {
+        onTextChanged: console.log(text)
+        onFontChanged: console.log("changed")
+        onLineHeightChanged: (height = 1) => console.log(height)
+    }
+    T.Button { id: button; action.onTextChanged: (text) => console.log(text) }
+    MouseArea { onMouseXChanged: (mouse) => console.log(mouse.x) }
+    PinchHandler { onScaleChanged: (delta) => console.log(delta) }
+    Connections {
+        target: button
+        function onFocusChanged(focus) { console.log(focus) }
+        function onWidthChanged(width) { console.log(width) }
+    }
+}"#,
+    );
+    // `focusChanged(bool)`, `stateChanged(string)`, `textChanged(string)`:
+    // Qt's signal carries what the property now is. The runtime tells of a
+    // change and of nothing more, so that is what the argument is then.
+    assert_contains(&code, "onFocusChanged={(focus = root.focus) => console.log(focus)}");
+    assert_contains(&code, "onStateChanged={function(state = root.state) {");
+    assert_contains(&code, "onTextChanged={(text = $1.text) => console.log(text)}");
+    // Of the object a property holds, too.
+    assert_contains(&code, "action$onTextChanged={(text = button.action.text) => console.log(text)}");
+    // And a Connections of a target it names by its id.
+    assert_contains(&code, "onFocusChanged={function onFocusChanged(focus = button.focus) {");
+    // `widthChanged()` carries nothing, nor does the change of a property
+    // QML declares: an argument the handler names is undefined, as in Qt.
+    assert_contains(&code, "onCountChanged={(value) => console.log(value)}");
+    assert_contains(&code, "onWidthChanged={(width) => console.log(width)}");
+    assert_contains(&code, "onWidthChanged={function onWidthChanged(width) {");
+    // A script that does not name the argument is given none, and one that
+    // says what it is without it keeps what it says.
+    assert_contains(&code, r#"onFontChanged={(font) => console.log("changed")}"#);
+    assert_contains(&code, "onLineHeightChanged={(height = 1) => console.log(height)}");
+    // What Qt carries there is not the property: the event, by how much.
+    assert_contains(&code, "onMouseXChanged={(mouse) => console.log(mouse.x)}");
+    assert_contains(&code, "onScaleChanged={(delta) => console.log(delta)}");
+}
+
+#[test]
 fn a_type_is_read_for_its_enums_and_for_what_it_attaches() {
     let code = lowered(
         r#"import QtQuick
@@ -231,6 +282,46 @@ Item {
     let code = lowered("import QtQuick\nItem {\n    TableView.editDelegate: Text { text: column }\n}");
     assert_contains(&code, "TableView$editDelegate={$component(($data) => {");
     assert_contains(&code, "text={$data.column}");
+}
+
+#[test]
+fn a_delegate_is_given_what_its_type_requires() {
+    // What Qt's type requires in C++, and what a style's requires in QML.
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Templates as T
+Item {
+    TableView { delegate: TableViewDelegate { } }
+    TableView { delegate: T.TableViewDelegate { required property int row; selected: false } }
+    HorizontalHeaderView { delegate: T.HeaderViewDelegate { } }
+    TableViewDelegate { }
+}"#,
+    );
+    assert_contains(
+        &code,
+        "<TableViewDelegate column={$data.column} row={$data.row} model={$data.model} tableView={$data.tableView} \
+         current={$data.current} selected={$data.selected} editing={$data.editing}></TableViewDelegate>",
+    );
+    // What the delegate sets is not given.
+    assert_contains(
+        &code,
+        "<T.TableViewDelegate selected={false} row={$data.row} tableView={$data.tableView} current={$data.current} \
+         editing={$data.editing}",
+    );
+    assert_contains(&code, "<T.HeaderViewDelegate headerView={$data.headerView} model={$data.model} tableView={$data.tableView}");
+    // One that is not a delegate is given nothing.
+    assert_contains(&code, "<TableViewDelegate></TableViewDelegate>");
+
+    // A component has what the type of its root requires, with its own.
+    let app = "import QtQuick\nTableView { delegate: Cell { } }";
+    let cell = "import QtQuick.Templates as T\nT.TableViewDelegate { required property var model }";
+    let code = lowered_in(&[("App", app), ("Cell", cell)], "App").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(
+        &code,
+        "<Cell model={$data.model} tableView={$data.tableView} current={$data.current} selected={$data.selected} \
+         editing={$data.editing}></Cell>",
+    );
 }
 
 #[test]
@@ -597,10 +688,12 @@ Item {
     ];
     let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
     // `Type.Enum.Key` and `Type.Key` are the same key, as they are in Qt's types.
-    assert_contains(&code, "theme={Swatch.Dark}");
-    assert_contains(&code, "tone={Swatch.Light}");
+    assert_contains(&code, "const Swatch$Dark = Swatch.Dark;");
+    assert_contains(&code, "theme={Swatch$Dark}");
+    assert_contains(&code, "tone={Swatch$Light}");
     // The file is a type to itself too, and is not imported for it.
-    assert_contains(&code, "mine={Sample.Narrow}");
+    assert_contains(&code, "const Sample$Narrow = Sample.Narrow;");
+    assert_contains(&code, "mine={Sample$Narrow}");
     assert_lacks(&code, "import Sample");
     assert_contains(&code, "Object.assign(Sample, {\n\tWide: 0,\n\tNarrow: 4\n});");
     assert_contains(&code, "Object.assign(Chip, {\n\tRound: 0,\n\tSquare: 1\n});");
@@ -626,7 +719,8 @@ Item {
     // `Caption.ElideRight` is a key of Text, which the runtime has and we do
     // not: the component is read for it as Text would be.
     let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
-    assert_contains(&code, "elide={Caption.ElideRight}");
+    assert_contains(&code, "const Caption$ElideRight = Caption.ElideRight;");
+    assert_contains(&code, "elide={Caption$ElideRight}");
     assert_contains(&code, "Object.setPrototypeOf(Sample, Item);");
     assert_contains(&code, "Object.setPrototypeOf(Chip, Caption);");
 
@@ -637,10 +731,60 @@ Item {
     let code = lowered("import QtQuick as Q\nQ.Item { }");
     assert_contains(&code, "Object.setPrototypeOf(Sample, Q.Item);");
 
-    // A singleton is an object and not a type of anything.
+    // A singleton is an object, and its name has the keys of its type all
+    // the same: it is the name that is read for them, not the function.
     let files = [("Theme", "pragma Singleton\nimport QtQuick\nQtObject { }")];
     let code = lowered_in(&files, "Theme").unwrap_or_else(|errors| panic!("{errors:?}"));
-    assert_lacks(&code, "setPrototypeOf");
+    assert_contains(&code, "Object.setPrototypeOf(Theme, QtObject);");
+    assert_lacks(&code, "setPrototypeOf(Theme$component");
+}
+
+#[test]
+fn a_singleton_has_the_keys_of_the_type_of_its_root() {
+    let files = [
+        (
+            "Sample",
+            r#"import QtQuick
+Item {
+    property int last: Almanac.December
+    property int march: Almanac.Month.March
+    property int after: Almanac.Era.After
+    property int kind: Solo.Kind.B
+    property int first: Almanac.firstYear
+    function wraps(month) { return month === Almanac.December || month === Solo.B }
+}"#,
+        ),
+        (
+            "Almanac",
+            r#"pragma Singleton
+import QtQuick
+import QtQuick.Templates as T
+T.Calendar {
+    property int firstYear: 1970
+    enum Era { Before, After = 7 }
+}"#,
+        ),
+        ("Base", "import QtQuick\nItem { enum Kind { A, B } }"),
+        ("Solo", "pragma Singleton\nimport QtQuick\nBase { }"),
+    ];
+    // `Calendar.December` of QtQuick.Controls, whose `Calendar` is the one
+    // `T.Calendar`: a key is read off the name, and the object is not made
+    // for it.
+    let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "const Almanac$December = Almanac.December;");
+    assert_contains(&code, "const Almanac$March = Almanac.March;");
+    assert_contains(&code, "const Almanac$After = Almanac.After;");
+    assert_contains(&code, "month === Almanac.December || month === Solo.B");
+    // The keys of a component its root is, too.
+    assert_contains(&code, "const Solo$B = Solo.B;");
+    // What is not a key is the object's.
+    assert_contains(&code, "first={Almanac().firstYear}");
+
+    let code = lowered_in(&files, "Almanac").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "const Almanac = $singleton(Almanac$component, {\n\tBefore: 0,\n\tAfter: 7\n});");
+    assert_contains(&code, "Object.setPrototypeOf(Almanac, T.Calendar);");
+    let code = lowered_in(&files, "Solo").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "Object.setPrototypeOf(Solo, Base);");
 }
 
 #[test]
@@ -973,6 +1117,31 @@ Text {
 }
 
 #[test]
+fn an_enum_key_of_a_type_of_a_namespace_is_a_constant() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Templates as T
+Item {
+    property int month: T.Calendar.Month.March
+    property var held: T.Calendar.Month.March
+    T.Label { elide: T.Label.ElideRight; wrapMode: T.Label.WrapMode.WordWrap }
+    function third() { return T.Calendar.Month.March + T.Label.TextElideMode.ElideRight }
+    function none() { return T.Calendar.Nope.March }
+}"#,
+    );
+    // The keys are on the type, by whatever name it is found: with the name
+    // of the enum between, Qt gives the same number and JavaScript nothing.
+    assert_contains(&code, "const T$Calendar$March = T.Calendar.March;");
+    assert_contains(&code, "month={T$Calendar$March}");
+    assert_contains(&code, "held={T.Calendar.March}");
+    assert_contains(&code, "elide={T$Label$ElideRight}");
+    assert_contains(&code, "const T$Label$WordWrap = T.Label.WordWrap;");
+    assert_contains(&code, "return T.Calendar.March + T.Label.ElideRight;");
+    // What is no enum of the type is left to be what it is.
+    assert_contains(&code, "return T.Calendar.Nope.March;");
+}
+
+#[test]
 fn a_state_changes_what_a_type_attaches() {
     let code = lowered(
         r#"import QtQuick
@@ -1003,7 +1172,7 @@ Item {
     states: State {
         PropertyChanges { target: a; width: parent.width / 2; height: width + 1; x: size }
         PropertyChanges { a.y: parent.height }
-        PropertyChanges { target: box.children[0]; z: parent.z }
+        PropertyChanges { target: box.children[0]; z: parent.z; x: size; y: Math.round(text.length) }
         AnchorChanges { target: a; anchors.right: parent.right }
         ParentChange { target: a; parent: box; width: parent.width }
     }
@@ -1015,10 +1184,14 @@ Item {
     assert_contains(&code, "() => a.width + 1");
     assert_contains(&code, "() => root.size");
     assert_contains(&code, "anchors$right={a.parent.right}");
-    // A property named through an id is a binding where it is written, and
-    // so is one of a target only the running program knows.
+    // A property named through an id is a binding where it is written.
     assert_contains(&code, "() => root.parent.height");
-    assert_contains(&code, "() => root.parent.z");
+    // A target only the running program knows is given to the binding: a
+    // name is the target's if it has it, and the root's if not.
+    assert_contains(&code, "($target) => (\"parent\" in $target ? $target.parent : root.parent).z");
+    assert_contains(&code, "($target) => \"size\" in $target ? $target.size : root.size");
+    // A name nothing else has is the target's, and a global is itself.
+    assert_contains(&code, "($target) => Math.round($target.text.length)");
     // A ParentChange has a `parent` of its own.
     assert_contains(&code, ".parent.width}");
     assert_lacks(&code, "width={a.parent.width}");
