@@ -15,6 +15,7 @@ export { CheckDelegate, ItemDelegate, RadioDelegate, SwitchDelegate } from "./It
 export { Label } from "./Label.js";
 export { PageIndicator } from "./PageIndicator.js";
 export { Frame, GroupBox, Page, Pane, ToolBar } from "./Pane.js";
+export { Overlay, Popup } from "./Popup.js";
 export { BusyIndicator, ProgressBar } from "./ProgressBar.js";
 export { RangeSlider } from "./RangeSlider.js";
 export { ScrollBar } from "./ScrollBar.js";
@@ -31,3 +32,4 @@ export { TabBar } from "./TabBar.js";
 export { TextArea } from "./TextArea.js";
 export { TextField } from "./TextField.js";
 export { MenuSeparator, ToolSeparator } from "./ToolSeparator.js";
+export { ToolTip } from "./ToolTip.js";
