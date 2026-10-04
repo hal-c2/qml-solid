@@ -4,6 +4,10 @@ import { colours } from "../../Palette.js";
 import { themed } from "../../Templates/theme.js";
 import { preferred } from "../attached.js";
 
+// What a SplitView's handle says of itself is this module's in Qt, and what
+// a program that imports the controls names it by.
+export { SplitHandle } from "../../Templates/SplitView.js";
+
 themed("QtQuick.Controls.Basic", {
   palette: colours(
     {
