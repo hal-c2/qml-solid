@@ -163,6 +163,17 @@ impl Type {
         self.find(false, &|ty| ty.attached.map(|index| &table().types[index]))
     }
 
+    /// Whether `Name.member` is of what the type attaches. A `PathView`
+    /// attaches whatever its path names too: `PathView.iconScale`.
+    pub(crate) fn attaches(&'static self, member: &str) -> bool {
+        self.attached().is_some_and(|attached| {
+            attached.property(member).is_some()
+                || attached.signal(member).is_some()
+                || attached.has_method(member)
+                || (attached.class == "QQuickPathViewAttached" && member.starts_with(|c: char| c.is_ascii_lowercase()))
+        })
+    }
+
     pub(crate) fn property(&'static self, name: &str) -> Option<&'static Property> {
         self.find(false, &|ty| ty.properties.iter().find(|property| property.name == name))
     }

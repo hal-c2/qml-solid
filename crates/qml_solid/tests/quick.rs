@@ -172,6 +172,24 @@ Item {
 }
 
 #[test]
+fn a_path_view_attaches_what_its_path_names() {
+    let code = lowered(
+        r#"import QtQuick
+PathView {
+    snapMode: PathView.SnapToItem
+    delegate: Item {
+        id: cell
+        scale: PathView.iconScale
+        Text { opacity: cell.PathView.fade; visible: PathView.onPath }
+    }
+}"#,
+    );
+    assert_contains(&code, "snapMode={PathView.SnapToItem}");
+    assert_contains(&code, "scale={PathView.attached(cell).iconScale}");
+    assert_contains(&code, "opacity={PathView.attached(cell).fade}");
+}
+
+#[test]
 fn a_delegate_is_a_function_of_what_it_is_given() {
     let code = lowered(
         r#"import QtQuick
