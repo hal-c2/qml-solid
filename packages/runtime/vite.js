@@ -11,7 +11,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { delimiter, dirname, join, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, sep } from "node:path";
 import { searchForWorkspaceRoot } from "vite";
 
 // What marks a `.js` file as the script a QML file imports
@@ -39,6 +39,22 @@ const carried = (importer) => new URLSearchParams(importer?.split("?")[1]).get(F
 // the module itself may name: it is there before they are.
 const ABSENT = "absent";
 const path = (uri) => uri.replaceAll(".", "/");
+
+// A style of the program's own is a directory of QML files: the types its
+// `qmldir` names, or each file that could be one when it has none, as a
+// module CMake is yet to write the `qmldir` of.
+const bespoke = (style) => (style && isAbsolute(style) ? style : null);
+function tailored(directory) {
+  const about = described(directory);
+  if (about) return [...about.types].map(([name, file]) => [name, join(directory, file)]);
+  return readdirSync(directory)
+    .filter((name) => /^[A-Z]\w*\.qml$/.test(name))
+    .map((name) => [name.slice(0, -4), join(directory, name)]);
+}
+// What a style is called where only a name will do: a file selector.
+const called = (style) => (bespoke(style) ? basename(style) : style);
+// What Qt falls back on for the controls such a style does not have.
+const FALLBACK = "Basic";
 
 // What the Qt installed here says of itself: where it keeps its QML modules
 // and its tools, and which Qt it is.
@@ -204,7 +220,9 @@ function exported(context, file, names = new Set(), seen = new Set()) {
 // - `style`: what `import QtQuick.Controls` is, "Material" or "Fusion": a
 //   name, or a function of the file that imports it when the files of one
 //   build are not all of one style. Otherwise the one the settings name,
-//   and Qt's default when there is none.
+//   and Qt's default when there is none. A directory is a style of the
+//   program's own, as `QQuickStyle::setStyle` takes one: the controls its
+//   QML files are, and Basic's for the rest.
 // - `controls`: the settings of Qt Quick Controls, which an application of
 //   Qt's has in its `qtquickcontrols2.conf`: that file, or its groups
 //   (`{ Material: { Theme: "Dark" } }`), or a function of the file that
@@ -306,7 +324,11 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
     if (native) exported(context, join(runtime, native), names);
     for (const name of about?.types.keys() ?? []) names.add(name);
     const styles = about?.style?.split(".");
-    const imports = styles ? [[...styles.slice(0, -1), chosen ?? styles.at(-1)].join(".")] : (about?.imports ?? []);
+    // The program's own style comes before the one that fills in for it.
+    const fitted = styles && bespoke(chosen) ? tailored(chosen) : [];
+    for (const [name] of fitted) names.add(name);
+    const named = bespoke(chosen) ? FALLBACK : chosen;
+    const imports = styles ? [[...styles.slice(0, -1), named ?? styles.at(-1)].join(".")] : (about?.imports ?? []);
     const brought = [];
     for (const uri of imports.map(path)) {
       if (uri === module || seen.includes(uri) || !has(uri)) continue;
@@ -316,7 +338,7 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
     }
     const missing = (needed(module) ?? []).filter((name) => !names.has(name));
     for (const name of missing) names.add(name);
-    return { about, native, brought, missing, names };
+    return { about, native, brought, missing, names, fitted };
   };
   return {
     name: "qml-solid",
@@ -376,7 +398,7 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
       if (id.startsWith(VIRTUAL)) {
         const [module, query] = id.slice(VIRTUAL.length).split("?");
         const asked = new URLSearchParams(query);
-        const { about, native, brought, missing } = made(this, module, asked.get("style") ?? undefined);
+        const { about, native, brought, missing, fitted } = made(this, module, asked.get("style") ?? undefined);
         const kernel = JSON.stringify(join(runtime, natives()["./object"]));
         const lines = [];
         // What Qt has of it and the runtime does not, yet.
@@ -406,6 +428,7 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
             });
           }
         }
+        for (const [name, file] of fitted) lines.push(`export { default as ${name} } from ${JSON.stringify(file)};`);
         for (const [uri, names] of brought) lines.push(`export { ${names.join(", ")} } from "qml-solid/${uri}";`);
         // A style is told to what it is the style of: what is not QML in it
         // (the colours and fonts of a control) goes by which was chosen.
@@ -436,7 +459,7 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
       }
       // The style of the controls is a file selector, as it is in Qt: a
       // file with one of the same name in `+Material` is that one there.
-      const selector = styled(file);
+      const selector = called(styled(file));
       const selected = selector ? join(directory, `+${selector}`) : null;
       if (selected && existsSync(selected)) {
         for (const variant of readdirSync(selected)) {
