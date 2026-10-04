@@ -234,12 +234,17 @@ const next = (version) => version + 1;
 // An effect's callback runs while Solid settles what changed, and what it
 // assigns is settled by the same flush: it must not ask for another.
 let settling = 0;
+// How many of those callbacks are running: Solid's own flush does nothing
+// inside one, and says so.
+let applying = 0;
 function settled(work, ...args) {
   settling++;
+  applying++;
   try {
     return work(...args);
   } finally {
     settling--;
+    applying--;
   }
 }
 
@@ -306,9 +311,10 @@ function tell() {
   }
 }
 
-// Solid's `flush`, and then what it found to tell.
+// Solid's `flush`, and then what it found to tell. Inside an effect's
+// callback the flush that is on settles what is changed there.
 export function flush() {
-  drain();
+  if (!applying) drain();
   tell();
 }
 
