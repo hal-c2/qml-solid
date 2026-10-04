@@ -74,9 +74,19 @@ function track(slot) {
 
 export class Property {
   constructor(object, name) {
+    let key = keyOf(name);
+    let slot = (object?.$slots && slotOf(object, key)) || null;
+    // `backButton.opacity`: of the object a property holds.
+    for (let at = key.indexOf("$"); !slot && at > 0 && object?.$slots; at = key.indexOf("$")) {
+      const held = untrack(() => object[key.slice(0, at)]);
+      if (!held?.$type) break;
+      object = held;
+      key = key.slice(at + 1);
+      slot = slotOf(object, key) || null;
+    }
     this.object = object;
-    this.key = keyOf(name);
-    this.slot = (object?.$slots && slotOf(object, this.key)) || null;
+    this.key = key;
+    this.slot = slot;
     this.read = () => (this.slot ? this.slot.get() : this.object[this.key]);
   }
 

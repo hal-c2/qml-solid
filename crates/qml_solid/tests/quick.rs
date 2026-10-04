@@ -864,6 +864,25 @@ Item {
 }
 
 #[test]
+fn a_handler_in_a_group_is_a_handler() {
+    let code = lowered(
+        r#"import QtQuick
+MouseArea {
+    id: area
+    property Item bar
+    drag.onActiveChanged: console.log(drag.active)
+    bar.onWidthChanged: { console.log("wide") }
+    bar.onClicked: (mouse) => console.log(mouse.x)
+    bar.opacity: 0.5
+}"#,
+    );
+    assert_contains(&code, "drag$onActiveChanged={() => console.log(area.drag.active)}");
+    assert_contains(&code, "bar$onWidthChanged={() => {");
+    assert_contains(&code, "bar$onClicked={(mouse) => console.log(mouse.x)}");
+    assert_contains(&code, "bar$opacity={.5}");
+}
+
+#[test]
 fn a_script_is_worth_its_last_statement() {
     let code = lowered(
         r#"import QtQuick
@@ -887,4 +906,24 @@ Item {
     assert_contains(&code, "else return 2;");
     assert_lacks(&code, "return item.height;");
     assert_lacks(&code, "break;");
+}
+
+#[test]
+fn a_state_changes_what_a_type_attaches() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Layouts
+import QtQuick.Templates as T
+Item {
+    id: item
+    states: State {
+        PropertyChanges { target: item; Layout.preferredWidth: width / 2; T.ToolTip.delay: 5 }
+        PropertyChanges { item.Layout.topMargin: 3 }
+    }
+}"#,
+    );
+    assert_contains(&code, "\"preferredWidth\",\n\t\t() => item.width / 2,\n\t\tnull,\n\t\tLayout\n");
+    assert_contains(&code, "\"delay\",\n\t\t() => 5,\n\t\tnull,\n\t\tT.ToolTip\n");
+    assert_contains(&code, "\"topMargin\",\n\t\t() => 3,\n\t\t() => item,\n\t\tLayout\n");
+    assert_lacks(&code, "$attach");
 }

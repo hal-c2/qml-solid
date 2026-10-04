@@ -494,21 +494,38 @@ impl<'a, 's> Lower<'a, 's> {
             return;
         }
         let span = binding.name.span;
-        if path[0].starts_with(|c: char| c.is_ascii_uppercase()) {
+        let changes = self.is_class(index, "QQuickPropertyChanges") && !CHANGES.contains(&path[0]);
+        if path[0].starts_with(|c: char| c.is_ascii_uppercase()) && !(changes && path[0] != "Component") {
             return self.attached(&path, binding.value, built, span);
         }
-        if self.is_class(index, "QQuickPropertyChanges") && !CHANGES.contains(&path[0]) {
-            return self.change(&path, binding.value, built);
+        if changes {
+            return self.change(&path, binding.value, built, span);
         }
 
+        // `drag.onActiveChanged`, `toolbar.onBackClicked`: a handler of what
+        // the property holds, whose signals are known when its type is Qt's.
+        let held = match path.as_slice() {
+            [group @ .., _] if !group.is_empty() => {
+                self.tree.property(self.types, index, group).and_then(|property| property.value)
+            }
+            _ => None,
+        };
         let handler = match path.as_slice() {
             [name] => types::handled(name)
                 .filter(|_| !matches!(self.tree.member(self.types, index, name), Some(Member::Property(_)))),
-            _ => None,
+            [.., name] => types::handled(name).filter(|_| held.is_none_or(|held| held.property(name).is_none())),
+            [] => None,
         };
         let value = match handler {
             Some(signal) => {
-                let parameters = self.tree.signal(self.types, index, &signal).unwrap_or_default();
+                let parameters = match (path.len(), held) {
+                    (1, _) => self.tree.signal(self.types, index, &signal).unwrap_or_default(),
+                    (_, Some(held)) => held
+                        .signal(&signal)
+                        .map(|signal| signal.parameters.iter().map(|name| (*name).to_string()).collect())
+                        .unwrap_or_default(),
+                    (_, None) => Vec::new(),
+                };
                 self.handler(binding.value, &parameters, span)
             }
             None => {
@@ -573,12 +590,34 @@ impl<'a, 's> Lower<'a, 's> {
 
     /// `width: 10` in a `PropertyChanges`: a binding of its target's while
     /// the state is the current one.
-    fn change(&mut self, path: &[&'a str], value: QmlBindingValue<'a>, built: &mut Built<'a>) {
+    fn change(&mut self, path: &[&'a str], value: QmlBindingValue<'a>, built: &mut Built<'a>, span: Span) {
         let b = self.b;
         // `rect.width: 10` names the object too.
         let (target, path) = match path {
             [target, rest @ ..] if !rest.is_empty() && self.tree.is_id(target) => (Some(*target), rest),
             path => (None, path),
+        };
+        // `Layout.preferredWidth: 10`: of the object the type attaches to
+        // the target.
+        let (attaching, path) = if path[0].starts_with(|c: char| c.is_ascii_uppercase()) {
+            let qualified = path.len() > 2 && self.types.namespace(path[0]).is_some();
+            let (parts, rest) = path.split_at(if qualified { 2 } else { 1 });
+            let type_name = parts.join(".");
+            let Some(found) = self.types.find(parts) else {
+                self.errors.push(Error::new(
+                    format!("`{type_name}` is not a type of anything the file imports"),
+                    span,
+                ));
+                return;
+            };
+            self.uses.origin(&type_name, &found.origin);
+            let attaching = match parts {
+                [namespace, name] => b.member(b.id(namespace), name),
+                _ => b.id(parts[0]),
+            };
+            (Some(attaching), rest)
+        } else {
+            (None, path)
         };
         let value = match value {
             QmlBindingValue::Expression(expression) => b.arrow(&[], expression),
@@ -589,9 +628,12 @@ impl<'a, 's> Lower<'a, 's> {
             }
         };
         let mut entry = vec![b.string(&path.join(".")), value];
-        if let Some(target) = target {
-            entry.push(b.arrow(&[], b.id(target)));
+        match (target, &attaching) {
+            (Some(target), _) => entry.push(b.arrow(&[], b.id(target))),
+            (None, Some(_)) => entry.push(b.null()),
+            (None, None) => {}
         }
+        entry.extend(attaching);
         built.changes.push(b.array(entry));
     }
 

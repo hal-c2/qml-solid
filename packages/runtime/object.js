@@ -715,6 +715,33 @@ function defineAlias(self, name, [target, ...path]) {
   });
 }
 
+// What an object says of the object one of its properties holds is that
+// object's: a handler of its signal (`toolbar.onBackClicked: ...`), a binding
+// of its property (`stack.initialItem: Home { }`). `name` is the path from
+// `holder`, `key` the prop.
+function through(holder, props, key, name) {
+  const at = name.indexOf("$");
+  const target = untrack(() => holder[name.slice(0, at)]);
+  // A group is the object's own, and its type's to read.
+  if (!target?.$type) return;
+  const rest = name.slice(at + 1);
+  // What the object was made with, it has.
+  const given = Object.getOwnPropertyDescriptor(props, key);
+  const had = Object.getOwnPropertyDescriptor(target.$props, rest);
+  if (had && had.get === given.get && had.value === given.value) return;
+  const handled = /^on([A-Z_])(\w*)$/.exec(rest);
+  if (handled) return connect(target, handled[1].toLowerCase() + handled[2], (...args) => props[key]?.(...args));
+  const held = slot(target, rest);
+  if (held) return held.bind(props, key);
+  if (rest.includes("$")) return through(target, props, key, rest);
+  // An alias: assigned.
+  if (!(rest in target)) return;
+  createRenderEffect(
+    () => props[key],
+    (value) => settled(() => void (target[rest] = value)),
+  );
+}
+
 function create(Type, props) {
   if (props.$given) props = inherit(props, props.$given);
   if (props.$declare) Type = derive(Type, props.$declare);
@@ -735,6 +762,12 @@ function create(Type, props) {
     for (const type of Type.chain) type.spec.setup?.(self, props);
     if (props.$aliases) {
       for (const [name, path] of Object.entries(props.$aliases)) defineAlias(self, name, path);
+    }
+    // `toolbar.onBackClicked`, `stack.initialItem`: said of the object a
+    // property holds, and done before that object's own work on completion.
+    for (const key of Object.keys(props)) {
+      const at = key.indexOf("$");
+      if (at > 0 && key[0] >= "a" && key[0] <= "z" && !(key in Type.slots)) whenComplete(() => through(self, props, key, key));
     }
     if (Type.adopt && "children" in props) Type.adopt(self, props);
     for (const key of Object.keys(props)) {

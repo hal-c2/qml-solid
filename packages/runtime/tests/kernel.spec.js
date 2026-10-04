@@ -59,3 +59,25 @@ test("a picture as wide as its own height says is loaded once more, and no more"
     [60, 20, 60, 20, 60, 20],
   ]);
 });
+
+test("what is said of the object a property holds is that object's", async ({ page }) => {
+  await open(page, "through");
+  const read = await page.evaluate(() => {
+    const scene = window.scene;
+    const out = [scene.read()];
+    for (let index = 0; index < 5; index++) {
+      scene.step(index);
+      out.push(scene.read());
+    }
+    return out;
+  });
+  // Qt's answers.
+  expect(read).toEqual([
+    ["wide", "#ff0000", 2, 10, 30, ""],
+    ["wide", "#ff0000", 2, 10, 30, "back 2"],
+    ["narrow", "#0000ff", 1, 10, 30, "back 2"],
+    ["narrow", "#0000ff", 5, 4, 60, "back 2,width 4"],
+    ["wide", "#ff0000", 5, 4, 80, "back 2,width 4"],
+    ["wide", "#ff0000", 2, 10, 30, "back 2,width 4,width 10"],
+  ]);
+});

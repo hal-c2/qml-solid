@@ -563,8 +563,10 @@ export const State = defineType("State", QtObject, {
   },
 });
 
-// `$changes` is `[name, value, target]` for each property changed: `value`
-// the binding, `target` what `rect.width: 10` names when it is not `target`.
+// `$changes` is `[name, value, target, type]` for each property changed:
+// `value` the binding, `target` what `rect.width: 10` names when it is not
+// `target`, `type` what attaches the object the property is of
+// (`Layout.preferredWidth: 10`).
 export const PropertyChanges = defineType("PropertyChanges", QtObject, {
   properties: { target: undefined, explicit: false, restoreEntryValues: true },
   methods: {
@@ -575,8 +577,9 @@ export const PropertyChanges = defineType("PropertyChanges", QtObject, {
       const explicit = Boolean(this.explicit);
       const memos = (this.$memos ??= []);
       for (let index = 0; index < changes.length; index++) {
-        const [name, value, where] = changes[index];
-        const object = where ? where() : this.target;
+        const [name, value, where, type] = changes[index];
+        let object = where ? where() : this.target;
+        if (object != null && type) object = type.attached?.(object);
         if (object == null) continue;
         const property = new Property(object, name);
         if (property.valid) actions.push(binding(states, this, property, value, memos, index, restoring, explicit));
