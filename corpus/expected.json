@@ -21,6 +21,11 @@
       "pixels": 0.98,
       "content": 0.89
     },
+    "dice": {
+      "pixels": 0.96,
+      "content": 0.9
+    },
+    "documentviewer": {},
     "graphs_csv": {},
     "hangman": {
       "pixels": 0.95,
@@ -66,6 +71,7 @@
       "pixels": 0.99,
       "content": 0.95
     },
+    "toycustomizer": {},
     "windowembedding": {}
   }
 }
