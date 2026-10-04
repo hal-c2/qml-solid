@@ -42,7 +42,8 @@ test("a sensor reads how the device is moved while it is active", async ({ page 
   // With the pull of the Earth, and without it: the one that is not active
   // hears nothing.
   expect(await seen(page)).toEqual(["felt 1 2 10.5", "pushed 1 2 0.75"]);
-  expect(await call(page, "force")).toEqual([1, 2, 10.5, true]);
+  // A property declared on the sensor tells of its changes like any other.
+  expect(await call(page, "force")).toEqual([1, 2, 10.5, true, true, 1]);
 
   expect(await call(page, "start")).toEqual([true, true, true, true]);
   expect(await seen(page)).toEqual(["pulled active true"]);

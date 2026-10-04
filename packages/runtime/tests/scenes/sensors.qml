@@ -4,6 +4,7 @@ import QtSensors
 Item {
     id: root
     property var seen: []
+    property int moves: 0
     property alias felt: felt
 
     Accelerometer {
@@ -16,6 +17,8 @@ Item {
             let r = reading as AccelerometerReading
             return Qt.vector3d(r.x, r.y, r.z)
         }
+        readonly property bool moved: force.length() > 5
+        onMovedChanged: root.moves += 1
         onReadingChanged: root.seen.push("felt " + reading.x + " " + reading.y + " " + reading.z)
     }
 
@@ -58,7 +61,7 @@ Item {
     }
 
     function force() {
-        return [felt.force.x, felt.force.y, felt.force.z, felt.reading.timestamp > 0]
+        return [felt.force.x, felt.force.y, felt.force.z, felt.reading.timestamp > 0, felt.moved, moves]
     }
 
     function start() {
