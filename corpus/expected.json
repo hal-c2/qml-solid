@@ -5,6 +5,10 @@
       "pixels": 0.95,
       "content": 0.9
     },
+    "hangman": {
+      "pixels": 0.95,
+      "content": 0.93
+    },
     "maroon": {
       "pixels": 0.95,
       "content": 0.95

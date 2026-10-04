@@ -196,7 +196,9 @@ class Slot {
     this.member = member;
     this.bound = null;
     this.given = undefined;
-    this.take(self.$props, key);
+    // While its binding is evaluated, and what that gave last.
+    this.evaluating = false;
+    this.last = undefined;
     this.assigned = false;
     this.value = undefined;
     // Set by whatever lays the object out: a positioner, a layout, a view.
@@ -210,6 +212,10 @@ class Slot {
     this.version = null;
     this.bump = null;
     this.given$ = resolve ? () => this.own() : null;
+    // A binding is evaluated as it is taken, and may read the property it
+    // is for: the slot is there to be found before it is.
+    self.$slots[key] = this;
+    this.take(self.$props, key);
   }
 
   // What the object's creator gave the property: `props[key]`.
@@ -223,7 +229,18 @@ class Slot {
     this.bound = descriptor?.get
       ? runWithOwner(self.$owner, () =>
           createMemo(
-            guarded(key, () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key]))),
+            guarded(key, () => {
+              // What it reads of its own property, itself or through
+              // another's binding, is what the property had: a loop ends
+              // there, as Qt ends it.
+              const before = this.evaluating;
+              this.evaluating = true;
+              try {
+                return (this.last = complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key])));
+              } finally {
+                this.evaluating = before;
+              }
+            }),
             SYNC,
           ),
         )
@@ -261,7 +278,7 @@ class Slot {
   own() {
     if (this.placed !== undefined && !this.over) return this.placed;
     if (this.assigned) return this.value;
-    let value = this.bound ? this.bound() : this.given;
+    let value = this.evaluating ? this.last : this.bound ? this.bound() : this.given;
     if (value === undefined && this.whole) value = slot(this.self, this.whole).get()?.[this.member];
     if (value === undefined) {
       const initial = this.initial;
@@ -275,7 +292,7 @@ class Slot {
   explicit() {
     if (this.version) this.version();
     else this.self.$track();
-    return this.assigned || (this.bound ? this.bound() : this.given) !== undefined;
+    return this.assigned || this.evaluating || (this.bound ? this.bound() : this.given) !== undefined;
   }
 
   changed() {

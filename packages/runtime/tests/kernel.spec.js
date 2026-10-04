@@ -41,3 +41,9 @@ test("an object's properties and signals tell what Qt's do, when they do", async
     [["given n 9", "given heard 9"], ...rest(7, 8, 1, "w")],
   ]);
 });
+
+test("a binding that comes back to its own property ends there", async ({ page }) => {
+  await open(page, "bindingloop");
+  // Qt's answers; where a loop of two ends is not for a program to lean on.
+  expect(await page.evaluate(() => window.scene.read())).toEqual([20, 20, true, true, 5]);
+});

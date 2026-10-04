@@ -215,7 +215,6 @@ function laid(self, state, bounded) {
   const { text, kind } = state.source();
   const base = state.font();
   const wide = sized(self, "width");
-  const limit = wide ? Math.max(self.width - self.leftPadding - self.rightPadding, 0) : Infinity;
   const mode = wide ? self.wrapMode : 0;
   const elide = wide ? self.elide : ELIDE_NONE;
   const most = Math.max(self.maximumLineCount, 1);
@@ -223,6 +222,12 @@ function laid(self, state, bounded) {
   const fixed = self.lineHeightMode === 1;
   const align = self.effectiveHorizontalAlignment;
   const fit = bounded && !kind ? self.fontSizeMode : 0;
+  // Plain text that does not wrap, is not cut short and is not made to fit
+  // covers what it covers whatever the width of the item, which is not asked
+  // for: `width: label.contentWidth` around a label that fills it is not a
+  // loop in Qt.
+  const free = wide && !kind && mode === 0 && elide === ELIDE_NONE && !(fit & 1);
+  const limit = !wide ? Infinity : free ? 0 : Math.max(self.width - self.leftPadding - self.rightPadding, 0);
   const tall = bounded && !kind && (fit & 2 || elide === ELIDE_RIGHT) && sized(self, "height");
   const ceiling = tall ? Math.max(self.height - self.topPadding - self.bottomPadding, 0) : Infinity;
   const one = (font) => {
