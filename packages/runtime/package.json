@@ -31,6 +31,7 @@
     "./QtQml/XmlListModel": "./QtQml/XmlListModel/index.js",
     "./QtCore": "./QtCore/index.js",
     "./QtWebSockets": "./QtWebSockets/index.js",
+    "./QtCharts": "./QtCharts/index.js",
     "./Qt/labs/settings": "./Qt/labs/settings/index.js",
     "./Qt/labs/folderlistmodel": "./Qt/labs/folderlistmodel/index.js",
     "./Qt/labs/synchronizer": "./Qt/labs/synchronizer/index.js",
