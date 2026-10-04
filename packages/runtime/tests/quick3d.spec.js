@@ -1585,6 +1585,7 @@ test("a View3D finds what Qt finds at a place and along a ray", async ({ page })
   ];
   for (const [calls, found] of states) {
     await open(page, "picked3d");
+    await expect.poll(() => page.evaluate(() => window.scene.loaded())).toBe(true);
     for (const call of calls) await page.evaluate((name) => window.scene[name](), call);
     const read = await page.evaluate(() => window.scene.read());
     near(read, { ...found, none: 0, ray, rays }, calls.join(" "));

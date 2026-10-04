@@ -3,9 +3,9 @@
 // that is not shown, one that is shown through wholly, one drawn twice by
 // a table, and two strips of a shape of their own, of which the one for
 // picking is not shown. `read()` is what the view finds at places in it
-// and along rays; `deep()` has it look through a camera with depth, and
+// and along rays; `deep()` has it look through a camera with depth,
 // `shown()` shows what was not and has the pane and the strip be for
-// picking.
+// picking, and `loaded()` says whether the strips' shape has been read.
 import QtQuick
 import QtQuick3D
 
@@ -56,6 +56,10 @@ Rectangle {
             rows.push(row);
         }
         return rows;
+    }
+    // The strips' shape is read from a file: whether it has been.
+    function loaded() {
+        return strip.bounds.maximum.x > strip.bounds.minimum.x;
     }
     function deep() {
         view.camera = depth;
