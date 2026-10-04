@@ -21,6 +21,7 @@ export { ScrollBar } from "./ScrollBar.js";
 export { ScrollIndicator } from "./ScrollIndicator.js";
 export { ScrollView } from "./ScrollView.js";
 export { Slider } from "./Slider.js";
+export { DoubleSpinBox, SpinBox } from "./SpinBox.js";
 export { SplitHandle, SplitView } from "./SplitView.js";
 export { StackView } from "./StackView.js";
 export { SwipeView } from "./SwipeView.js";
