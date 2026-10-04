@@ -354,6 +354,11 @@ function kindOf(source) {
   return typeof source.get === "function" && "count" in source ? COUNTED : NONE;
 }
 
+// A DelegateModel is a model and a delegate together: a view given one
+// shows its model with its delegate.
+export const modelOf = (model) => (model?.$delegates ? model.model : model);
+export const delegateOf = (model, delegate) => (model?.$delegates ? model.delegate : delegate);
+
 // How many rows a model has, for a view to depend on when the model does
 // not say what changed in it: an object with `count` and `get(i)`.
 export function size(source) {

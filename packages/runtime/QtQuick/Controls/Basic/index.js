@@ -2,6 +2,7 @@
 // controls are Qt's QML; its colours are these.
 import { colours } from "../../Palette.js";
 import { themed } from "../../Templates/theme.js";
+import { preferred } from "../attached.js";
 
 themed("QtQuick.Controls.Basic", {
   palette: colours(
@@ -39,3 +40,5 @@ themed("QtQuick.Controls.Basic", {
     },
   ),
 });
+
+preferred("QtQuick.Controls.Basic");

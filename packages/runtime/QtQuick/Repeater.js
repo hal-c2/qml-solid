@@ -2,7 +2,7 @@
 import { createSignal, untrack } from "solid-js";
 import { defineType, effect, slot } from "../object.js";
 import { Item } from "./Item.js";
-import { Rows, size } from "./model.js";
+import { delegateOf, modelOf, Rows, size } from "./model.js";
 
 const WRITABLE = { ownedWrite: true };
 const next = (version) => version + 1;
@@ -57,7 +57,10 @@ export const Repeater = defineType("Repeater", Item, {
     });
     const state = (self.$repeat = { rows, version, items: null });
     effect(
-      () => [self.model, self.delegate, size(self.model)],
+      () => {
+        const model = modelOf(self.model);
+        return [model, delegateOf(self.model, self.delegate), size(model)];
+      },
       ([model, delegate]) => void untrack(() => rows.set(model, delegate)),
     );
   },
