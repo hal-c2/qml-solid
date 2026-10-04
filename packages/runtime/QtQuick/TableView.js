@@ -18,6 +18,7 @@ import { changed, depend, make, resized, SAME, Table } from "./cells.js";
 import { Flickable } from "./Flickable.js";
 import { forceActiveFocus } from "./focus.js";
 import { TapHandler } from "./handlers.js";
+import { ControlModifier } from "./keycodes.js";
 import { modelIndex, touch, track } from "./model.js";
 import { cull } from "./placing.js";
 
@@ -1079,12 +1080,260 @@ function tapped(self, at, modifiers) {
   if (modifiers || !self.pointerNavigationEnabled) return;
   const model = self.selectionModel;
   if (self.selectionBehavior !== SelectionDisabled) {
-    model?.clearSelection();
-    self.$table.selecting = null;
+    clearSelection(self);
+    untracked(self);
   }
   const cell = self.cellAtPosition(at.x, at.y);
   if (cell.x < 0 || cell.y < 0) return;
   model?.setCurrentIndex(self.modelIndex(cell), 0);
+}
+
+// ------------------------------------------------------------ selecting
+
+// What a SelectionRectangle asks of the view it is on, Qt's
+// QQuickSelectable: a selection is dragged out from the cell at one place
+// to the cell at another, and the selection model is told the cells
+// between them.
+
+// What a selection model is told to do with cells.
+const SELECT = 2;
+const DESELECT = 4;
+
+const NO_CELL = Object.freeze([-1, -1]);
+const isCell = (cell) => cell[0] !== -1 && cell[1] !== -1;
+
+// The selection is no longer one that is being made: it was changed by
+// somebody else, or it is gone.
+function untracked(self) {
+  const mine = self.$table.selecting;
+  mine.start = mine.end = NO_CELL;
+  mine.existing = [];
+  mine.flag = 0;
+  mine.tell?.(false);
+}
+
+function clearSelection(self) {
+  const mine = self.$table.selecting;
+  const model = self.selectionModel;
+  if (!model) return;
+  mine.own = true;
+  try {
+    model.clearSelection();
+  } finally {
+    mine.own = false;
+  }
+}
+
+function setCurrent(self, cell) {
+  self.selectionModel?.setCurrentIndex(self.modelIndex(cell[0], cell[1]), 0);
+}
+
+// The cell at a place in the content, or the nearest one that is loaded and
+// in view when there is none there.
+function nearest(self, at) {
+  const t = self.$table;
+  const cell = self.cellAtPosition(at.x, at.y, true);
+  if (cell.x !== -1 && cell.y !== -1) return [cell.x, cell.y];
+  if (!t.cells.size || t.h.stop === t.h.start || t.v.stop === t.v.start) return NO_CELL;
+  const within = (a, value) => {
+    const from = self[a.position];
+    return clamp(clamp(value, a.start, a.stop - 1) - from, 0, self[a.length]) + from;
+  };
+  const found = self.cellAtPosition(within(t.h, at.x), within(t.v, at.y), true);
+  return [found.x, found.y];
+}
+
+function warnOnce(self, message) {
+  const mine = self.$table.selecting;
+  if (!mine.warned) console.warn(`QML ${self.$type.typeName}: ${message}`);
+  mine.warned = true;
+}
+
+export function hasSelection(self) {
+  return Boolean(self.selectionModel?.hasSelection);
+}
+
+// What `told(still)` is called with: false when the selection is no longer
+// the rectangle that was dragged out, true when the rectangle changed.
+export function onSelection(self, told) {
+  self.$table.selecting.tell = told;
+}
+
+// A selection begins: what there was is kept only when the mode lets more
+// than one be made and a modifier is held. With Ctrl on a selected cell,
+// what is dragged out is taken from the selection.
+export function startSelection(self, at, modifiers) {
+  const mine = self.$table.selecting;
+  const model = self.selectionModel;
+  if (!model) {
+    warnOnce(self, "Cannot start selection: no SelectionModel assigned!");
+    return false;
+  }
+  if (self.selectionBehavior === SelectionDisabled) {
+    console.warn(`QML ${self.$type.typeName}: Cannot start selection: TableView.selectionBehavior == TableView.SelectionDisabled`);
+    return false;
+  }
+  const mode = self.selectionMode;
+  if (mode === SingleSelection || mode === ContiguousSelection || !modifiers) clearSelection(self);
+  else mine.existing = model.selectedIndexes;
+  mine.flag = SELECT;
+  if (modifiers & ControlModifier) {
+    const cell = nearest(self, at);
+    if (!isCell(cell)) return false;
+    if (model.isSelected(self.index(cell[1], cell[0]))) mine.flag = DESELECT;
+  }
+  mine.start = mine.end = NO_CELL;
+  return true;
+}
+
+// The cells from one corner to the other, row by row. A corner the model
+// does not have makes it none, as a QItemSelectionRange is then not valid.
+function between(self, left, top, right, bottom) {
+  const cells = [];
+  if (!self.index(top, left).valid || !self.index(bottom, right).valid) return cells;
+  for (let row = top; row <= bottom; row++) {
+    for (let column = left; column <= right; column++) cells.push(self.index(row, column));
+  }
+  return cells;
+}
+
+const spanOf = (from, to) => [Math.min(from[0], to[0]), Math.min(from[1], to[1]), Math.max(from[0], to[0]), Math.max(from[1], to[1])];
+
+// Qt's `updateSelection`: the cells of the new rectangle are selected, and
+// those the old one had beyond it no longer are.
+function reselect(self, from, to) {
+  const mine = self.$table.selecting;
+  if (from[0] === mine.start[0] && from[1] === mine.start[1] && to[0] === mine.end[0] && to[1] === mine.end[1]) return;
+  const model = self.selectionModel;
+  const [oldLeft, oldTop, oldRight, oldBottom] = spanOf(from, to);
+  const [left, top, right, bottom] = spanOf(mine.start, mine.end);
+  const select = between(self, left, top, right, bottom);
+  const deselect = new Set();
+  const add = (cells) => cells.forEach((cell) => deselect.add(cell));
+  if (oldLeft < left) add(between(self, oldLeft, oldTop, left - 1, oldBottom));
+  else if (oldRight > right) add(between(self, right + 1, oldTop, oldRight, oldBottom));
+  if (oldTop < top) add(between(self, oldLeft, oldTop, oldRight, top - 1));
+  else if (oldBottom > bottom) add(between(self, oldLeft, bottom + 1, oldRight, oldBottom));
+  mine.own = true;
+  try {
+    if (mine.flag === SELECT) {
+      // What was selected before this selection began stays.
+      model.select([...deselect].filter((cell) => !mine.existing.includes(cell)), DESELECT);
+      model.select(select, SELECT);
+    } else {
+      model.select(mine.existing.filter((cell) => !select.includes(cell)), SELECT);
+      model.select(select, DESELECT);
+    }
+  } finally {
+    mine.own = false;
+  }
+}
+
+// The cell a corner is at, for what the view selects: a cell, its row or
+// its column.
+function corner(self, cell, far) {
+  const t = self.$table;
+  switch (self.selectionBehavior) {
+    case SelectCells:
+      return cell;
+    case SelectRows:
+      return [far ? t.h.count - 1 : 0, cell[1]];
+    case SelectColumns:
+      return [cell[0], far ? t.v.count - 1 : 0];
+  }
+  return null;
+}
+
+function selectable(self) {
+  const model = self.selectionModel;
+  if (!self.$table.cells.size) return false;
+  if (!model) {
+    warnOnce(self, "Cannot set selection: no SelectionModel assigned!");
+    return false;
+  }
+  return Boolean(model.model);
+}
+
+// `at` is a place in the content, or x -1 for the current cell.
+export function setSelectionStartPos(self, at) {
+  const t = self.$table;
+  const mine = t.selecting;
+  if (!selectable(self)) return;
+  if (self.selectionMode === SingleSelection && isCell(mine.start)) return;
+  const from = mine.start;
+  let cell;
+  if (at.x === -1) cell = t.cellOf(self.selectionModel.currentIndex);
+  else {
+    cell = nearest(self, at);
+    if (isCell(cell)) setCurrent(self, cell);
+  }
+  if (!isCell(cell)) return;
+  const start = corner(self, cell, false);
+  if (!start) return;
+  mine.start = start;
+  if (isCell(mine.end)) reselect(self, from, mine.end);
+}
+
+export function setSelectionEndPos(self, at) {
+  const mine = self.$table.selecting;
+  if (!selectable(self)) return;
+  const to = mine.end;
+  let cell;
+  if (self.selectionMode === SingleSelection) cell = mine.start;
+  else {
+    cell = nearest(self, at);
+    if (!isCell(cell)) return;
+  }
+  setCurrent(self, cell);
+  const end = corner(self, cell, true);
+  if (!end) return;
+  mine.end = end;
+  if (isCell(mine.start)) reselect(self, mine.start, to);
+}
+
+// The start is the top left corner and the end the bottom right one, which
+// is what a selection's handles are at. The selection is the same.
+export function normalizeSelection(self) {
+  const mine = self.$table.selecting;
+  const [left, top, right, bottom] = spanOf(mine.start, mine.end);
+  mine.start = [left, top];
+  mine.end = [right, bottom];
+}
+
+// Where the selection is in the content, in whole pixels as in Qt. A corner
+// in a column or a row that is not loaded is put at the content's edge.
+export function selectionRectangle(self) {
+  const t = self.$table;
+  if (!t.h.lines.length || !t.v.lines.length) return { x: 0, y: 0, width: 0, height: 0 };
+  const [left, top, right, bottom] = spanOf(t.selecting.start, t.selecting.end);
+  const edge = (a, index, far) => {
+    const line = a.line(index);
+    if (line) return Math.trunc(far ? line.at + line.size : line.at);
+    return index > a.last.index ? Math.trunc(self[a.content]) : 0;
+  };
+  const x = edge(t.h, left, false);
+  const y = edge(t.v, top, false);
+  return { x, y, width: edge(t.h, right, true) - x, height: edge(t.v, bottom, true) - y };
+}
+
+// Moves the content a step towards a place outside the view. Gives how far
+// outside the place is, each way, or 0 when there is nowhere to go.
+export function scrollTowardsPoint(self, at, step) {
+  const t = self.$table;
+  if (!t.cells.size) return { width: 0, height: 0 };
+  const towards = (a, place, by) => {
+    const from = self[a.position];
+    const to = from + self[a.length];
+    const forward = place >= to - 1;
+    if (!forward && place >= from) return 0;
+    const loaded = around(self, a, forward) === AT_END;
+    const left = forward ? a.stop - to : from - a.start;
+    if (left <= 0 && loaded) return 0;
+    if (loaded) by = Math.min(by, left);
+    self[a.position] = forward ? from + by : from - by;
+    return place - (forward ? to : from) - 1;
+  };
+  return untrack(() => ({ width: towards(t.h, at.x, step.width), height: towards(t.v, at.y, step.height) }));
 }
 
 // What a delegate has attached as `TableView`.
@@ -1371,8 +1620,10 @@ export const TableView = defineType("TableView", Flickable, {
       warned: false,
       parent: null,
       children: new Set(),
-      // The cell a selection being made began at and the one it ends at.
-      selecting: null,
+      // The selection being made: the cells it began and ends at, what
+      // was selected before it, whether it selects or takes away, who is
+      // told of it, and whether a change to the selection is its own.
+      selecting: { start: NO_CELL, end: NO_CELL, existing: [], flag: 0, tell: null, own: false, warned: false, model: null },
       // What the model says changed in it.
       // `rows` and `columns` say where a row and a column now are, or -1
       // for one that is gone.
@@ -1437,10 +1688,21 @@ export const TableView = defineType("TableView", Flickable, {
         untrack(() => refresh(self));
       },
     );
+    // A selection somebody else changed is no longer the one being made.
+    const elsewhere = () => {
+      if (!t.selecting.own) untracked(self);
+    };
+    onCleanup(() => t.selecting.model?.selectionChanged.disconnect(elsewhere));
     // The selection model is of the view's model.
     effect(
       () => [self.selectionModel, self.$source()],
       ([selection, source]) => {
+        const mine = t.selecting;
+        if (mine.model !== selection) {
+          mine.model?.selectionChanged.disconnect(elsewhere);
+          mine.model = selection;
+          selection?.selectionChanged.connect(elsewhere);
+        }
         if (!selection) return;
         const table = t.source === source ? t.table : new Table(self, source);
         slot(selection, "model").write(table.indexed ? source : null);
