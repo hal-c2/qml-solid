@@ -61,6 +61,9 @@ Rectangle {
                 baseColor: "green"
                 meshSmooth: true
                 itemLabelFormat: "@xLabel: @yLabel$"
+                // The label of what is selected is not drawn here, and Qt puts
+                // it where no rule was found for.
+                itemLabelVisible: false
                 ItemModelScatterDataProxy {
                     id: proxy
                     itemModel: priceModel
