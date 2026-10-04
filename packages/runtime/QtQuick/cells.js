@@ -1,6 +1,6 @@
 // What a TableView shows: a model of rows and columns, whatever it was
 // given as, and what a delegate is told of its cell.
-import { columnsOf, modelIndex, rowsOf, touch, track } from "./model.js";
+import { columnsOf, modelIndex, moved, rowsOf, touch, track } from "./model.js";
 
 const NONE = 0;
 const NUMBER = 1;
@@ -105,6 +105,10 @@ function data(proto, name, read) {
   });
 }
 
+export const SAME = (line) => line;
+const inserted = (index, count) => (line) => (line >= index ? line + count : line);
+const removed = (index, count) => (line) => (line < index ? line : line < index + count ? -1 : line - count);
+
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 export class Table {
@@ -182,42 +186,49 @@ export class Table {
     return this.kind === TABLE ? columnsOf(this.source) : 1;
   }
 
+  // A cell of the model as a view and a selection model tell of it: one
+  // object for a cell, whatever the model's own `index()` gives.
   index(row, column) {
-    if (!this.indexed || !(row >= 0 && column >= 0 && row < this.rows() && column < this.columns())) return NOWHERE;
-    return this.source.index(row, column) ?? NOWHERE;
+    return this.indexed ? modelIndex(this.source, row, column) : NOWHERE;
   }
 
   // Tells `listener` of what the model says changed in it: `reset()`,
-  // `rows()`, `columns()`, `moved()` and `data()`. Gives what stops it.
+  // `rows(shift)`, `columns(shift)`, `moved(rows, columns)` and `data()`,
+  // where a shift gives a row's new number, or -1 for one that is gone.
+  // Gives what stops it.
   watch(listener) {
     const source = this.source;
     if (this.kind === LIST) {
       return source.$observe({
-        inserted: listener.rows,
-        removed: listener.rows,
-        moved: listener.moved,
+        inserted: (index, count) => listener.rows(inserted(index, count)),
+        removed: (index, count) => listener.rows(removed(index, count)),
+        moved: (from, to, count) => listener.moved((row) => moved(row, from, to, count), SAME),
         role: (name) => {
           if (!(name in this.proto)) this.listRole(name);
         },
       });
     }
     if (this.kind !== TABLE) return null;
+    // As a QAbstractItemModel says them: `(parent, first, last)`, and for
+    // a move the line they are put before, counted while they are there.
+    const between = (first, last, before) => (line) => moved(line, first, before > first ? before - (last - first + 1) : before, last - first + 1);
     const heard = {
-      modelReset: listener.reset,
-      rowsInserted: listener.rows,
-      rowsRemoved: listener.rows,
-      columnsInserted: listener.columns,
-      columnsRemoved: listener.columns,
-      rowsMoved: listener.moved,
-      columnsMoved: listener.moved,
-      layoutChanged: listener.moved,
-      dataChanged: listener.data,
+      modelReset: () => listener.reset(),
+      rowsInserted: (parent, first, last) => listener.rows(inserted(first, last - first + 1)),
+      rowsRemoved: (parent, first, last) => listener.rows(removed(first, last - first + 1)),
+      columnsInserted: (parent, first, last) => listener.columns(inserted(first, last - first + 1)),
+      columnsRemoved: (parent, first, last) => listener.columns(removed(first, last - first + 1)),
+      rowsMoved: (parent, first, last, destination, before) => listener.moved(between(first, last, before), SAME),
+      columnsMoved: (parent, first, last, destination, before) => listener.moved(SAME, between(first, last, before)),
+      // Anything may be anywhere.
+      layoutChanged: () => listener.moved(),
+      dataChanged: () => listener.data(),
     };
     const undo = [];
     for (const name of Object.keys(heard)) {
       const emitted = source[name];
       if (typeof emitted?.connect !== "function") continue;
-      const told = () => heard[name]();
+      const told = heard[name];
       emitted.connect(told);
       undo.push(() => emitted.disconnect(told));
     }

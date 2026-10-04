@@ -12,15 +12,14 @@
 // Views that follow another through `syncView` are updated after it, from
 // the one none of them follows: its columns and their widths are theirs.
 import { createMemo, createSignal, onCleanup, untrack } from "solid-js";
-import { createComponent, defineType, derived, effect, instantiate, QtObject, slot } from "../object.js";
+import { defineType, derived, effect, flush, flushing, instantiate, QtObject, settle, slot } from "../object.js";
 import { Point } from "../QtQml/values.js";
-import { changed, depend, resized, Table } from "./cells.js";
+import { changed, depend, resized, SAME, Table } from "./cells.js";
 import { Flickable } from "./Flickable.js";
 import { forceActiveFocus } from "./focus.js";
 import { TapHandler } from "./handlers.js";
 import { modelIndex, touch, track } from "./model.js";
 import { cull } from "./placing.js";
-import { settle } from "./settle.js";
 
 const WRITABLE = { ownedWrite: true };
 const next = (version) => version + 1;
@@ -231,7 +230,28 @@ function destroy(self, cell) {
 }
 
 function drain(self, t) {
-  for (const cell of t.pool.splice(0)) destroy(self, cell);
+  for (const cell of [...t.staged.splice(0), ...t.pool.splice(0)]) destroy(self, cell);
+}
+
+// Qt's `commitReleasedItems`: the delegates that were let go and that
+// nothing has taken back are for any cell now.
+function commit(self, t) {
+  for (const cell of t.staged.splice(0)) {
+    cell.$home = null;
+    if (cell.$item?.$node) cull(cell.$item, true);
+    cell.$waited = 0;
+    t.pool.push(cell);
+    notify(cell.$item, "pooled", "onPooled");
+  }
+}
+
+// The delegate that was let go while it showed this cell of the model, if
+// there is one: it shows it again, and is told of nothing but where the
+// cell now is.
+function kept(t, row, column) {
+  if (!t.table.indexed) return undefined;
+  const at = t.staged.findIndex((cell) => cell.$home?.[0] === row && cell.$home[1] === column);
+  return at < 0 ? undefined : t.staged.splice(at, 1)[0];
 }
 
 // Qt's `drainReusePoolAfterLoadRequest`: a delegate nothing has used for a
@@ -252,11 +272,19 @@ function age(self, t) {
 function load(self, t, column, row) {
   const table = t.table;
   const [modelRow, modelColumn] = t.transposed ? [column, row] : [row, column];
-  let cell = t.pool.shift();
+  // A delegate used again is told where it now is, and what it makes of
+  // that is not known until that has settled.
+  let cell = kept(t, modelRow, modelColumn);
   if (cell) {
+    if (cell.$row !== modelRow || cell.$column !== modelColumn) {
+      table.move(cell, modelRow, modelColumn);
+      t.stale = true;
+    }
+  } else if ((cell = t.fresh ? undefined : t.pool.shift())) {
     table.move(cell, modelRow, modelColumn);
     if (cell.$item?.$node) cull(cell.$item, false);
     notify(cell.$item, "reused", "onReused");
+    t.stale = true;
   } else {
     cell = table.cell(modelRow, modelColumn);
     const component = t.delegate;
@@ -281,28 +309,40 @@ function load(self, t, column, row) {
       if (!stacking.explicit()) stacking.provide(1);
     }
   }
+  // Where its cell is in the model, which is told of rows that come and
+  // go: a QPersistentModelIndex, for a model that has indexes.
+  cell.$home = table.indexed ? [modelRow, modelColumn] : null;
   cell.$key = key(column, row);
   t.cells.set(cell.$key, cell);
   t.dirty = true;
 }
 
+// A delegate that may be used again waits to be: a rebuild takes back the
+// ones whose cells it shows again.
 function release(self, t, cell, reusable) {
   t.cells.delete(cell.$key);
   if (!reusable || !t.reuse) return destroy(self, cell);
-  if (cell.$item?.$node) cull(cell.$item, true);
-  cell.$waited = 0;
-  t.pool.push(cell);
-  notify(cell.$item, "pooled", "onPooled");
+  t.staged.push(cell);
 }
 
 // ---------------------------------------------------------------- edges
 
-function loadEdge(self, t, a, forward) {
+// Waits, when a delegate was used again, for what is bound to its row and
+// column: the layout goes on from here once that has settled, as Qt's goes
+// on once a delegate it asked for is made.
+function* settling(t) {
+  if (!t.stale) return;
+  t.stale = false;
+  yield;
+}
+
+function* loadEdge(self, t, a, forward) {
   const index = around(self, a, forward);
   for (const line of across(t, a).lines) {
     if (a.horizontal) load(self, t, index, line.index);
     else load(self, t, line.index, index);
   }
+  yield* settling(t);
   // Beside its neighbour, as wide as its own delegates make it.
   const size = sized(self, a, index);
   if (forward) a.lines.push({ index, at: a.stop + a.spacing, size });
@@ -317,6 +357,7 @@ function loadEdge(self, t, a, forward) {
 function unloadEdge(self, t, a, forward) {
   const line = forward ? a.lines.pop() : a.lines.shift();
   for (const other of across(t, a).lines) release(self, t, cellAt(t, a, line.index, other.index), true);
+  commit(self, t);
   t.dirty = true;
 }
 
@@ -331,17 +372,24 @@ function canUnload(a, forward) {
   return forward ? a.last.at >= a.at + a.extent : a.first.at + a.first.size <= a.at;
 }
 
+// The edge that is out of the view, if one is. Qt's `nextEdgeToUnload`.
+function outside(t) {
+  const h = t.h;
+  const v = t.v;
+  return canUnload(h, false) ? [h, false] : canUnload(h, true) ? [h, true] : canUnload(v, false) ? [v, false] : canUnload(v, true) ? [v, true] : null;
+}
+
 // Qt's `loadAndUnloadVisibleEdges`: one edge at a time, the left before the
 // right before the top before the bottom, until the view is filled and
 // nothing outside it is loaded.
-function fill(self, t) {
+function* fill(self, t) {
   if (!t.cells.size) return;
   const h = t.h;
   const v = t.v;
   let modified;
   do {
     modified = false;
-    const out = canUnload(h, false) ? [h, false] : canUnload(h, true) ? [h, true] : canUnload(v, false) ? [v, false] : canUnload(v, true) ? [v, true] : null;
+    const out = outside(t);
     if (out) {
       modified = true;
       unloadEdge(self, t, out[0], out[1]);
@@ -349,7 +397,7 @@ function fill(self, t) {
     const into = canLoad(self, h, false) ? [h, false] : canLoad(self, h, true) ? [h, true] : canLoad(self, v, false) ? [v, false] : canLoad(self, v, true) ? [v, true] : null;
     if (into) {
       modified = true;
-      loadEdge(self, t, into[0], into[1]);
+      yield* loadEdge(self, t, into[0], into[1]);
     }
   } while (modified);
 }
@@ -509,8 +557,8 @@ function topLeft(self, t, options) {
       index = clamp(a.wanted.index, 0, a.count - 1);
       at = index * pitch;
     } else {
-      // The one it was, if the model still has it and it is not hidden.
-      index = visibleFrom(self, a, true, clamp(a.first.index, 0, a.count - 1));
+      // The one it was, if the model still has it.
+      index = clamp(a.first.index, 0, a.count - 1);
       at = a.start;
     }
     found[a.name] = index;
@@ -521,7 +569,7 @@ function topLeft(self, t, options) {
 
 // Qt's `loadInitialTable`: everything is let go, and the table begun
 // again from its top left cell.
-function begin(self, t, options) {
+function* begin(self, t, options) {
   const h = t.h;
   const v = t.v;
   const table = t.table;
@@ -531,7 +579,6 @@ function begin(self, t, options) {
   const top = topLeft(self, t, options);
   for (const cell of [...t.cells.values()]) release(self, t, cell, !(options & ALL));
   if (options & ALL) {
-    drain(self, t);
     h.origin = v.origin = 0;
     h.end = v.end = 0;
   }
@@ -547,14 +594,15 @@ function begin(self, t, options) {
   load(self, t, top.h, top.v);
   h.lines.push({ index: top.h, at: top.hAt, size: 0 });
   v.lines.push({ index: top.v, at: top.vAt, size: 0 });
+  yield* settling(t);
   // The height before the width, as Qt asks for them.
   v.first.size = sized(self, v, top.v);
   h.first.size = sized(self, h, top.h);
-  fill(self, t);
+  yield* fill(self, t);
 }
 
 // Qt's `processRebuildTable`.
-function rebuild(self, t) {
+function* rebuild(self, t) {
   let options = t.options;
   t.options = 0;
   if (!t.cells.size) options |= ALL;
@@ -564,7 +612,7 @@ function rebuild(self, t) {
   if (options & POSITION_COLUMN) options &= ~TOP_LEFT_COLUMN;
   t.rebuilt = options;
   t.rebuilding = true;
-  if (!(options & LAYOUT_ONLY)) begin(self, t, options);
+  if (!(options & LAYOUT_ONLY)) yield* begin(self, t, options);
   if (!t.cells.size) {
     measure(self, t, t.h);
     measure(self, t, t.v);
@@ -578,7 +626,7 @@ function rebuild(self, t) {
       if (!(options & a.POSITION) || wanted.index !== a.first.index) continue;
       scroll(self, a, aligned(self, a, a.first, wanted.alignment, wanted.offset, wanted.rect));
     }
-    fill(self, t);
+    yield* fill(self, t);
     for (const a of axes(t)) {
       // Asked to be somewhere, the view is not left past the content.
       if (!(options & a.POSITION) || a.sync) continue;
@@ -587,9 +635,17 @@ function rebuild(self, t) {
       if (a.at < low) scroll(self, a, low);
       else if (a.at > high) scroll(self, a, high);
     }
-    fill(self, t);
+    yield* fill(self, t);
     contentSize(self, t, options);
+    if (options & ALL && t.reuse) {
+      // A column and a row more than the view shows, for the pool: the
+      // first flick has delegates to use.
+      if (around(self, t.h, true) !== AT_END) yield* loadEdge(self, t, t.h, true);
+      if (around(self, t.v, true) !== AT_END) yield* loadEdge(self, t, t.v, true);
+      for (let out; (out = outside(t)); ) unloadEdge(self, t, out[0], out[1]);
+    }
   }
+  commit(self, t);
   t.rebuilding = false;
   t.changed = true;
 }
@@ -729,13 +785,13 @@ function detect(self, t) {
 
 // Qt's `updateTable`: a rebuild if one is asked for, and else the edges
 // that the view's move brought in or left behind.
-function update(self, t) {
+function* update(self, t) {
   for (const a of axes(t)) {
     a.at = a.seen = self[a.position];
     a.extent = self[a.length];
   }
-  if (t.options) rebuild(self, t);
-  else fill(self, t);
+  if (t.options) yield* rebuild(self, t);
+  else yield* fill(self, t);
 }
 
 // What the view says of itself, from what the layout left.
@@ -786,10 +842,16 @@ function publish(self, t) {
       }
     }
   }
-  if (t.changed) {
-    t.changed = false;
-    self.layoutChanged();
-  }
+}
+
+// `layoutChanged`, once the layout is done: what hears it may ask for
+// another.
+function tell(view) {
+  const t = view.$table;
+  for (const child of [...t.children]) tell(child);
+  if (!t.changed) return;
+  t.changed = false;
+  view.layoutChanged();
 }
 
 // Qt's `syncViewportPosRecursive`: where one view was moved to, the view
@@ -830,47 +892,63 @@ function moved(view) {
   return any;
 }
 
-function updateTree(self) {
+function* updateTree(self) {
   const t = self.$table;
   detect(self, t);
-  update(self, t);
+  yield* update(self, t);
   for (const child of [...t.children]) {
     child.$table.options |= t.rebuilt & ~OWN;
-    updateTree(child);
+    yield* updateTree(child);
   }
   t.rebuilt = 0;
   publish(self, t);
 }
 
-// Everything is laid out from the view that follows none.
+// Everything is laid out from the view that follows none: what moved is
+// followed, and then each view is updated after the one it follows.
+function* work(root) {
+  const t = root.$table;
+  if (moved(root)) {
+    // Moved a view's length or more, nothing loaded is of use: the table
+    // is begun again where the view now is. Qt's
+    // `scheduleRebuildIfFastFlick`.
+    const h = t.h;
+    const v = t.v;
+    const x = root.contentX;
+    const y = root.contentY;
+    const width = root.width;
+    const height = root.height;
+    const shown = h.extent > 0 && v.extent > 0;
+    if (!(shown && height > 0 && v.at < y + height && y < v.at + v.extent)) t.options |= VIEWPORT_ONLY | TOP_LEFT_ROW;
+    if (!(shown && width > 0 && h.at < x + width && x < h.at + h.extent)) t.options |= VIEWPORT_ONLY | TOP_LEFT_COLUMN;
+  }
+  yield* updateTree(root);
+}
+
 function refresh(self) {
   link(self, self.$table);
   let root = self;
   while (root.$table.parent) root = root.$table.parent;
   const t = root.$table;
-  // Asked for from inside a layout (a provider that calls `forceLayout`):
-  // once this one is done.
-  if (t.busy) return void t.bump(next);
+  // Asked for from inside a layout (a provider that calls `forceLayout`, a
+  // delegate that assigns when it is complete): once this one is done.
+  if (t.busy) return void (t.again = true);
   t.busy = true;
   try {
-    if (moved(root)) {
-      // Moved a view's length or more, nothing loaded is of use: the
-      // table is begun again where the view now is. Qt's
-      // `scheduleRebuildIfFastFlick`.
-      const h = t.h;
-      const v = t.v;
-      const x = root.contentX;
-      const y = root.contentY;
-      const width = root.width;
-      const height = root.height;
-      const shown = h.extent > 0 && v.extent > 0;
-      if (!(shown && height > 0 && v.at < y + height && y < v.at + v.extent)) t.options |= VIEWPORT_ONLY | TOP_LEFT_ROW;
-      if (!(shown && width > 0 && h.at < x + width && x < h.at + h.extent)) t.options |= VIEWPORT_ONLY | TOP_LEFT_COLUMN;
+    t.work ??= work(root);
+    if (!t.work.next().done) {
+      // It waits for what has to settle, and goes on in the next run.
+      t.again = true;
+      return;
     }
-    updateTree(root);
+    t.work = null;
   } finally {
     t.busy = false;
+    // What changed meanwhile was not looked at.
+    if (t.again) t.bump(next);
+    t.again = false;
   }
+  tell(root);
 }
 
 // What a method changed is laid out before it returns.
@@ -883,16 +961,34 @@ function apply(self) {
 
 // ----------------------------------------------------------- positioning
 
+// An edge whose size is needed at once. Where a delegate used again cannot
+// settle, inside a flush, the edge has delegates of its own.
+function loadNow(self, t, a, forward) {
+  let root = self;
+  while (root.$table.parent) root = root.$table.parent;
+  const laying = root.$table;
+  const busy = laying.busy;
+  t.fresh = flushing();
+  // What the flush brings does not lay the table out under this.
+  laying.busy = true;
+  try {
+    for (const _ of loadEdge(self, t, a, forward)) flush();
+  } finally {
+    t.fresh = false;
+    laying.busy = busy;
+  }
+}
+
 // Qt's `scrollToColumn`: moves the view to a column that is loaded or the
 // next to be, and says whether it could.
 function scrollTo(self, t, a, index, alignment, offset, rect) {
   if (!a.lines.length) return false;
   if (index < a.first.index) {
     if (index !== around(self, a, false)) return false;
-    loadEdge(self, t, a, false);
+    loadNow(self, t, a, false);
   } else if (index > a.last.index) {
     if (index !== around(self, a, true)) return false;
-    loadEdge(self, t, a, true);
+    loadNow(self, t, a, true);
   }
   const line = a.line(index);
   if (!line) return false;
@@ -900,13 +996,24 @@ function scrollTo(self, t, a, index, alignment, offset, rect) {
   return true;
 }
 
+// Whether a view was moved at once, to a column it has: then it is laid out
+// before the method returns, as Qt does it. A rebuild is for later.
+let scrolled = false;
+
 function position(self, a, index, alignment, offset, rect) {
   const t = self.$table;
   if (a.sync) return position(t.parent, followed(self, a), index, alignment, offset, rect);
-  if (scrollTo(self, t, a, index, alignment, offset, rect)) return;
+  if (scrollTo(self, t, a, index, alignment, offset, rect)) return void (scrolled = true);
   // Too far to know where it is: the table is begun again from it.
   a.wanted = { index, alignment, offset, rect };
   t.options |= VIEWPORT_ONLY | a.POSITION;
+  t.bump(next);
+}
+
+function positioned(self, work) {
+  scrolled = false;
+  untrack(work);
+  if (scrolled) apply(self);
 }
 
 const validRect = (rect) => rect != null && rect.width > 0 && rect.height > 0;
@@ -1077,6 +1184,12 @@ export const TableView = defineType("TableView", Flickable, {
       untrack(() => (t.options |= layoutOptions(this, t)));
       apply(this);
     },
+    // The layout a new size asks for, which Qt does not do at once.
+    $relayout() {
+      const t = this.$table;
+      untrack(() => (t.options |= layoutOptions(this, t)));
+      t.bump(next);
+    },
     columnWidth(column) {
       return this.$table.h.line(column)?.size ?? -1;
     },
@@ -1122,13 +1235,13 @@ export const TableView = defineType("TableView", Flickable, {
       if (this.$explicit(a, index) === size) return;
       if (size < 0) a.sizes.delete(index);
       else a.sizes.set(index, size);
-      if (t.cells.size) this.forceLayout();
+      if (t.cells.size) this.$relayout();
     },
     $clear(a) {
       if (a.sync) return this.$table.parent.$clear(followed(this, a));
       if (!a.sizes.size) return;
       a.sizes.clear();
-      this.forceLayout();
+      this.$relayout();
     },
     isColumnLoaded(column) {
       return Boolean(this.$table.h.line(column));
@@ -1137,12 +1250,10 @@ export const TableView = defineType("TableView", Flickable, {
       return Boolean(this.$table.v.line(row));
     },
     positionViewAtRow(row, mode, offset, subRect) {
-      untrack(() => positionAt(this, this.$table.v, row, mode, offset, subRect));
-      apply(this);
+      positioned(this, () => positionAt(this, this.$table.v, row, mode, offset, subRect));
     },
     positionViewAtColumn(column, mode, offset, subRect) {
-      untrack(() => positionAt(this, this.$table.h, column, mode, offset, subRect));
-      apply(this);
+      positioned(this, () => positionAt(this, this.$table.h, column, mode, offset, subRect));
     },
     // A cell is a point, its column first: `positionViewAtCell(cell, mode,
     // offset, subRect)` or `positionViewAtCell(column, row, mode, ...)`.
@@ -1152,11 +1263,9 @@ export const TableView = defineType("TableView", Flickable, {
       const vertical = mode & ~(AlignLeft | AlignRight | AlignHCenter);
       if (!horizontal && !vertical) return void console.warn(`QML TableView: Unsupported mode: ${mode}`);
       const t = this.$table;
-      untrack(() => {
-        if (horizontal) positionAt(this, t.h, column, horizontal, offset?.x, subRect);
-        if (vertical) positionAt(this, t.v, row, vertical, offset?.y, subRect);
-      });
-      apply(this);
+      // The column, and then the row from where that has left the view.
+      if (horizontal) positioned(this, () => positionAt(this, t.h, column, horizontal, offset?.x, subRect));
+      if (vertical) positioned(this, () => positionAt(this, t.v, row, vertical, offset?.y, subRect));
     },
     positionViewAtIndex(index, mode, offset, subRect) {
       const [column, row] = this.$table.cellOf(index);
@@ -1209,10 +1318,26 @@ export const TableView = defineType("TableView", Flickable, {
       t.options |= options;
       bump(next);
     };
+    // Every delegate's cell where the model says it now is. Told nothing,
+    // nothing is known of any.
+    const follow = (rows, columns) => {
+      for (const cell of t.cells.values()) {
+        const home = cell.$home;
+        if (!home) continue;
+        const row = rows?.(home[0]);
+        const column = columns?.(home[1]);
+        cell.$home = row >= 0 && column >= 0 ? [row, column] : null;
+      }
+    };
     const t = (self.$table = {
       tick: 0,
       ready: false,
+      // The layout that is going on, and whether it had to wait.
       busy: false,
+      work: null,
+      again: false,
+      stale: false,
+      fresh: false,
       bump,
       h: new Axis(true),
       v: new Axis(false),
@@ -1224,6 +1349,8 @@ export const TableView = defineType("TableView", Flickable, {
       delegate: null,
       cells: new Map(),
       pool: [],
+      // The delegates let go that a rebuild may take back.
+      staged: [],
       reuse: true,
       options: 0,
       rebuilt: 0,
@@ -1237,12 +1364,27 @@ export const TableView = defineType("TableView", Flickable, {
       // The cell a selection being made began at and the one it ends at.
       selecting: null,
       // What the model says changed in it.
+      // `rows` and `columns` say where a row and a column now are, or -1
+      // for one that is gone.
       listener: {
         reset: () => schedule(ALL),
-        rows: () => schedule(VIEWPORT_ONLY | (t.transposed ? CONTENT_WIDTH : CONTENT_HEIGHT)),
-        columns: () => schedule(VIEWPORT_ONLY | (t.transposed ? CONTENT_HEIGHT : CONTENT_WIDTH)),
-        moved: () => schedule(VIEWPORT_ONLY),
-        data: () => t.cells.forEach(changed),
+        rows(rows) {
+          follow(rows, SAME);
+          schedule(VIEWPORT_ONLY | (t.transposed ? CONTENT_WIDTH : CONTENT_HEIGHT));
+        },
+        columns(columns) {
+          follow(SAME, columns);
+          schedule(VIEWPORT_ONLY | (t.transposed ? CONTENT_HEIGHT : CONTENT_WIDTH));
+        },
+        moved(rows, columns) {
+          follow(rows, columns);
+          schedule(VIEWPORT_ONLY);
+        },
+        // A delegate has its new data when the model has said so.
+        data: () => {
+          t.cells.forEach(changed);
+          settle();
+        },
       },
       // The cells that are selected, by where they are in the model.
       picked: createMemo(() => {
@@ -1298,7 +1440,7 @@ export const TableView = defineType("TableView", Flickable, {
     // not flick, as in Qt.
     const tap = instantiate(
       () =>
-        createComponent(TapHandler, {
+        TapHandler({
           get enabled() {
             return self.pointerNavigationEnabled;
           },
