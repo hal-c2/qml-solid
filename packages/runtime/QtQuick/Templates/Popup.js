@@ -22,7 +22,7 @@ import {
 import { frameOf, itemToScene, sceneToItem } from "../geometry.js";
 import { Item } from "../Item.js";
 import { AllButtons, buttonOf, Key, RightButton, ShiftModifier } from "../keycodes.js";
-import { gone, hoverable, receive, wheels } from "../pointer.js";
+import { gone, hoverable, overhear, receive, wheels } from "../pointer.js";
 import { windowOf } from "../Window.js";
 import { Page } from "./Pane.js";
 
@@ -102,13 +102,44 @@ function strand(overlay) {
   }
 }
 
+// What an item is in that is in nothing itself.
+function topOf(item) {
+  let top = item;
+  for (let up = above(top); up; up = above(top)) top = up;
+  return top;
+}
+
 // The overlay of the window an item is in: made when first asked for.
 export function overlayOf(item) {
   if (!item?.$node) return null;
-  let top = item;
-  for (let up = above(top); up; up = above(top)) top = up;
+  const top = topOf(item);
   if (top.$overlay === undefined) cover(top);
   return top.$overlay;
+}
+
+// The popups that are dragged in from an edge of their window: the drawers.
+// Qt's overlay is there to see while its window has one, and they are asked
+// of every press that is on nothing of the overlay's.
+const edged = new Set();
+const [edges, setEdges] = createSignal(0, WRITABLE);
+
+export function edge(popup) {
+  edged.add(popup);
+  setEdges((version) => version + 1);
+  onCleanup(() => {
+    edged.delete(popup);
+    setEdges((version) => version + 1);
+  });
+}
+
+function drawn(overlay) {
+  edges();
+  const top = overlay.parent;
+  for (const popup of edged) {
+    const parent = popup.parent;
+    if (parent && topOf(parent) === top) return true;
+  }
+  return false;
 }
 
 function cover(top) {
@@ -175,7 +206,7 @@ export const Overlay = defineType("Overlay", Item, {
   properties: {
     z: 1000001,
     // There is an overlay to see while something is in it.
-    visible: derived((self) => self.children.length > 0),
+    visible: derived((self) => self.children.length > 0 || drawn(self)),
     modal: null,
     modeless: null,
   },
@@ -198,6 +229,14 @@ export const Overlay = defineType("Overlay", Item, {
     // that popup.
     self.$lastFocus = null;
     self.$lastFocusPopup = null;
+    // One that is there for its drawers alone is in nothing's way: what is
+    // under it is the page's to press.
+    effect(
+      () => self.children.length > 0,
+      (any) => {
+        self.$node.style.pointerEvents = any ? "" : "none";
+      },
+    );
   },
   attached: OverlayAttached,
 });
@@ -371,10 +410,10 @@ function position(self) {
     const scene = itemToScene(parent, x, y);
     return sceneToItem(overlay, scene.x, scene.y);
   };
-  let x = centre ? 0 : self.$moveX ? px : item.x;
-  let y = centre ? 0 : self.$moveY ? py : item.y;
   let w = hasWidth ? asked(slot(item, "width")) : iw;
   let h = hasHeight ? asked(slot(item, "height")) : ih;
+  let x = centre ? 0 : self.$moveX ? px : self.$kept(true, w, overlay, map);
+  let y = centre ? 0 : self.$moveY ? py : self.$kept(false, h, overlay, map);
   let relax = self.$relax;
   if (centre === overlay) {
     x = Math.round(overlay.width / 2) - w / 2;
@@ -517,7 +556,7 @@ function dimmed(self) {
 
 function fade(self, on) {
   const pop = self.$pop;
-  if (pop.dimmer && self.dim) slot(pop.dimmer, "opacity").write(on ? pop.dimmed : 0);
+  if (pop.dimmer && self.dim && self.$fades) slot(pop.dimmer, "opacity").write(on ? pop.dimmed : 0);
 }
 
 function undim(self) {
@@ -559,17 +598,23 @@ function stop(pop) {
 }
 
 // Runs `enter` or `exit`, on the clock every animation runs on, and `done`
-// when it ends: at once with none.
-function run(self, transition, done) {
+// when it ends: at once with none. What the popup has it change, and no
+// animation of it took, is changed at once.
+function run(self, transition, entering, done) {
   const pop = self.$pop;
-  if (!transition) return done();
-  const job = transition.$prepare(NONE, [], false, self);
+  if (!transition?.enabled) return done();
+  const actions = self.$actions(transition, entering);
+  const modified = [];
+  const job = transition.$prepare(actions, modified, false, self);
+  for (const action of actions) if (!modified.includes(action)) action.property.write(action.to);
   pop.job = job;
   pop.transition = transition;
   const finished = () => {
     if (pop.job !== job) return;
     pop.job = pop.transition = null;
     transition.$ran(false);
+    // Where its last step left it is where it is, before anything is told.
+    settle();
     untrack(done);
     settle();
   };
@@ -580,21 +625,26 @@ function run(self, transition, done) {
 }
 
 // Qt's `prepareEnterTransition`, in the order Qt does it: what a program
-// hears of, it hears in that order.
-function show(self) {
+// hears of, it hears in that order. Whether there is a transition to run.
+function prepare(self) {
   const pop = self.$pop;
-  if (pop.visible && pop.phase !== EXITING) return;
+  // One that is coming already: as it is, unless it is on its way.
+  if (pop.phase === ENTERING) return !pop.job;
   const item = self.$item;
   const parent = self.parent;
-  if (!parent) return void console.warn("cannot show popup: parent is null");
+  if (!parent) {
+    console.warn("cannot show popup: parent is null");
+    return false;
+  }
   if (!pop.overlay && !housed(parent)) {
     pop.waits = true;
     waiting.add(self);
-    return;
+    return false;
   }
-  // One that was going comes back: Qt tells of `visible` again, as it was.
-  const back = pop.phase === EXITING;
-  if (back) stop(pop);
+  // One that was going comes back, and one that is open comes again: Qt
+  // tells of `visible` again, as it was.
+  const back = pop.visible;
+  if (pop.phase === EXITING) stop(pop);
   const before = activeFocusItem(parent);
   pop.visible = true;
   if (!pop.overlay) {
@@ -634,7 +684,16 @@ function show(self) {
     setFocus(item, true, PopupFocusReason);
     settle();
   }
-  run(self, self.enter, () => {
+  return true;
+}
+
+// `again` is for one that is open, or on its way in by hand: a drawer let go
+// of comes the rest of the way.
+function show(self, again = false) {
+  const pop = self.$pop;
+  if (!again && pop.visible && pop.phase !== EXITING) return;
+  if (!prepare(self)) return;
+  run(self, self.enter, true, () => {
     pop.phase = IDLE;
     slot(self, "opened").changed();
     settle();
@@ -677,7 +736,7 @@ function hide(self) {
   else slot(self, "opened").changed();
   settle();
   self.$leaving();
-  run(self, self.exit, () => finish(self));
+  run(self, self.exit, false, () => finish(self));
 }
 
 // Takes the popup's item out of the overlay. One that is destroyed tells
@@ -737,7 +796,7 @@ function finish(self) {
   settle();
 }
 
-const contains = (item, point) => {
+export const contains = (item, point) => {
   const { x, y } = sceneToItem(item, point.x, point.y);
   return item.contains({ x, y });
 };
@@ -795,7 +854,7 @@ function pressed(event) {
       pop.outside = !contains(popup.$item, point);
       pop.outsideParent = pop.outside && parent ? !contains(parent, point) : false;
       tryClose(popup, point, CloseOnPressOutside | CloseOnPressOutsideParent);
-      if (popup.modal) {
+      if (popup.$bars(point)) {
         overlay.$barrier = popup;
         break;
       }
@@ -815,8 +874,32 @@ function released(event) {
       const pop = popup.$pop;
       if (pop.outside || pop.outsideParent) tryClose(popup, point, CloseOnReleaseOutside | CloseOnReleaseOutsideParent);
       pop.outside = pop.outsideParent = false;
-      if (popup.modal) break;
+      if (popup.$bars(point)) break;
     }
+  });
+}
+
+// The same press, as it is about to be offered to what is under it: the
+// popup that keeps it from everything else follows it, and one on nothing of
+// the overlay's is what a drawer is dragged in by.
+function begun(point, hits) {
+  if (!point.primary) return;
+  untrack(() => {
+    for (const overlay of overlays) {
+      if (overlay.$top.$node.parentElement === point.scene && overlay.$barrier) return void overlay.$barrier.$barred(point);
+    }
+    const mine = [];
+    for (const popup of edged) {
+      const parent = popup.parent;
+      if (!parent || !housed(parent)) continue;
+      const top = topOf(parent);
+      if (top.$node.parentElement !== point.scene) continue;
+      const overlay = top.$overlay;
+      if (overlay && hits.some((item) => inTree(overlay, item))) return;
+      mine.push(popup);
+    }
+    const z = new Map(mine.map((popup) => [popup, popup.z]));
+    for (const popup of mine.sort((a, b) => z.get(b) - z.get(a))) popup.$begin(point);
   });
 }
 
@@ -829,6 +912,8 @@ function listen() {
   document.addEventListener("pointerdown", pressed, true);
   document.addEventListener("pointerup", released, true);
 }
+
+overhear(begun);
 
 export const Popup = defineType("Popup", QtObject, {
   properties: {
@@ -898,6 +983,36 @@ export const Popup = defineType("Popup", QtObject, {
     $resizeY: true,
     $relax: true,
     $Item: PopupItem,
+    // Whether what is behind it comes and goes with it of itself.
+    $fades: true,
+    // Where the popup is on an axis the positioner may not move it along:
+    // where its item is.
+    $kept(across) {
+      return across ? this.$item.x : this.$item.y;
+    },
+    // The box of what is behind it: as big as the overlay, wherever it was
+    // put.
+    $behind(overlay) {
+      return [undefined, undefined, overlay.width, overlay.height];
+    },
+    // What `enter` and `exit` are to change of the popup itself.
+    $actions() {
+      return NONE;
+    },
+    // Whether a press outside it stops at it.
+    $bars() {
+      return this.modal;
+    },
+    // A press it kept from everything else, and one on nothing of the
+    // overlay's.
+    $barred() {},
+    $begin() {},
+    $prepare() {
+      return untrack(() => prepare(this));
+    },
+    $again() {
+      untrack(() => show(this, true));
+    },
     get palette() {
       return this.$item.palette;
     },
@@ -983,13 +1098,17 @@ export const Popup = defineType("Popup", QtObject, {
     effect(
       () => {
         const dimmer = self.$dimmer();
-        const overlay = pop.dimmerIn;
-        return dimmer ? [dimmer, overlay.width, overlay.height] : null;
+        return dimmer ? [dimmer, ...self.$behind(pop.dimmerIn)] : null;
       },
       (box) => {
         if (!box) return;
-        slot(box[0], "width").write(box[1]);
-        slot(box[0], "height").write(box[2]);
+        const [dimmer, x, y, width, height] = box;
+        if (x !== undefined) {
+          slot(dimmer, "x").write(x);
+          slot(dimmer, "y").write(y);
+        }
+        slot(dimmer, "width").write(width);
+        slot(dimmer, "height").write(height);
       },
     );
     effect(

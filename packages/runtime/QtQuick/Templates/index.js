@@ -14,6 +14,7 @@ export { DelayButton } from "./DelayButton.js";
 export { Dial } from "./Dial.js";
 export { Dialog } from "./Dialog.js";
 export { DialogButtonBox } from "./DialogButtonBox.js";
+export { Drawer } from "./Drawer.js";
 export { HorizontalHeaderView, VerticalHeaderView } from "./HeaderView.js";
 export { CheckDelegate, ItemDelegate, RadioDelegate, SwitchDelegate } from "./ItemDelegate.js";
 export { Label } from "./Label.js";

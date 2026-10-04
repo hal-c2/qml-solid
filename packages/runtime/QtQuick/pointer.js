@@ -300,6 +300,16 @@ function place(point, event) {
 
 const asked = [];
 
+// Who is told of a press before anything under it is asked: `hear(point,
+// hits)` may watch the point. An overlay asks the drawers at the edges of its
+// window.
+const first = new Set();
+
+export function overhear(hear) {
+  first.add(hear);
+  listen();
+}
+
 // The items around `item` that filter what their children are sent, nearest
 // first. One that took the press is not asked again for what is under it.
 function filter(point, item) {
@@ -483,6 +493,7 @@ function onDown(event) {
     else after(DOUBLE_CLICK_INTERVAL, forgotten, last.job);
   }
   const hits = hitsAt(scene, point.clientX, point.clientY, NATIVE);
+  for (const hear of first) hear(point, hits);
   press(point, hits);
   point.claimed = Boolean(point.exclusive || point.passive.length || point.filters.length);
   if (point.primary) claimed = point.claimed;
