@@ -121,3 +121,47 @@ test("a View3D paints its models as Qt does", async ({ page }) => {
     [32, 32, 32],
   ], "", 3);
 });
+
+test("a model with a skin is bent by its joints as Qt bends it", async ({ page }) => {
+  await open(page, "skin3d");
+  const R = [255, 0, 0];
+  const G = [0, 255, 0];
+  const none = [32, 32, 32];
+  const points = [
+    // The one bent over: up its lower half, round the corner, along its
+    // upper half, and where it would be if the model's own place counted.
+    [[80, 230], R],
+    [[80, 180], R],
+    [[100, 150], R],
+    [[150, 150], R],
+    [[175, 135], R],
+    [[175, 165], R],
+    [[60, 120], none],
+    // The one whose joints undo no pose: its foot, its slanting middle, its
+    // upper half moved over, and beside its foot.
+    [[200, 230], G],
+    [[215, 150], G],
+    [[260, 70], G],
+    [[240, 230], none],
+    // The lit one: its lower half full in the light, darker the more of the
+    // turned joint a corner goes with, and its squashed top, and round it.
+    [[300, 230], [239, 239, 239]],
+    [[320, 230], [239, 239, 239]],
+    [[320, 200], [239, 239, 239]],
+    [[320, 180], [224, 224, 224]],
+    [[320, 160], [202, 202, 202]],
+    [[320, 140], [153, 153, 153]],
+    [[320, 125], [25, 25, 25]],
+    [[320, 110], [0, 0, 0]],
+    [[320, 95], none],
+    [[305, 110], none],
+    [[335, 110], none],
+    [[345, 230], none],
+  ];
+  const at = points.map(([point]) => point);
+  await expect.poll(async () => (await pixels(page, [at[0]]))[0]).toBe("255 0 0");
+  const painted = (await pixels(page, at)).map((colour) => colour.split(" ").map(Number));
+  near(painted, points.map(([, colour]) => colour), "", 3);
+  // What it says its bounds are is the mesh's, bent or not.
+  near(await page.evaluate(() => window.scene.read()), { bounds: [[-20, 0, 0], [20, 200, 0]] });
+});

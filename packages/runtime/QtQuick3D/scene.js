@@ -137,6 +137,9 @@ export const Model = defineType("Model", Node, {
     self.$model = true;
     self.$shape = () => self.geometry?.$shape?.() ?? shape(self.source);
     self.$materials = () => list(self.materials);
+    // What bends it: a skin's joints, else a skeleton's with the poses the
+    // model has for them.
+    self.$bones = () => (self.skin ? (self.skin.$bones?.() ?? null) : (self.skeleton?.$bones?.(list(self.inverseBindPoses)) ?? null));
   },
 });
 

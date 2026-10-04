@@ -17,4 +17,5 @@ export {
   SpotLight,
   Texture,
 } from "./scene.js";
+export { Joint, MorphTarget, Skeleton, Skin } from "./skin.js";
 export { View3D } from "./View3D.js";

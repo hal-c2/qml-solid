@@ -19,21 +19,50 @@ layout(location = 0) in vec3 attr_pos;
 layout(location = 1) in vec3 attr_norm;
 layout(location = 2) in vec2 attr_uv0;
 layout(location = 3) in vec4 attr_color;
+layout(location = 4) in vec4 attr_joints;
+layout(location = 5) in vec4 attr_weights;
 uniform mat4 u_all;
 uniform mat4 u_world;
 uniform mat3 u_facing;
 uniform mat3 u_picture;
 uniform float u_point;
+uniform bool u_skinned;
+uniform highp sampler2D u_bones;
 out vec3 v_position;
 out vec3 v_normal;
 out vec2 v_uv;
 out vec4 v_color;
+
+// One of the matrices of the joints: the one that moves a corner at an even
+// place, the one that turns the way it faces at the odd one after it.
+mat4 bone(int index) {
+    int width = textureSize(u_bones, 0).x;
+    int at = index * 4;
+    mat4 m;
+    for (int column = 0; column < 4; column++) {
+        int x = (at + column) % width;
+        m[column] = texelFetch(u_bones, ivec2(x, (at + column - x) / width), 0);
+    }
+    return m;
+}
+
 void main() {
-    v_position = (u_world * vec4(attr_pos, 1.0)).xyz;
-    v_normal = u_facing * attr_norm;
+    vec4 position = vec4(attr_pos, 1.0);
+    vec3 facing = attr_norm;
+    // A corner no joint has a hold of stays where the mesh has it.
+    if (u_skinned && attr_weights != vec4(0.0)) {
+        ivec4 joints = ivec4(attr_joints);
+        vec4 w = attr_weights;
+        position = (bone(joints.x * 2) * w.x + bone(joints.y * 2) * w.y + bone(joints.z * 2) * w.z + bone(joints.w * 2) * w.w) * position;
+        facing = (mat3(bone(joints.x * 2 + 1)) * w.x + mat3(bone(joints.y * 2 + 1)) * w.y + mat3(bone(joints.z * 2 + 1)) * w.z + mat3(bone(joints.w * 2 + 1)) * w.w) * facing;
+    }
+    v_position = (u_world * position).xyz;
+    // The way a corner faces is made one long here, before it is spread
+    // over the triangle, as Qt makes it.
+    v_normal = normalize(u_facing * facing);
     v_uv = (u_picture * vec3(attr_uv0, 1.0)).xy;
     v_color = attr_color;
-    gl_Position = u_all * vec4(attr_pos, 1.0);
+    gl_Position = u_all * position;
     gl_PointSize = u_point;
 }
 `;
@@ -199,6 +228,8 @@ const UNIFORMS = [
   "u_facing",
   "u_picture",
   "u_point",
+  "u_skinned",
+  "u_bones",
   "u_color",
   "u_opacity",
   "u_emissive",
@@ -259,19 +290,22 @@ function context() {
   at = {};
   for (const name of UNIFORMS) at[name] = gl.getUniformLocation(program, name);
   gl.uniform1i(at.u_map, 0);
+  gl.uniform1i(at.u_bones, 1);
   // A picture's first row is its bottom one to a mesh, as it is to Qt.
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   // What a mesh says nothing of: it faces the eye, and is white.
   gl.vertexAttrib3f(1, 0, 0, 1);
   gl.vertexAttrib2f(2, 0, 0);
   gl.vertexAttrib4f(3, 1, 1, 1, 1);
+  gl.vertexAttrib4f(4, 0, 0, 0, 0);
+  gl.vertexAttrib4f(5, 0, 0, 0, 0);
   return gl;
 }
 
 // What a number of a mesh is to OpenGL, by Qt's number for its kind.
 const KINDS = { 1: 0x1401, 2: 0x1400, 3: 0x1403, 4: 0x1402, 5: 0x1405, 6: 0x1404, 9: 0x140b, 10: 0x1406 };
 const MODES = { 1: 0, 2: 3, 3: 2, 4: 1, 5: 5, 6: 6, [Triangles]: 4 };
-const ATTRIBUTES = ["attr_pos", "attr_norm", "attr_uv0", "attr_color"];
+const ATTRIBUTES = ["attr_pos", "attr_norm", "attr_uv0", "attr_color", "attr_joints", "attr_weights"];
 
 // A shape as OpenGL holds it: its corners as the mesh file has them, each
 // part of a corner said where it is in the row.
@@ -287,8 +321,9 @@ function held(shape) {
     const entry = shape.entries[name];
     if (!entry || !KINDS[entry.type]) return;
     gl.enableVertexAttribArray(location);
-    // A colour kept as whole numbers is out of 255.
-    gl.vertexAttribPointer(location, Math.min(4, entry.count), KINDS[entry.type], entry.type < 9, shape.stride, entry.offset);
+    // A colour kept as whole numbers is out of 255; which joint a corner
+    // goes with is the number itself.
+    gl.vertexAttribPointer(location, Math.min(4, entry.count), KINDS[entry.type], entry.type < 9 && name !== "attr_joints", shape.stride, entry.offset);
   });
   let kind = 0;
   let size = 0;
@@ -299,7 +334,8 @@ function held(shape) {
     kind = size === 4 ? gl.UNSIGNED_INT : size === 2 ? gl.UNSIGNED_SHORT : gl.UNSIGNED_BYTE;
   }
   gl.bindVertexArray(null);
-  shapes.set(shape, (made = { array, kind, size, mode: MODES[shape.drawMode] ?? gl.TRIANGLES, colors: Boolean(shape.entries.attr_color) }));
+  const jointed = Boolean(shape.entries.attr_joints && shape.entries.attr_weights);
+  shapes.set(shape, (made = { array, kind, size, mode: MODES[shape.drawMode] ?? gl.TRIANGLES, colors: Boolean(shape.entries.attr_color), jointed }));
   return made;
 }
 
@@ -350,7 +386,23 @@ function smoothed(width, height, samples) {
   return smooth.frame;
 }
 
+// The joints of a bent shape, as a texture the corners look their matrices
+// up in.
+let skeleton = null;
+function jointed(bones) {
+  skeleton ??= gl.createTexture();
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, skeleton);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, bones.width, bones.width, 0, gl.RGBA, gl.FLOAT, bones.data);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.activeTexture(gl.TEXTURE0);
+}
+
 const PICTURE = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+const UNTURNED = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
 // One part of a shape, with the material it is drawn with.
 function part(piece) {
@@ -359,7 +411,10 @@ function part(piece) {
   gl.bindVertexArray(made.array);
   gl.uniformMatrix4fv(at.u_all, false, piece.all);
   gl.uniformMatrix4fv(at.u_world, false, world);
-  gl.uniformMatrix3fv(at.u_facing, false, math.normal(world));
+  gl.uniformMatrix3fv(at.u_facing, false, piece.bones ? UNTURNED : math.normal(world));
+  const skinned = Boolean(piece.bones) && made.jointed;
+  gl.uniform1i(at.u_skinned, skinned ? 1 : 0);
+  if (skinned) jointed(piece.bones);
   gl.uniform1f(at.u_point, material.point);
   gl.uniform4fv(at.u_color, material.color);
   gl.uniform1f(at.u_opacity, opacity * material.opacity);
@@ -446,7 +501,9 @@ export function draw(scene, canvas, paper) {
     const solid = [];
     const clear = [];
     for (const model of scene.models) {
-      const { shape, world, materials, opacity } = model;
+      const { shape, materials, opacity, bones } = model;
+      // A bent shape is where its joints put it, wherever its model is.
+      const world = bones ? math.IDENTITY : model.world;
       const all = math.multiply(seen, world);
       shape.subsets.forEach((subset, index) => {
         const material = materials[Math.min(index, materials.length - 1)];
@@ -454,7 +511,7 @@ export function draw(scene, canvas, paper) {
         const middle = math.point(world, ...subset.min.map((least, axis) => (least + subset.max[axis]) / 2));
         // How far in front of the eye it is: the eye looks down its own z.
         const distance = -math.point(view, ...middle)[2];
-        (sheer(material, opacity) ? clear : solid).push({ shape, subset, world, all, material, opacity, distance });
+        (sheer(material, opacity) ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones });
       });
     }
     solid.sort((a, b) => a.distance - b.distance);
