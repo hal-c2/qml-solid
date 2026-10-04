@@ -34,6 +34,15 @@ async function follow(page, scene, compare = (said, expected, step) => expect(sa
   }
 }
 
+// The same but for a last digit: what a scene says of a turn or a colour
+// is rounded to a thousandth, and what is half way between two rounds
+// either way.
+function about(said, expected, step, where = "") {
+  if (typeof expected === "number") return expect(Math.abs(said - expected), `after step ${step}, ${where}: ${said}, not ${expected}`).toBeLessThan(0.0015);
+  expect(Object.keys(said ?? {}), `after step ${step}, ${where}`).toEqual(Object.keys(expected));
+  for (const key of Object.keys(expected)) about(said[key], expected[key], step, `${where}.${key}`);
+}
+
 // Where the page is not of the colour Qt's picture has there, give or take
 // what two programs that draw the same may differ by.
 const EVERY = 5;
@@ -85,6 +94,51 @@ test("a system has emitted by a time what Qt's has", async ({ page }) => {
 // given another time everything since nought comes at once.
 test("a system declared with a time begins at nought, as Qt's does", async ({ page }) => {
   await follow(page, "particles3dlate");
+});
+
+// What Qt 6.11 answers for the same scene, of one particle of each kind at
+// thirteen times, on to past its life and back: where it is, how big, how
+// turned and of what colour. There at the very end of its life and not
+// after; growing from `particleScale` to `particleEndScale` and turning by
+// `particleRotationVelocity`; fading in and out by its colour's alpha, by
+// its size, or not at all; a life that goes backwards; looking at a point
+// and the way it set out; placed and turned as its emitter is in its
+// system, and nowhere when it is not the system's own; and the ways a
+// direction is said.
+test("a particle looks at a time as Qt's does", async ({ page }) => {
+  await follow(page, "particles3dlooks", about);
+});
+
+// What Qt 6.11 answers for the same scene, of one particle of each kind at
+// eleven times and with an affector enabled and disabled between them:
+// `Gravity3D` and its direction; only the kinds an affector names, and
+// nothing of one that is not enabled; `Attractor3D` by the end of a life
+// or by its `duration`, staying or hidden; `PointRotator3D`; `Wander3D`
+// all as one, easing in and out; `Repeller3D`; every `type` of
+// `ScaleAffector3D`; an affector outside its system; and one that is
+// turned, which changes nothing.
+test("affectors move particles as Qt's do", async ({ page }) => {
+  await follow(page, "particles3daffected");
+});
+
+// What Qt 6.11 answers for the same scene, as its time is set forward,
+// back and forward again: a `TrailEmitter3D` emits so many a second where
+// each particle it follows is, spread over the time since it last did;
+// bursts when a particle starts and when it ends, of a model every time it
+// is looked at and of a sprite once; bursts at a time, at every particle;
+// bursts asked for; and turned as the emitter is, not placed.
+test("particles are emitted where others are, as in Qt", async ({ page }) => {
+  await follow(page, "particles3dtrails");
+});
+
+// What Qt 6.11 answers for the same scene: emitters and affectors do their
+// work the last declared first; an emitter with bursts empties its kind
+// before its first; what a trail emitter emits is there at once or the
+// next time by which kind its system came to first; a rate that was
+// nought counts from when it is set; and bursts at a time come at the
+// system's `time`, whatever its `startTime` and their `triggerMode`.
+test("emitters and affectors work in the order Qt's do", async ({ page }) => {
+  await follow(page, "particles3dorder");
 });
 
 // What Qt 6.11 draws of the same scene: a sprite lies in the scene, turned
