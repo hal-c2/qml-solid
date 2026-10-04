@@ -14,7 +14,7 @@
 import { createMemo, createSignal, onCleanup, untrack } from "solid-js";
 import { defineType, derived, effect, flush, flushing, instantiate, QtObject, settle, slot } from "../object.js";
 import { Point } from "../QtQml/values.js";
-import { changed, depend, resized, SAME, Table } from "./cells.js";
+import { changed, depend, make, resized, SAME, Table } from "./cells.js";
 import { Flickable } from "./Flickable.js";
 import { forceActiveFocus } from "./focus.js";
 import { TapHandler } from "./handlers.js";
@@ -290,7 +290,7 @@ function load(self, t, column, row) {
     const component = t.delegate;
     const made = instantiate(
       (given) => {
-        const object = component(given);
+        const object = make(cell, () => component(given));
         // What `TableView.view` is found through.
         if (object) object.$delegate = cell;
         return object;
@@ -700,7 +700,7 @@ function link(self, t) {
       t.options |= VIEWPORT_ONLY;
     }
   }
-  const direction = self.syncDirection;
+  const direction = self.$syncs();
   t.h.sync = Boolean(t.parent) && (direction & Horizontal) !== 0;
   t.v.sync = Boolean(t.parent) && (direction & Vertical) !== 0;
 }
@@ -933,12 +933,16 @@ function refresh(self) {
   // Asked for from inside a layout (a provider that calls `forceLayout`, a
   // delegate that assigns when it is complete): once this one is done.
   if (t.busy) return void (t.again = true);
+  // A layout that waits goes on when what it waits for has settled: until
+  // then nothing it was told is seen, and it is asked again when it is.
+  if (t.work && untrack(t.version) === t.waited) return;
   t.busy = true;
   try {
     t.work ??= work(root);
     if (!t.work.next().done) {
       // It waits for what has to settle, and goes on in the next run.
       t.again = true;
+      t.waited = untrack(t.version);
       return;
     }
     t.work = null;
@@ -1156,6 +1160,10 @@ export const TableView = defineType("TableView", Flickable, {
     $transposed() {
       return false;
     },
+    // The directions it follows its `syncView` in.
+    $syncs() {
+      return this.syncDirection;
+    },
     $selected(row, column) {
       return this.$table.picked().has(key(column, row));
     },
@@ -1336,8 +1344,10 @@ export const TableView = defineType("TableView", Flickable, {
       busy: false,
       work: null,
       again: false,
+      waited: -1,
       stale: false,
       fresh: false,
+      version,
       bump,
       h: new Axis(true),
       v: new Axis(false),

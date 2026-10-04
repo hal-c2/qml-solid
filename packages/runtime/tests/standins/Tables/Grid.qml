@@ -16,6 +16,7 @@ QtObject {
     readonly property var d: ({ rows: [], indexes: {} })
     readonly property var invalidIndex: ({ row: -1, column: -1, valid: false, model: null })
     property int count: 20
+    property bool titled: false
 
     Component.onCompleted: fill(count)
 
@@ -65,9 +66,13 @@ QtObject {
         return true
     }
 
+    // A TableModel names no headers, and says what a QAbstractItemModel
+    // then does: their numbers, from one. `titled` is for a model that does.
     function headerData(section, orientation, role = Qt.DisplayRole) {
         if (role !== Qt.DisplayRole)
             return undefined
+        if (!titled)
+            return section + 1
         return orientation === Qt.Horizontal ? names[section].toUpperCase() : "r" + section
     }
 

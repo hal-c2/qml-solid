@@ -30,6 +30,26 @@ function kindOf(source) {
   return NONE;
 }
 
+// Whether a model answers as a QAbstractItemModel does: it has cells that
+// are told apart by an index.
+export const tabular = (source) => kindOf(source) === TABLE;
+export const indexed = (source) => kindOf(source) === TABLE || kindOf(source) === LIST;
+
+// The cell a delegate is being made for. What a view requires of a delegate
+// type Qt has in C++ (`tableView`, `headerView`) is not in the QML for the
+// compiler to bind: the type takes it from here as it is made.
+let made = null;
+export const making = () => made;
+export function make(cell, work) {
+  const before = made;
+  made = cell;
+  try {
+    return work();
+  } finally {
+    made = before;
+  }
+}
+
 // A cell's data: `row`, `column`, `index`, `model`, and the roles its table
 // adds. `$row` and `$column` are where it is in the model, and they change
 // when its delegate is used again for another cell.
@@ -161,7 +181,7 @@ export class Table {
 
   // Whether a selection model can tell its cells: they have indexes.
   get indexed() {
-    return this.kind === LIST || this.kind === TABLE;
+    return indexed(this.source);
   }
 
   rows() {
