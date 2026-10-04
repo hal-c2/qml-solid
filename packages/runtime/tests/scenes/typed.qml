@@ -30,6 +30,18 @@ Item {
 
     Text { id: label; text: "x" }
 
+    // What is bound through an alias of an alias is a binding too.
+    component Inner: Item {
+        property alias said: word.text
+        Text { id: word; text: "in" }
+    }
+    component Outer: Item {
+        property alias said: inner.said
+        Inner { id: inner }
+    }
+    property var nothing
+    Outer { id: outer; said: root.nothing }
+
     function said(...values) {
         return values.map(value => typeof value + ":" + value).join(" | ")
     }
@@ -68,6 +80,11 @@ Item {
         w = 3.9
         w = 3.95
         lines.push(said(a, b, changes))
+        lines.push(said(outer.said))
+        nothing = 5
+        lines.push(said(outer.said))
+        nothing = undefined
+        lines.push(said(outer.said))
         return lines
     }
 }

@@ -1,7 +1,8 @@
 // A property of a type holds a value of that type: what it is given is made
 // into one as Qt makes it, and what cannot be is refused. The answers are
 // Qt's own, from the same scene run by `qml6`.
-import { expect, open, test } from "./open.js";
+import { test as plain } from "@playwright/test";
+import { expect, open } from "./open.js";
 
 const QT = [
   "number:2 | number:-2 | number:12 | number:3 | number:-64771072 | string:2.7 | string:3 | boolean:true | number:2.5 | number:1 | object:#ff0000 | object:#000000 | boolean:false | number:2.7 | number:0 | object:#000000",
@@ -105,9 +106,20 @@ const QT = [
   "text color Error: Cannot assign [undefined] to QColor object:#0000ff",
   "text color object:#000000",
   "number:1 | number:-3 | number:2",
+  "string:in",
+  "string:5",
+  "string:5",
 ];
 
-test("a typed property holds what Qt would have it hold", async ({ page }) => {
+// What a binding gives that the property cannot hold is told of, as Qt tells
+// of it, so the page's warnings are looked at here and not by `test`.
+plain("a typed property holds what Qt would have it hold", async ({ page }) => {
+  const problems = [];
+  page.on("pageerror", (error) => problems.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" || message.type() === "warning") problems.push(message.text());
+  });
   await open(page, "typed");
   expect(await page.evaluate(() => window.scene.read())).toEqual(QT);
+  expect(new Set(problems)).toEqual(new Set(["said: Unable to assign [undefined] to QString"]));
 });

@@ -682,7 +682,7 @@ class Slot {
     if (typeof value === "function" && value[BINDING]) return this.rebind(value);
     if (this.kind) {
       const made = value === undefined ? REFUSED : this.kind(value);
-      if (made === REFUSED) throw new Error(`Cannot assign ${named(value)} to ${this.kind.type}`);
+      if (made === REFUSED) throw Object.assign(new Error(`Cannot assign ${named(value)} to ${this.kind.type}`), { refused: true });
       value = made;
     }
     // Where an object was put, it is until what laid it out puts it
@@ -1057,12 +1057,21 @@ function defineAlias(self, name, [target, ...path]) {
     const aliased = target.$type && slot(target, key);
     if (aliased) return aliased.bind(self.$props, name);
     // An alias of an alias, or of an object made later: assigned instead.
+    // Assigned when what is bound changes, not whenever it is worked out.
     createRenderEffect(
-      binding,
+      createMemo(binding),
       (value) =>
         settled(() => {
           const object = holder();
-          if (object) object[last] = value;
+          if (!object) return;
+          // It is a binding all the same: a value the property cannot hold
+          // leaves it what it held, and is told of.
+          try {
+            object[last] = value;
+          } catch (error) {
+            if (!error.refused) throw error;
+            console.warn(`${name}: ${error.message.replace("Cannot", "Unable to")}`);
+          }
         }),
     );
   });
