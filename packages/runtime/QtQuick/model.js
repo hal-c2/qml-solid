@@ -39,12 +39,12 @@ const indexes = new WeakMap();
 
 // How many rows and columns a model says it has: `rowCount()` as Qt's models
 // have it in C++, or `rowCount` as a TableModel has it in QML.
-const counted = (model, name) => {
+const asked = (model, name) => {
   const count = model?.[name];
   return Number(typeof count === "function" ? count.call(model) : count) || 0;
 };
-export const rowsOf = (model) => counted(model, "rowCount");
-export const columnsOf = (model) => counted(model, "columnCount");
+export const rowsOf = (model) => asked(model, "rowCount");
+export const columnsOf = (model) => asked(model, "columnCount");
 
 export function modelIndex(model, row, column = 0) {
   if (!(row >= 0 && column >= 0 && row < rowsOf(model) && column < columnsOf(model))) return NOWHERE;
