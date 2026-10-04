@@ -79,6 +79,17 @@ fn a_property_knows_what_it_holds() {
     assert!(!property("QtQuick", "Item", "width").is_readonly);
 }
 
+/// What Qt answers: with `QtQuick.VectorImage` imported `ItemSpy` is a type
+/// and `Shape` is not, though its qmldir names both modules.
+#[test]
+fn a_default_import_is_followed_where_there_is_a_choice() {
+    let module = |uri| super::module(uri).unwrap();
+    assert_eq!(ty("QtQuick.Controls", "Button").module, "QtQuick.Controls.Basic");
+    assert_eq!(ty("QtQuick.VectorImage", "ItemSpy").module, "QtQuick.VectorImage.Helpers");
+    assert!(module("QtQuick.VectorImage").type_named("Shape").is_none());
+    assert!(module("QtQuick.VectorImage").type_named("MultiEffect").is_none());
+}
+
 /// QtCharts and QtGraphs each have a `QAbstractAxis`, and they are not one
 /// class: an axis of a graph has a delegate for its labels, one of a chart
 /// has a font for them.
