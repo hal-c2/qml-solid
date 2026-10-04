@@ -388,6 +388,15 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
       for (const sibling of readdirSync(directory)) {
         if (sibling.endsWith(".qml")) this.addWatchFile(join(directory, sibling));
       }
+      // The style of the controls is a file selector, as it is in Qt: a
+      // file with one of the same name in `+Material` is that one there.
+      const selector = styled(file);
+      const selected = selector ? join(directory, `+${selector}`) : null;
+      if (selected && existsSync(selected)) {
+        for (const variant of readdirSync(selected)) {
+          if (variant.endsWith(".qml")) this.addWatchFile(join(selected, variant));
+        }
+      }
       // What stands in for a type decides what it takes likewise.
       const more = stood(file);
       for (const directory of more) {
@@ -396,7 +405,9 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
           if (name.endsWith(".qml") || name.endsWith("qmldir")) this.addWatchFile(join(directory, name));
         }
       }
-      const result = spawnSync(qmlc, [...args, ...more.flatMap((directory) => ["--with", directory]), file], { encoding: "utf8" });
+      const result = spawnSync(qmlc, [...args, ...more.flatMap((directory) => ["--with", directory]), ...(selector ? ["--select", selector] : []), file], {
+        encoding: "utf8",
+      });
       if (result.error) this.error(`could not run ${qmlc}: ${result.error.message}`);
       if (result.status !== 0) this.error(result.stderr.trim());
       return { code: result.stdout, map: null };
