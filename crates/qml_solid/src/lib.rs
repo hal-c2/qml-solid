@@ -57,6 +57,9 @@ pub struct Options {
     /// from it (`towers/Melee.qml`): what a path may name that is only put
     /// together when the program runs. None when nobody looked.
     pub files: Option<Vec<String>>,
+    /// The other files there, likewise (`images/logo.png`): what a source
+    /// written with no suffix (`images/logo`) may be the picture of.
+    pub pictures: Option<Vec<String>>,
     pub solid: SolidOptions,
 }
 
@@ -70,6 +73,7 @@ impl Default for Options {
             component_extension: ".qml".to_string(),
             project: None,
             files: None,
+            pictures: None,
             solid: SolidOptions::default(),
         }
     }

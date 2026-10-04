@@ -854,6 +854,8 @@ impl<'a, 's> Lower<'a, 's> {
         if value.is_empty() || is_absolute(value) {
             return expression;
         }
+        let picture = self.uses.paths.picture(value);
+        let value = picture.as_deref().unwrap_or(value);
         // A QML file is the component it was compiled to, and what that
         // makes finds names where the path is written.
         let scope =

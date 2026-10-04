@@ -991,3 +991,34 @@ Item {
     assert_contains(&code, "\"topMargin\",\n\t\t() => 3,\n\t\t() => item,\n\t\tLayout\n");
     assert_lacks(&code, "$attach");
 }
+
+#[test]
+fn a_source_with_no_suffix_is_the_picture_qt_finds() {
+    let source = r#"import QtQuick
+Item {
+    Image { source: "images/logo" }
+    Image { source: "./images/mark" }
+    Image { source: "images/whole" }
+    Image { source: "images/none" }
+    Image { source: "images/logo.v2" }
+    Image { source: "../logo" }
+}"#;
+    let options = Options {
+        name: "Sample".to_string(),
+        pictures: Some(
+            ["images/logo.svg", "images/logo.png", "images/mark.webp", "images/whole", "images/whole.png", "logo.png"]
+                .map(String::from)
+                .to_vec(),
+        ),
+        ..Options::default()
+    };
+    let code = lowered_source(source, &options).unwrap_or_else(|errors| panic!("{errors:?}"));
+    // The first of the formats Qt reads, in its order: `png` before `svg`.
+    assert_contains(&code, r#"new URL("images/logo.png", import.meta.url)"#);
+    assert_contains(&code, r#"new URL("./images/mark.webp", import.meta.url)"#);
+    // A file of that very name is the one, and so is a name with a suffix.
+    assert_contains(&code, r#"new URL("images/whole", import.meta.url)"#);
+    assert_contains(&code, r#"new URL("images/none", import.meta.url)"#);
+    assert_contains(&code, r#"new URL("images/logo.v2", import.meta.url)"#);
+    assert_contains(&code, r#"new URL("../logo", import.meta.url)"#);
+}
