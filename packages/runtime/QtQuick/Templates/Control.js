@@ -92,7 +92,14 @@ export const methods = {
   // made elsewhere becomes it. A window's are its content item's.
   $keep(item, keep) {
     const into = this.$contentItem ?? this;
-    if (!keep) return into.$remove(item);
+    if (!keep) {
+      // Qt's `hideOldItem`: one that is replaced is hidden, and is in
+      // nothing.
+      into.$remove(item);
+      slot(item, "visible").write(false);
+      slot(item, "parent").write(null);
+      return;
+    }
     if (item.$parent !== into) slot(item, "parent").write(into);
     into.$add(item);
   },
