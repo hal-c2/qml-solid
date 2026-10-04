@@ -206,3 +206,16 @@ test("an array given in place of another keeps the rows of the values in both", 
     people: [true, 30, "cat", 3, "ann"],
   });
 });
+
+// What Qt 6.11 answers for the same scene, and it warns of nothing.
+test("a delegate that goes with the row it read is not asked for what it read", async ({ page }) => {
+  await open(page, "shrink");
+  const scene = await page.evaluate(() => [
+    window.scene.read(),
+    window.scene.shrink(),
+    window.scene.read(),
+    window.scene.grow(),
+    window.scene.read(),
+  ]);
+  expect(JSON.parse(JSON.stringify(scene))).toEqual([["a", "b", "c"], null, ["x"], null, ["p", "q"]]);
+});

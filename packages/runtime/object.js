@@ -340,9 +340,18 @@ export function gather(work) {
 // programs written for it lean on. Only what asking too much of a value
 // throws is taken so: any other error is the runtime's, or of a type it does
 // not have.
+//
+// It is told of once what changed has settled, and not at all where the
+// object ended in the meantime: a delegate whose row went with what it read
+// (`text: list[index].label` under `model: list.length`) is destroyed in Qt
+// before its binding is asked, and here in the same flush as it is.
 function guarded(key, compute) {
   let last;
+  let failed = null;
   return () => {
+    // Evaluated again, so not ended: what cleaned up was this.
+    if (failed) failed.ended = false;
+    failed = null;
     const before = early;
     try {
       return (last = compute());
@@ -351,7 +360,13 @@ function guarded(key, compute) {
       // Nothing to tell of what met an object that is not made yet: Qt
       // evaluates no binding until all of them are, and this one is
       // evaluated again when that one is.
-      if (early === before) console.warn(`${key.replaceAll("$", ".")}: ${error}`);
+      if (early === before) {
+        const failure = (failed = { ended: false });
+        if (getOwner()) onCleanup(() => (failure.ended = true));
+        after(() => {
+          if (!failure.ended) console.warn(`${key.replaceAll("$", ".")}: ${error}`);
+        });
+      }
       return last;
     }
   };
