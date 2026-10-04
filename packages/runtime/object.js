@@ -815,6 +815,44 @@ function defineProperty(Type, proto, name, initial) {
   defineChange(proto, name);
 }
 
+// Takes an object out of where it was and puts it where it is to be, among
+// the children of each (`$add`, `$remove`), unless it is there already.
+function rehome(self, old, parent) {
+  if (old !== parent) old?.$remove?.(self);
+  if (parent?.$add && !untrack(() => parent.children)?.includes(self)) parent.$add(self);
+}
+
+// `parent`, of a type whose objects are inside one another: one a program
+// gives another parent is from then on among that one's children.
+export function parental(Type) {
+  const { get } = Object.getOwnPropertyDescriptor(Type.proto, "parent");
+  Object.defineProperty(Type.proto, "parent", {
+    get,
+    set(value) {
+      const old = untrack(() => get.call(this));
+      if (!slot(this, "parent").write(value)) return;
+      rehome(this, old, untrack(() => get.call(this)));
+      settle();
+    },
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+// The same for one whose `parent` is bound, whenever what it is bound to
+// changes. `declared` is where it was made, which is where it is until then.
+export function parented(self, props, declared) {
+  if (!("parent" in props)) return;
+  let among;
+  effect(
+    () => self.parent,
+    (parent) => {
+      rehome(self, among === undefined ? declared(self) : among, parent);
+      among = parent ?? null;
+    },
+  );
+}
+
 // `widthChanged`: a property's changes are a signal like any other, to emit
 // and to connect to.
 function defineChange(object, name) {

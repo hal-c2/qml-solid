@@ -8,7 +8,7 @@
 //
 // Not here: `layers` and `staticFlags` do nothing.
 import { createMemo, runWithOwner } from "solid-js";
-import { contents, defineType, derived, group, QtObject, settle, slot } from "../object.js";
+import { contents, defineType, derived, group, parental, parented, QtObject, settle, slot } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";
 import * as math from "./math.js";
 
@@ -27,9 +27,13 @@ export function kept(self, compute) {
 
 // What is declared inside an object in space is in it: its children are
 // those of them that are in space themselves.
+// What a node is in that was given no parent: a view's scene, for one
+// declared in the view.
+const DECLARED = (self) => self.$parent?.$scene ?? self.$parent ?? null;
+
 export const Object3D = defineType("Object3D", QtObject, {
   properties: {
-    parent: derived((self) => self.$parent?.$scene ?? self.$parent ?? null),
+    parent: derived(DECLARED),
   },
   methods: {
     get children() {
@@ -40,17 +44,24 @@ export const Object3D = defineType("Object3D", QtObject, {
       (this.$extra ??= []).push(child);
       this.$touch((version) => version + 1);
     },
+    // Takes one out, whether it was made with this or added later.
     $remove(child) {
       const index = this.$extra?.indexOf(child) ?? -1;
-      if (index < 0) return;
-      this.$extra.splice(index, 1);
+      if (index >= 0) this.$extra.splice(index, 1);
+      else if (this.$static?.includes(child)) this.$static = this.$static.filter((other) => other !== child);
+      else return;
       this.$touch((version) => version + 1);
     },
+  },
+  setup(self, props) {
+    parented(self, props, DECLARED);
   },
   adopt(self, props) {
     self.$static = contents(props, self);
   },
 });
+
+parental(Object3D);
 
 // The nodes inside one, in order. A child may stand for others that come
 // before it (`$siblings`), as a repeater's do.

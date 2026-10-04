@@ -5,7 +5,7 @@
 // so they are computed here, anchors included, and the element is only told
 // the result.
 import { runWithOwner } from "solid-js";
-import { contents, defineType, derived, effect, group, QtObject, settle } from "../object.js";
+import { contents, defineType, derived, effect, group, parental, parented, QtObject, settle } from "../object.js";
 import { drawing, drawn } from "./drawn.js";
 import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus } from "./focus.js";
 import { methods as geometry } from "./geometry.js";
@@ -317,6 +317,7 @@ export const Item = defineType("Item", QtObject, {
     self.$node = node;
     self.$static = EMPTY;
     stateful.setup(self, props);
+    parented(self, props, (self) => self.$parent);
     effect(
       () => [transform(self), self.width, self.height],
       ([css, width, height]) => {
@@ -352,6 +353,9 @@ Object.defineProperty(Item.proto, "focus", {
     settle();
   },
 });
+
+// Assigning `parent` puts it among that one's children.
+parental(Item);
 
 // `state` reads as the state the item is in, and assigning it enters one.
 Object.defineProperties(Item.proto, Object.getOwnPropertyDescriptors(stateful.methods));
