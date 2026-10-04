@@ -1,0 +1,253 @@
+// What a TableView shows: a model of rows and columns, whatever it was
+// given as, and what a delegate is told of its cell.
+import { columnsOf, modelIndex, rowsOf, touch, track } from "./model.js";
+
+const NONE = 0;
+const NUMBER = 1;
+const ARRAY = 2;
+const LIST = 3;
+const COUNTED = 4;
+const TABLE = 5;
+
+const NOWHERE = modelIndex(null, -1);
+
+// The roles of a QAbstractItemModel that says none.
+const ROLES = { 0: "display", 1: "decoration", 2: "edit", 3: "toolTip", 4: "statusTip", 5: "whatsThis" };
+
+// What a delegate has whatever the model: a role of one of these names is
+// not reached by it.
+const OWN = ["row", "column", "index", "model", "modelData", "hasModelChildren", "selected", "current", "editing"];
+
+function kindOf(source) {
+  if (typeof source === "number") return NUMBER;
+  if (Array.isArray(source)) return ARRAY;
+  if (!source || typeof source !== "object") return NONE;
+  // What answers as a QAbstractItemModel does: a TableModel, or an object
+  // written to be asked the same.
+  if (typeof source.data === "function" && typeof source.index === "function") return TABLE;
+  if (source.$elements && source.$observe) return LIST;
+  if (typeof source.get === "function" && "count" in source) return COUNTED;
+  return NONE;
+}
+
+// A cell's data: `row`, `column`, `index`, `model`, and the roles its table
+// adds. `$row` and `$column` are where it is in the model, and they change
+// when its delegate is used again for another cell.
+const Cell = Object.create(null, {
+  row: {
+    get() {
+      track(this, "at");
+      return this.$row;
+    },
+    enumerable: true,
+  },
+  column: {
+    get() {
+      track(this, "at");
+      return this.$column;
+    },
+    enumerable: true,
+  },
+  index: {
+    get() {
+      track(this, "at");
+      track(this.$of, "size");
+      return this.$column * this.$of.rows() + this.$row;
+    },
+    enumerable: true,
+  },
+  model: {
+    get() {
+      return this;
+    },
+    enumerable: true,
+  },
+  selected: {
+    get() {
+      track(this, "at");
+      return this.$view.$selected(this.$row, this.$column);
+    },
+  },
+  current: {
+    get() {
+      track(this, "at");
+      return this.$view.$current(this.$row, this.$column);
+    },
+  },
+  editing: { value: false },
+});
+
+function role(proto, name, read, write) {
+  if (OWN.includes(name)) return;
+  Object.defineProperty(proto, name, {
+    get() {
+      track(this, "at");
+      track(this, "data");
+      return read(this.$row, this.$column, name);
+    },
+    set(value) {
+      write?.(this.$row, this.$column, name, value);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+function data(proto, name, read) {
+  Object.defineProperty(proto, name, {
+    get() {
+      track(this, "at");
+      track(this, "data");
+      return read(this.$row, this.$column);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+export class Table {
+  constructor(view, source) {
+    const kind = kindOf(source);
+    const proto = Object.create(Cell);
+    this.source = source;
+    this.kind = kind;
+    this.proto = proto;
+    proto.$view = view;
+    proto.$of = this;
+    if (kind === NUMBER) data(proto, "modelData", (row) => row);
+    else if (kind === ARRAY) {
+      data(proto, "modelData", (row) => source[row]);
+      const first = source[0];
+      if (isObject(first)) for (const name of Object.keys(first)) role(proto, name, (row) => source[row]?.[name]);
+    } else if (kind === COUNTED) data(proto, "modelData", (row) => source.get(row));
+    else if (kind === LIST) {
+      for (const name of source.$roles) this.listRole(name);
+      // A list of one role is also a list of values.
+      data(proto, "modelData", (row) => {
+        const roles = source.$roles;
+        return roles.length === 1 ? source.$elements[row]?.[roles[0]] : undefined;
+      });
+      proto.hasModelChildren = false;
+    } else if (kind === TABLE) {
+      const names = source.roleNames?.() ?? ROLES;
+      const numbers = Object.keys(names);
+      const read = (number) => (row, column) => source.data(source.index(row, column), number);
+      for (const key of numbers) {
+        const number = Number(key);
+        role(proto, String(names[key]), read(number), (row, column, name, value) =>
+          source.setData?.(source.index(row, column), value, number),
+        );
+      }
+      data(proto, "modelData", numbers.length === 1 ? read(Number(numbers[0])) : () => undefined);
+      proto.hasModelChildren = false;
+    }
+  }
+
+  listRole(name) {
+    const source = this.source;
+    role(
+      this.proto,
+      name,
+      (row) => source.$elements[row]?.[name],
+      (row, column, role, value) => source.setProperty(row, role, value),
+    );
+  }
+
+  // Whether a selection model can tell its cells: they have indexes.
+  get indexed() {
+    return this.kind === LIST || this.kind === TABLE;
+  }
+
+  rows() {
+    const source = this.source;
+    switch (this.kind) {
+      case NUMBER:
+        return Math.max(0, Math.floor(source)) || 0;
+      case ARRAY:
+        return source.length;
+      case COUNTED:
+        return Number(source.count) || 0;
+      case LIST:
+        return source.$elements.length;
+      case TABLE:
+        return rowsOf(source);
+      default:
+        return 0;
+    }
+  }
+
+  columns() {
+    return this.kind === TABLE ? columnsOf(this.source) : 1;
+  }
+
+  index(row, column) {
+    if (!this.indexed || !(row >= 0 && column >= 0 && row < this.rows() && column < this.columns())) return NOWHERE;
+    return this.source.index(row, column) ?? NOWHERE;
+  }
+
+  // Tells `listener` of what the model says changed in it: `reset()`,
+  // `rows()`, `columns()`, `moved()` and `data()`. Gives what stops it.
+  watch(listener) {
+    const source = this.source;
+    if (this.kind === LIST) {
+      return source.$observe({
+        inserted: listener.rows,
+        removed: listener.rows,
+        moved: listener.moved,
+        role: (name) => {
+          if (!(name in this.proto)) this.listRole(name);
+        },
+      });
+    }
+    if (this.kind !== TABLE) return null;
+    const heard = {
+      modelReset: listener.reset,
+      rowsInserted: listener.rows,
+      rowsRemoved: listener.rows,
+      columnsInserted: listener.columns,
+      columnsRemoved: listener.columns,
+      rowsMoved: listener.moved,
+      columnsMoved: listener.moved,
+      layoutChanged: listener.moved,
+      dataChanged: listener.data,
+    };
+    const undo = [];
+    for (const name of Object.keys(heard)) {
+      const emitted = source[name];
+      if (typeof emitted?.connect !== "function") continue;
+      const told = () => heard[name]();
+      emitted.connect(told);
+      undo.push(() => emitted.disconnect(told));
+    }
+    return () => undo.forEach((stop) => stop());
+  }
+
+  // A cell's data, for a delegate that is made for it.
+  cell(row, column) {
+    const cell = Object.create(this.proto);
+    cell.$row = row;
+    cell.$column = column;
+    return cell;
+  }
+
+  // The same data for another cell: what was read of it is read again.
+  move(cell, row, column) {
+    cell.$row = row;
+    cell.$column = column;
+    touch(cell, "at");
+  }
+}
+
+// Reads what says how large a model is, for a view that depends on it when
+// the model tells of no change.
+export function depend(source) {
+  const kind = kindOf(source);
+  if (kind === ARRAY) return source.length;
+  if (kind === COUNTED) return source.count;
+  return kind === TABLE ? rowsOf(source) + columnsOf(source) : 0;
+}
+
+export const changed = (cell) => touch(cell, "data");
+export const resized = (table) => touch(table, "size");
