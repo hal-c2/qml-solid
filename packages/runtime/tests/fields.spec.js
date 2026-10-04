@@ -1,9 +1,9 @@
 // TextField and TextArea. What is expected is what Qt 6.11 answers for the
 // same scenes (`qml6`), and what it notes when a QtTest `TestCase` makes the
 // same moves with its mouse and keys.
-import { advance, still, take } from "./notes.js";
+import { advance, still as base, take } from "./notes.js";
 import { expect, open, test } from "./open.js";
-import { stages } from "./stages.js";
+import { lettered, stages } from "./stages.js";
 
 // prettier-ignore
 const TEXTFIELD = [
@@ -23,6 +23,12 @@ test("a TextField is as big as its style says, behind it a background, and says 
 });
 
 // Where the fields are in their scenes.
+// With time standing still, and the font the scene is measured in.
+async function still(page, scene) {
+  await base(page, scene);
+  await lettered(page);
+}
+
 const at = { field: [10, 10], area: [10, 10], flick: [10, 100] };
 const move = (page, name, x, y) => page.mouse.move(at[name][0] + x, at[name][1] + y);
 
@@ -163,6 +169,7 @@ test("a TextArea says when it is pressed, held and let go, and hovers", async ({
 
 test("the Flickable a TextArea is attached to goes where the cursor does", async ({ page }) => {
   await open(page, "textarea");
+  await lettered(page);
   const where = () => state(page, "flicked.cursorPosition", "flick.contentX", "flick.contentY");
   await press(page, "flick", 22, 10);
   await page.mouse.up();
