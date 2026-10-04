@@ -13,8 +13,8 @@
 // system comes to it with the next frame. An emitter that is enabled or
 // asked for a burst right after the time was set starts from the new time
 // here, and from the old one in Qt.
-import { onCleanup, untrack } from "solid-js";
-import { defineType, derived, effect, inside, QtObject, slot } from "../../object.js";
+import { createSignal, onCleanup, untrack } from "solid-js";
+import { defineType, derived, effect, inside, last, QtObject, settle, slot } from "../../object.js";
 import { clock } from "../../QtQuick/animation/clock.js";
 import { kept, Node } from "../Node.js";
 import { enrolled } from "./core.js";
@@ -75,6 +75,7 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
     // The time it is, with everything emitted that is to be by then. What
     // asks is asked again when the time or what the system has changes.
     $upTo() {
+      this.$made();
       this.$members();
       void this.time;
       void this.startTime;
@@ -84,6 +85,7 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
     // Has the emitters emit what the time since it was last here gives.
     $sync() {
       const now = this.time + this.startTime;
+      if (!untrack(this.$made)) return now;
       const { emitters } = this.$members();
       for (const emitter of emitters) {
         let state = this.$states.get(emitter);
@@ -130,6 +132,17 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
     self.$updates = 0;
     self.$begun = false;
     self.$log = inside(null, () => ParticleSystem3DLogging({}));
+    // Nothing is emitted before all that was made with the system is as it
+    // was declared, whatever asks what there is in it before then: a
+    // particle is of the colour its kind is given where the system is used
+    // (`Sparks { kind.color: "red" }`), as it is in Qt, whose systems begin
+    // with the first frame.
+    const [made, setMade] = createSignal(false, { ownedWrite: true });
+    self.$made = made;
+    last(() => {
+      setMade(true);
+      settle();
+    });
     // What is the system's, in the order it was made.
     self.$members = kept(self, () => {
       const emitters = [];

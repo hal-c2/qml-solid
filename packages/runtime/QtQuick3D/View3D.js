@@ -20,20 +20,28 @@ document.adoptedStyleSheets.push(sheet);
 function found(self) {
   const models = [];
   const lights = [];
+  const paints = [];
   let camera = null;
   const walk = (node, above) => {
     if (!node.visible) return;
     const opacity = above * node.opacity;
     if (node.$model) {
       const shape = node.$shape();
-      if (shape) models.push({ shape, world: node.$world(), materials: node.$materials().map((material) => material?.$material?.() ?? null), opacity });
+      if (shape) {
+        const one = { shape, world: node.$world(), materials: node.$materials().map((material) => material?.$material?.() ?? null), opacity };
+        // A model with a table of instances is drawn once for each.
+        models.push(...(node.instancing?.$instanced?.(one, node) ?? [one]));
+      }
     } else if (node.$light) lights.push(node.$light());
     else if (node.$camera) camera ??= node;
+    // What a node draws by itself, after everything else.
+    const paint = node.$paint?.(opacity);
+    if (paint) paints.push(paint);
     for (const child of inside(node)) walk(child, opacity);
   };
   for (const node of inside(self.$scene)) walk(node, 1);
   if (self.importScene?.$spatial) walk(self.importScene, 1);
-  return { models, lights, camera };
+  return { models, lights, paints, camera };
 }
 
 const NOWHERE = () => new Vector3d(0, 0, 0);
@@ -114,7 +122,7 @@ export const View3D = defineType("View3D", Item, {
     effect(
       () => {
         const { width, height } = self;
-        const { models, lights, camera: any } = found(self);
+        const { models, lights, paints, camera: any } = found(self);
         const camera = self.camera ?? any;
         return {
           width,
@@ -122,6 +130,7 @@ export const View3D = defineType("View3D", Item, {
           camera,
           models,
           lights,
+          paints,
           eye: camera?.$world() ?? null,
           projection: camera?.$projection(width, height) ?? null,
           environment: (self.environment ?? SceneEnvironment).$environment?.() ?? PLAIN,

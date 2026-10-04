@@ -475,6 +475,13 @@ export function draw(scene, canvas, paper) {
       else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       part(piece);
     }
+    // What nodes draw by themselves (`paints`), each with a program of its
+    // own: over the rest, hidden by what is nearer and hiding nothing.
+    if (scene.paints?.length) {
+      const own = gl.getParameter(gl.CURRENT_PROGRAM);
+      for (const paint of scene.paints) paint({ gl, view, seen, projection: scene.projection, tonemap: environment.tonemap, bound });
+      gl.useProgram(own);
+    }
     gl.depthMask(true);
     gl.bindVertexArray(null);
   }
