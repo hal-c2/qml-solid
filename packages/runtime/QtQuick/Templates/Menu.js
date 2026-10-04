@@ -16,7 +16,7 @@ import { AbstractButton } from "./AbstractButton.js";
 import { Action, ICON } from "./Action.js";
 import { house, reparent, repeat, shows, within } from "./Container.js";
 import { keeps } from "./Control.js";
-import { overlayOf, Popup, PopupFocusReason, stacked } from "./Popup.js";
+import { housed, overlayOf, Popup, PopupFocusReason, stacked } from "./Popup.js";
 
 const WRITABLE = { ownedWrite: true };
 
@@ -262,7 +262,7 @@ function prepare(self) {
   if (self.$pop.visible) return;
   const parentMenu = self.$parentMenu();
   const parent = self.parent;
-  if (!parentMenu && parent) {
+  if (!parentMenu && parent && housed(parent)) {
     for (const popup of stacked(overlayOf(parent))) if (popup !== self && isa(popup, Menu)) popup.close();
   }
   const cascading = parentMenu !== null && self.cascade;

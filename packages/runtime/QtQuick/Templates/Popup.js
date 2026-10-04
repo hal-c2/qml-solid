@@ -53,6 +53,55 @@ const above = (item) => {
 
 const overlays = new Set();
 
+// Whether an item is in a window: what is in a popup that is not shown is
+// in none.
+export function housed(item) {
+  for (let at = item; at; at = untrack(() => at.parent)) if (at.$popup && !at.$popup.$pop.shown) return false;
+  return true;
+}
+
+// The popups asked to show over an item that is in no window: Qt shows them
+// when it comes to be in one, the last made first.
+const waiting = new Set();
+let serial = 0;
+
+function wake() {
+  const ready = [...waiting].filter((popup) => housed(untrack(() => popup.parent)));
+  ready.sort((a, b) => b.$pop.serial - a.$pop.serial);
+  for (const popup of ready) waiting.delete(popup);
+  for (const popup of ready) {
+    if (!popup.$pop.waits) continue;
+    popup.$pop.waits = false;
+    show(popup);
+  }
+}
+
+// What a popup is shown over left its window: the popup goes with it and
+// says nothing, and comes back when it does.
+function strand(overlay) {
+  for (const popup of stacked(overlay)) {
+    const pop = popup.$pop;
+    if (!pop.overlay || housed(untrack(() => popup.parent))) continue;
+    if (pop.phase === EXITING) {
+      stop(pop);
+      finish(popup);
+      continue;
+    }
+    stop(pop);
+    leave(popup);
+    if (overlay.$lastFocusPopup === popup) overlay.$lastFocus = overlay.$lastFocusPopup = null;
+    pop.visible = false;
+    pop.phase = IDLE;
+    pop.hadFocus = false;
+    pop.lastFocus = null;
+    pop.overlay = null;
+    pop.waits = true;
+    waiting.add(popup);
+    slot(popup, "visible").changed();
+    slot(popup, "opened").changed();
+  }
+}
+
 // The overlay of the window an item is in: made when first asked for.
 export function overlayOf(item) {
   if (!item?.$node) return null;
@@ -538,6 +587,11 @@ function show(self) {
   const item = self.$item;
   const parent = self.parent;
   if (!parent) return void console.warn("cannot show popup: parent is null");
+  if (!pop.overlay && !housed(parent)) {
+    pop.waits = true;
+    waiting.add(self);
+    return;
+  }
   // One that was going comes back: Qt tells of `visible` again, as it was.
   const back = pop.phase === EXITING;
   if (back) stop(pop);
@@ -557,6 +611,7 @@ function show(self) {
     pop.shown = true;
     self.$appeared(true);
     wheels();
+    if (waiting.size) wake();
   }
   const overlay = pop.overlay;
   if (self.dim) dimmed(self);
@@ -591,6 +646,17 @@ function show(self) {
 // Qt's `prepareExitTransition`.
 function hide(self) {
   const pop = self.$pop;
+  // One that never came, for it was waiting for a window: Qt tells of its
+  // going all the same.
+  if (pop.waits) {
+    pop.waits = false;
+    waiting.delete(self);
+    self.aboutToHide();
+    self.visibleChanged();
+    settle();
+    self.closed();
+    return;
+  }
   if (!pop.visible || pop.phase === EXITING) return;
   const item = self.$item;
   // One that was coming goes: it was not open yet, and Qt tells of `opened`
@@ -625,7 +691,10 @@ function leave(self, told = true) {
   slot(item, "parent").write(null);
   slot(item, "visible").write(false);
   pop.shown = false;
-  if (told) self.$appeared(false);
+  if (told) {
+    self.$appeared(false);
+    strand(pop.overlay);
+  }
   undim(self);
 }
 
@@ -872,6 +941,8 @@ export const Popup = defineType("Popup", QtObject, {
       phase: IDLE,
       visible: false,
       shown: false,
+      waits: false,
+      serial: ++serial,
       x: 0,
       y: 0,
       overlay: null,
@@ -941,6 +1012,7 @@ export const Popup = defineType("Popup", QtObject, {
       );
     }
     onCleanup(() => {
+      waiting.delete(self);
       if (!pop.overlay) return;
       stop(pop);
       untrack(() => leave(self, false));

@@ -35,6 +35,11 @@ test("a Popup is shown over the window where its parent is, and tells of opening
   await stages(page, POPUPS);
 });
 
+test("a popup shown over what is in another waits for that one, goes with it and comes back with it", async ({ page }) => {
+  await open(page, "popupnested");
+  await stages(page, NESTED);
+});
+
 test("a popup's transitions bring it and take it away, and it is open once it has come", async ({ page }) => {
   await open(page, "popupfade");
   await timed(page, FADE);
@@ -191,4 +196,20 @@ const FADE = [
   [[false,false,1,1],[true,true,0.8],[],[["dimmer",true,0.6,1],["Popup",true,0.8,1]]],
   [[false,false,1,1],[false,false,0.8],[],[]],
   [[false,false,1,1],[true,true,0.8],[],[["dimmer",true,0.6,1],["Popup",true,0.8,1]]],
+];
+
+const NESTED = [
+  [[],[false,false],[false,false],[false,false],[false,false]],
+  [[],[false,false],[false,false],[false,false],[false,false]],
+  [["early aboutToShow","early opened","deep aboutToShow","deep opened","nested aboutToShow","nested opened","outer aboutToShow","outer visible true","outer opened"],[true,true],[true,true],[true,true],[true,true]],
+  [["outer aboutToHide","outer visible false","outer closed"],[false,false],[false,false],[false,false],[false,false]],
+  [["early aboutToShow","early opened","deep aboutToShow","deep opened","nested aboutToShow","nested opened","outer aboutToShow","outer visible true","outer opened"],[true,true],[true,true],[true,true],[true,true]],
+  [["nested aboutToHide","nested closed"],[true,true],[false,false],[false,false],[true,true]],
+  [["outer aboutToHide","outer visible false","outer closed"],[false,false],[false,false],[false,false],[false,false]],
+  [["nested aboutToHide","nested closed"],[false,false],[false,false],[false,false],[false,false]],
+  [["early aboutToShow","early opened","outer aboutToShow","outer visible true","outer opened"],[true,true],[false,false],[false,false],[true,true]],
+  [["early aboutToHide","early closed","outer aboutToHide","outer visible false","outer closed"],[false,false],[false,false],[false,false],[false,false]],
+  [[],[false,false],[false,false],[false,false],[false,false]],
+  [["early aboutToShow","early opened","deep aboutToShow","deep opened","nested aboutToShow","nested opened","outer aboutToShow","outer visible true","outer opened"],[true,true],[true,true],[true,true],[true,true]],
+  [["deep aboutToHide","deep closed","nested aboutToHide","nested closed","nested aboutToShow","nested opened"],[true,true],[true,true],[false,false],[true,true]],
 ];
