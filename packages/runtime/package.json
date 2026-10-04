@@ -26,6 +26,7 @@
     "./QtQuick/LocalStorage": "./QtQuick/LocalStorage/index.js",
     "./QtQuick/Dialogs": "./QtQuick/Dialogs/index.js",
     "./QtQuick3D": "./QtQuick3D/index.js",
+    "./QtQuick3D/Xr": "./QtQuick3D/Xr/index.js",
     "./QtMultimedia": "./QtMultimedia/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtQml/Models": "./QtQml/Models/index.js",
