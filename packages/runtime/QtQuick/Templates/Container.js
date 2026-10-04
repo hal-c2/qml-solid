@@ -15,9 +15,9 @@ import { assignable, drive, driven, reads } from "./driven.js";
 const next = (version) => version + 1;
 
 // Where a content item's children are: a Flickable's are in its content.
-const within = (item) => item?.$contentItem ?? item ?? null;
+export const within = (item) => item?.$contentItem ?? item ?? null;
 
-function reparent(item, parent) {
+export function reparent(item, parent) {
   if (item.$parent === parent) return;
   item.$parent = parent;
   item.$touch(next);
@@ -91,10 +91,9 @@ function remove(self, index) {
 }
 
 // The items are children of the content item. A view makes them that as it
-// comes to show them; with none it is done here.
-function house(self, into, viewed) {
-  const housed = self.$items.housed;
-  const objects = self.$model.$objects;
+// comes to show them; with none it is done here. `housed` is where each was
+// put: a menu keeps its items so too.
+export function house(housed, objects, into, viewed) {
   for (const [item, where] of housed) {
     if (where === into && !viewed && objects.includes(item)) continue;
     where.$remove(item);
@@ -110,10 +109,9 @@ function house(self, into, viewed) {
 }
 
 // A Repeater declared in a container: its items are the container's, where
-// the Repeater stands among what was declared.
-function repeat(self) {
-  const state = self.$items;
-  const objects = self.$model.$objects;
+// the Repeater stands among what was declared. `state` is what was declared
+// and which of the items are a Repeater's.
+export function repeat(state, objects, insert, remove) {
   const wanted = [];
   const made = new Set();
   for (const entry of state.declared) {
@@ -129,7 +127,7 @@ function repeat(self) {
   for (const item of [...state.repeated]) {
     if (made.has(item)) continue;
     const index = objects.indexOf(item);
-    if (index >= 0) remove(self, index);
+    if (index >= 0) remove(index);
     state.repeated.delete(item);
   }
   let at = -1;
@@ -138,7 +136,7 @@ function repeat(self) {
     if (index >= 0) at = index;
     else if (made.has(item) && !state.repeated.has(item)) {
       state.repeated.add(item);
-      insert(self, ++at, item, true);
+      insert(++at, item);
     }
   }
 }
@@ -248,7 +246,7 @@ export const Container = defineType("Container", Control, {
         model.$ordered();
         return [within(item), item?.$v !== undefined];
       },
-      ([into, viewed]) => house(self, into, viewed),
+      ([into, viewed]) => house(self.$items.housed, model.$objects, into, viewed),
     );
     // A view moves its current index itself: when it is flicked, and to
     // keep its current item when rows come and go. The container follows.
@@ -305,7 +303,15 @@ export const Container = defineType("Container", Control, {
         for (const child of state.declared) child.$siblings?.();
         return state.declared.length;
       },
-      () => untrack(() => repeat(self)),
+      () =>
+        untrack(() =>
+          repeat(
+            state,
+            model.$objects,
+            (index, item) => insert(self, index, item, true),
+            (index) => remove(self, index),
+          ),
+        ),
     );
   },
 });

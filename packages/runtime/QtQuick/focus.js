@@ -28,8 +28,9 @@ export function windowOf(item) {
   let top = item;
   for (let parent = parentOf(top); parent; parent = parentOf(top)) top = parent;
   if (top.$focusWindow) return top.$focusWindow;
-  // The item of a popup that is not open is in no window.
-  if (top.$popup) return { top, $subFocus: null, active: null };
+  // The item of a popup that is not open is in no window: what has focus in
+  // it has the keys once it is open, and not before.
+  if (top.$popup) return { top, $subFocus: null, active: null, nowhere: true };
   // A scope like the others, that always has active focus.
   const window = { top, $subFocus: null, active: null };
   top.$focusWindow = window;
@@ -67,7 +68,7 @@ function leave(window, scope, changed) {
 // Qt's `setFocusInScope`.
 function give(window, scope, item, changed) {
   let active = null;
-  if (scope === window || scope.$active) {
+  if (scope === window ? !window.nowhere : scope.$active) {
     active = item;
     while (active.$focusScope && active.$subFocus) active = active.$subFocus;
     leave(window, scope, changed);
@@ -94,7 +95,7 @@ function give(window, scope, item, changed) {
 
 // Qt's `clearFocusInScope`: active focus goes back to the scope.
 function take(window, scope, item, changed) {
-  const had = scope === window || scope.$active;
+  const had = scope === window ? !window.nowhere : scope.$active;
   if (had) leave(window, scope, changed);
   if (scope.$subFocus === item) scope.$subFocus = null;
   item.$focus = false;
@@ -167,7 +168,7 @@ export function departing(item) {
   const window = windowOf(item);
   const scope = scopeOf(item, window);
   if (scope.$subFocus !== item) return;
-  const had = scope === window || scope.$active;
+  const had = scope === window ? !window.nowhere : scope.$active;
   const changed = [];
   if (had) leave(window, scope, changed);
   scope.$subFocus = null;
@@ -199,7 +200,8 @@ export function forceActiveFocus(item, reason) {
   for (let parent = parentOf(item); parent; parent = parentOf(parent)) {
     if (parent.$focusScope) setFocus(parent, true, reason);
   }
-  current = windowOf(item);
+  const window = windowOf(item);
+  if (!window.nowhere) current = window;
   settle();
 }
 

@@ -154,7 +154,7 @@ export const Overlay = defineType("Overlay", Item, {
 });
 
 // The popups of an overlay, the topmost first: Qt's `stackingOrderPopups`.
-function stacked(overlay) {
+export function stacked(overlay) {
   const items = untrack(() => overlay.children).filter((item) => item.$popup);
   const order = new Map(items.map((item, index) => [item, index]));
   const z = (item) => untrack(() => item.z);
@@ -610,6 +610,7 @@ function hide(self) {
   if (coming) self.openedChanged();
   else slot(self, "opened").changed();
   settle();
+  self.$leaving();
   run(self, self.exit, () => finish(self));
 }
 
@@ -843,10 +844,12 @@ export const Popup = defineType("Popup", QtObject, {
     $show(shown) {
       untrack(() => (shown ? show(this) : hide(this)));
     },
-    // What a type of popup does when its item comes and goes, and once it
-    // is open: a tool tip has a clock to start and stop.
+    // What a type of popup does when its item comes and goes, once it is
+    // open, and as it begins to go: a tool tip has a clock to start and
+    // stop, a menu its sub-menus to close.
     $appeared() {},
     $came() {},
+    $leaving() {},
     // What closes the popup of itself: a dialog is rejected.
     $dismiss() {
       this.close();

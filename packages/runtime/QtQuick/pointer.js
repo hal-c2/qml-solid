@@ -414,6 +414,24 @@ function hover(point, hits) {
   for (let index = 0; index < left.length; index++) left[index].$hover(point, false);
 }
 
+// What is under a mouse that has not moved is another thing when something
+// is shown there: Qt asks again with every frame, and here whoever showed it
+// asks.
+export function rehover() {
+  for (const point of points.values()) {
+    if (point.type === "touch" || point.down || !point.scene?.isConnected) continue;
+    if (hovers > 0 || point.hovered.length) hover(point, hitsAt(point.scene, point.clientX, point.clientY, null));
+  }
+}
+
+// Where the mouse was last, in the page: Qt's `QCursor::pos()`.
+export function cursor() {
+  for (const point of points.values()) {
+    if (point.type !== "touch" && point.scene?.isConnected) return { x: point.clientX, y: point.clientY };
+  }
+  return null;
+}
+
 // The last press of the first pointer: whether what the page would do with
 // it is left undone.
 let claimed = false;
