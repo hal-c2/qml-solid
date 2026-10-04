@@ -4,9 +4,12 @@ export { QtObject } from "../object.js";
 export { Component } from "../QtQml/Component.js";
 export { Locale } from "../QtQml/locale.js";
 export { Application } from "../QtQml/application.js";
+export { Accessible } from "./Accessible.js";
 export { AnimatedImage } from "./AnimatedImage.js";
 export { AnimatedSprite } from "./AnimatedSprite.js";
 export { Canvas } from "./Canvas.js";
+export { DelegateModel, DelegateModelGroup } from "./DelegateModel.js";
+export { Drag, DropArea } from "./Drag.js";
 export { Flickable } from "./Flickable.js";
 export { FocusScope } from "./FocusScope.js";
 export { Font } from "./font.js";
@@ -26,6 +29,7 @@ export { Instantiator } from "./Instantiator.js";
 export { Item } from "./Item.js";
 export { KeyNavigation, Keys, Shortcut } from "./Keys.js";
 export { StandardKey } from "./keycodes.js";
+export { LayoutMirroring } from "./LayoutMirroring.js";
 export { ListView } from "./ListView.js";
 export { Loader } from "./Loader.js";
 export { ListElement, ListModel, ObjectModel } from "./model.js";
@@ -69,6 +73,7 @@ export { TextEdit, TextInput } from "./TextInput.js";
 export { FontMetrics, TextMetrics } from "./TextMetrics.js";
 export { Rotation, Scale, Translate } from "./transforms.js";
 export { DoubleValidator, IntValidator, RegularExpressionValidator } from "./validators.js";
+export { GridMesh, ShaderEffect, ShaderEffectSource } from "./ShaderEffect.js";
 export { Screen, Window } from "./Window.js";
 export { WindowContainer } from "./WindowContainer.js";
 export { Binding } from "./Binding.js";
@@ -95,6 +100,7 @@ export {
   OpacityAnimator,
   RotationAnimator,
   ScaleAnimator,
+  UniformAnimator,
   XAnimator,
   YAnimator,
 } from "./animation/Animator.js";

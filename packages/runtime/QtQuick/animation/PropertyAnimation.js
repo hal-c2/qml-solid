@@ -145,7 +145,7 @@ export const ColorAnimation = defineType("ColorAnimation", PropertyAnimation, {
 
 // The way round, for each `direction`: where it ends up is the same angle,
 // how it gets there is not.
-const ROTATIONS = [
+export const ROTATIONS = [
   null,
   (from, to, progress) => {
     let diff = to - from;

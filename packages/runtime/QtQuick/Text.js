@@ -24,6 +24,7 @@ import {
   resized,
 } from "./font.js";
 import { Item } from "./Item.js";
+import { alignment } from "./LayoutMirroring.js";
 import { clothe, elements, mightBeRichText, survey } from "./richtext.js";
 
 const MANY = 2147483647;
@@ -35,7 +36,7 @@ const WRAP_ANYWHERE = 3;
 const PARAGRAPHS = /\r\n|[\n\u2028\u2029]/;
 const TRAILING = /[ \t]+$/;
 // A text whose first letter is Hebrew or Arabic starts from the right.
-const RIGHT_TO_LEFT = /^[^\p{L}]*[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u;
+export const RIGHT_TO_LEFT = /^[^\p{L}]*[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u;
 
 const hangs = (code) => code === 32 || code === 9;
 const letter = (code) => (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code >= 0xc0;
@@ -312,7 +313,7 @@ export const Text = defineType("Text", Item, {
     // an alignment was asked for, and Qt says so in this property too.
     horizontalAlignment: derived((self) => (RIGHT_TO_LEFT.test(self.$text.source().text) ? 2 : 1)),
     verticalAlignment: 32,
-    effectiveHorizontalAlignment: derived((self) => self.horizontalAlignment),
+    effectiveHorizontalAlignment: derived(alignment),
     wrapMode: 0,
     elide: ELIDE_NONE,
     maximumLineCount: MANY,

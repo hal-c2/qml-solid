@@ -11,6 +11,7 @@
 import { createMemo, onCleanup, runWithOwner, untrack } from "solid-js";
 import { defineType, derived, effect, QtObject, slot } from "../../object.js";
 import { Item } from "../Item.js";
+import { mirrored } from "../LayoutMirroring.js";
 import { given, Settling, shown } from "../placing.js";
 import { arrange, FLT_MAX, itemBox, measure } from "./engine.js";
 
@@ -251,7 +252,6 @@ export const Layout = defineType("Layout", Item, {
 
 // RowLayout, ColumnLayout and GridLayout: items in the cells of a grid.
 const GridLayoutBase = defineType("GridLayoutBase", Layout, {
-  // LayoutMirroring would turn it round; nothing here does.
   properties: { layoutDirection: 0 },
   methods: {
     $measure(last) {
@@ -265,7 +265,8 @@ const GridLayoutBase = defineType("GridLayoutBase", Layout, {
       const height = this.height;
       // A layout with no size leaves its children where they are.
       if (!(width >= 0 && height >= 0)) return null;
-      return arrange(measured, width, height, this.layoutDirection === RightToLeft);
+      // A mirrored layout runs the other way from the one it was asked for.
+      return arrange(measured, width, height, mirrored(this) !== (this.layoutDirection === RightToLeft));
     },
     $place(arranged) {
       if (!arranged) return;

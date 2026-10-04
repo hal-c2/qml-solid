@@ -4,7 +4,8 @@
 //
 //   corpus/reference.mjs [ID...]      # default: every example Qt can run
 //
-// The examples are run with the plain `qml` tool (no C++ of their own), on the
+// The examples are run with the plain `qml` tool (no C++ of their own: the QML
+// in `corpus/standins/<id>` stands in for it where there is some), on the
 // offscreen platform, each in a small harness that loads the entry file, lets
 // it settle and saves what it painted. Which examples that works for, and the
 // window each gets, is in `corpus/examples.json`.
@@ -153,6 +154,10 @@ function capture(example) {
     const entry = join(copy, example.entry);
     const importPaths = (example.importPaths ?? []).map((path) => resolve(copy, path));
     if (example.qt.module) importPaths.push(join(scratch, "modules"));
+    // What stands in for the example's C++ is QML that Qt takes too: the
+    // picture is of the example with the same types the web gives it.
+    const standins = join(corpus, "standins", example.id);
+    if (existsSync(standins)) importPaths.push(standins);
 
     const png = join(scratch, "reference.png");
     const harness = example.root === "Window" ? windowHarness : itemHarness;

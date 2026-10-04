@@ -276,6 +276,23 @@ Item {
 }
 
 #[test]
+fn a_baked_shader_is_the_builds_to_make() {
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    ShaderEffect { fragmentShader: "shaders/wave.frag.qsb"; vertexShader: "../wave.vert.qsb" }
+    ShaderEffect { fragmentShader: "shaders/wave.frag.qsb" }
+    ShaderEffect { fragmentShader: "qrc:/shaders/wave.frag.qsb" }
+}"#,
+    );
+    assert_contains(&code, r#"import $url1 from "./shaders/wave.frag.qsb";"#);
+    assert_contains(&code, r#"import $url2 from "../wave.vert.qsb";"#);
+    assert_contains(&code, "<ShaderEffect fragmentShader={$url1} vertexShader={$url2}>");
+    assert_contains(&code, "<ShaderEffect fragmentShader={$url1}>");
+    assert_contains(&code, r#"<ShaderEffect fragmentShader={"qrc:/shaders/wave.frag.qsb"}>"#);
+}
+
+#[test]
 fn a_path_is_taken_from_the_file() {
     let code = lowered(
         r#"import QtQuick
