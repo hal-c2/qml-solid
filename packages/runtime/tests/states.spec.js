@@ -266,3 +266,13 @@ test("a name in what a state changes is the target's when the target is not name
     ["", "", "", 21, "", ""],
   ]);
 });
+
+test("a state named from the start whose `when` does not hold is not the state", async ({ page }) => {
+  await open(page, "statewhen");
+  const read = () => page.evaluate(() => window.scene.read());
+  expect(await read()).toEqual(["", 50, "wide", 120, "box , other wide"]);
+  await page.evaluate(() => window.scene.step(1));
+  expect(await read()).toEqual(["narrow", 20, "narrow", 20, "box narrow, other narrow"]);
+  await page.evaluate(() => window.scene.step(0));
+  expect(await read()).toEqual(["", 50, "", 50, "box , other "]);
+});

@@ -54,6 +54,11 @@
     "width": 360,
     "height": 640
   },
+  "robotarm": {
+    "capturedAt": 1791131666752,
+    "width": 1280,
+    "height": 720
+  },
   "rssnews": {
     "capturedAt": 1791129976125,
     "width": 800,

@@ -37,8 +37,17 @@ NOWHERE.parent = NOWHERE;
 Object.freeze(NOWHERE);
 const indexes = new WeakMap();
 
+// How many rows and columns a model says it has: `rowCount()` as Qt's models
+// have it in C++, or `rowCount` as a TableModel has it in QML.
+const asked = (model, name) => {
+  const count = model?.[name];
+  return Number(typeof count === "function" ? count.call(model) : count) || 0;
+};
+export const rowsOf = (model) => asked(model, "rowCount");
+export const columnsOf = (model) => asked(model, "columnCount");
+
 export function modelIndex(model, row, column = 0) {
-  if (!(row >= 0 && column >= 0 && row < model?.rowCount?.() && column < model.columnCount())) return NOWHERE;
+  if (!(row >= 0 && column >= 0 && row < rowsOf(model) && column < columnsOf(model))) return NOWHERE;
   let made = indexes.get(model);
   if (!made) indexes.set(model, (made = new Map()));
   const key = column * 0x100000000 + row;
