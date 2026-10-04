@@ -1130,3 +1130,40 @@ test("a shape handed over as its numbers is drawn, part by part", async ({ page 
   near(await painted(page, gone), gone.map(([, colour]) => colour), "", 3);
   expect((await read()).vertices).toBe(0);
 });
+
+test("a node told to face another keeps facing it, as Qt turns it", async ({ page }) => {
+  await open(page, "lookat3d");
+  const read = () => page.evaluate(() => window.scene.read());
+  // It is turned by where the two are in the scene, which is not towards
+  // the other where what it is in is turned itself. How far it is rolled
+  // stays; a camera is not rolled at all.
+  near(await read(), {
+    plain: [14.3633, -39.8056, 25],
+    forward: [0.62017, 0.24807, -0.74421],
+    inner: [27.7069, 19.5631, 0],
+    innerForward: [-0.73359, 0.66722, -0.12906],
+    camera: [-12.937, 5.4923, 0],
+    cameraForward: [-0.09328, -0.22388, -0.97014],
+    none: [10, 20, 30],
+  });
+  await page.evaluate(() => window.scene.go());
+  near(await read(), {
+    plain: [-21.9792, 42.2737, 25],
+    forward: [-0.62378, -0.37427, -0.68616],
+    inner: [-15.352, 88.2731, 0],
+    innerForward: [-0.71369, -0.39235, 0.58027],
+    camera: [-23.9297, 33.6901, 0],
+    cameraForward: [-0.50702, -0.40562, -0.76053],
+  });
+  await page.evaluate(() => window.scene.away());
+  near(await read(), {
+    plain: [-66.3833, 42.2737, 25],
+    forward: [-0.26948, -0.91625, -0.29643],
+    inner: [-15.352, 88.2731, 0],
+    camera: [-27.503, 12.5288, 0],
+    cameraForward: [-0.19241, -0.46179, -0.86587],
+  });
+  // What the camera looks at is in the middle of what it sees.
+  const points = [[[100, 100], [192, 64, 64]]];
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});

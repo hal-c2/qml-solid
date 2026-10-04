@@ -11,8 +11,8 @@
 // map and a translucency map are not read, a picture is read whole where
 // Qt can read one channel of it (`baseColorSingleChannelEnabled` and the
 // like), and the colours of a mesh's corners mask nothing.
-import { createSignal } from "solid-js";
-import { defineType, derived, flush, located } from "../object.js";
+import { createSignal, untrack } from "solid-js";
+import { defineType, derived, effect, flush, located } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";
 import { color } from "../QtQuick/color.js";
 import * as math from "./math.js";
@@ -621,6 +621,20 @@ export const Camera = defineType("Camera", Node, {
   },
   setup(self) {
     self.$camera = true;
+    // A camera with a node to look at keeps looking at it, wherever either
+    // goes. Turning the camera by hand lasts until one of them moves.
+    let last = "";
+    effect(
+      () => {
+        const to = self.lookAtNode?.$spatial ? self.lookAtNode.scenePosition : null;
+        return to && `${self.scenePosition} ${to}`;
+      },
+      (places) => {
+        if (!places || places === last) return;
+        last = places;
+        untrack(() => self.lookAt(self.lookAtNode));
+      },
+    );
   },
 });
 
