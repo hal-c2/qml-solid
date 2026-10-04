@@ -1126,7 +1126,7 @@ Text {
 }
 
 #[test]
-fn an_enum_key_of_a_type_of_a_namespace_is_a_constant() {
+fn an_enum_key_of_a_type_of_a_namespace_is_a_binding() {
     let code = lowered(
         r#"import QtQuick
 import QtQuick.Templates as T
@@ -1138,13 +1138,15 @@ Item {
     function none() { return T.Calendar.Nope.March }
 }"#,
     );
+    // Qt looks a key up by the name of a type and through no namespace: this
+    // is a binding, and `onElideChanged` beside it is told of what it gives.
     // The keys are on the type, by whatever name it is found: with the name
     // of the enum between, Qt gives the same number and JavaScript nothing.
-    assert_contains(&code, "const T$Calendar$March = T.Calendar.March;");
-    assert_contains(&code, "month={T$Calendar$March}");
+    assert_contains(&code, "month={T.Calendar.March}");
     assert_contains(&code, "held={T.Calendar.March}");
-    assert_contains(&code, "elide={T$Label$ElideRight}");
-    assert_contains(&code, "const T$Label$WordWrap = T.Label.WordWrap;");
+    assert_contains(&code, "elide={T.Label.ElideRight}");
+    assert_contains(&code, "wrapMode={T.Label.WordWrap}");
+    assert!(!code.contains("const T$"), "{code}");
     assert_contains(&code, "return T.Calendar.March + T.Label.ElideRight;");
     // What is no enum of the type is left to be what it is.
     assert_contains(&code, "return T.Calendar.Nope.March;");
