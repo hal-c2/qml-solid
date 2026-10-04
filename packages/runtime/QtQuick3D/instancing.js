@@ -1,0 +1,176 @@
+// Instancing: a table that says where a Model's shape is drawn, once for
+// each entry of it: where that one is, how it is turned and how big it is,
+// what colour it is times, and four numbers of its own. An InstanceList is
+// such a table written out, entry by entry.
+//
+// An entry is kept as Qt keeps it: three rows of a matrix, the colour in
+// linear light, and the four numbers. What is asked of an entry is read
+// back out of that, so a colour reads as it is in linear light, as in Qt.
+//
+// Not here: a table read from a file (FileInstancing), and the bounds a
+// table gives its shadows.
+import { createSignal } from "solid-js";
+import { defineType, derived, effect } from "../object.js";
+import { Quaternion, Vector3d, Vector4d } from "../QtQml/values.js";
+import { color, colorValue, rgba } from "../QtQuick/color.js";
+import * as math from "./math.js";
+import { kept, Object3D } from "./Node.js";
+import { linear } from "./scene.js";
+
+// How many numbers an entry is.
+export const ENTRY = 20;
+
+const WRITABLE = { ownedWrite: true };
+const NOTHING = new Float32Array(0);
+const ORIGIN = [0, 0, 0];
+
+// An entry put into a table: the turn is a quaternion, the colour one a
+// screen shows, which is brought to linear light here.
+export function enter(into, index, position, scale, turn, tone, data) {
+  const m = math.placed(position, scale, ORIGIN, turn);
+  into.set([m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14], ...linear(tone), ...data], index * ENTRY);
+}
+
+const three = (value) => [Number(value?.x) || 0, Number(value?.y) || 0, Number(value?.z) || 0];
+const four = (value) => [...three(value), Number(value?.w) || 0];
+
+// The three directions of an entry, each as long as the entry scales it.
+function axes(data, at) {
+  return [0, 1, 2].map((column) => [data[at + column], data[at + 4 + column], data[at + 8 + column]]);
+}
+
+export const Instancing = defineType("Instancing", Object3D, {
+  properties: {
+    instanceCountOverride: -1,
+    hasTransparency: false,
+    depthSortingEnabled: false,
+    shadowBoundsMinimum: new Vector3d(1, 1, 1),
+    shadowBoundsMaximum: new Vector3d(-1, -1, -1),
+  },
+  signals: ["instanceTableChanged", "instanceNodeDirty"],
+  methods: {
+    // What is asked of an entry there is none of is nothing: not an error.
+    instancePosition(index) {
+      const at = this.$entry(index);
+      if (at < 0) return new Vector3d(0, 0, 0);
+      const data = this.$data();
+      return new Vector3d(data[at + 3], data[at + 7], data[at + 11]);
+    },
+    instanceScale(index) {
+      const at = this.$entry(index);
+      if (at < 0) return new Vector3d(0, 0, 0);
+      return math.vector(axes(this.$data(), at).map(([x, y, z]) => Math.hypot(x, y, z)));
+    },
+    instanceRotation(index) {
+      const at = this.$entry(index);
+      if (at < 0) return new Quaternion(1, 0, 0, 0);
+      const [x, y, z] = axes(this.$data(), at).map(math.normalized);
+      return math.quaternion(math.turnOf([...x, 0, ...y, 0, ...z, 0, 0, 0, 0, 1]));
+    },
+    instanceColor(index) {
+      const at = this.$entry(index);
+      if (at < 0) return color("");
+      const data = this.$data();
+      return rgba(data[at + 12], data[at + 13], data[at + 14], data[at + 15]);
+    },
+    instanceCustomData(index) {
+      const at = this.$entry(index);
+      if (at < 0) return new Vector4d(0, 0, 0, 0);
+      const data = this.$data();
+      return new Vector4d(data[at + 16], data[at + 17], data[at + 18], data[at + 19]);
+    },
+    // Where an entry starts among the numbers, or -1.
+    $entry(index) {
+      const at = Math.trunc(Number(index)) * ENTRY;
+      return at >= 0 && at < this.$data().length ? at : -1;
+    },
+  },
+  setup(self) {
+    // The numbers of every entry, which the table that this is makes
+    // (`$made`), and how many of them are drawn.
+    // Made again with the same numbers it is the same table: nothing is
+    // told of it.
+    let last = NOTHING;
+    self.$data = kept(self, () => {
+      const made = self.$made?.() ?? NOTHING;
+      if (made.length !== last.length || made.some((number, at) => number !== last[at])) last = made;
+      return last;
+    });
+    self.$count = () => {
+      const all = self.$data().length / ENTRY;
+      const only = self.instanceCountOverride;
+      return only >= 0 ? Math.min(only, all) : all;
+    };
+    // What a Model draws by.
+    self.$table = () => ({ data: self.$data(), count: self.$count(), sheer: Boolean(self.hasTransparency), sorted: Boolean(self.depthSortingEnabled) });
+    effect(
+      () => self.$data(),
+      () => void self.instanceTableChanged(),
+    );
+  },
+});
+
+export const InstanceListEntry = defineType("InstanceListEntry", Object3D, {
+  properties: {
+    position: new Vector3d(0, 0, 0),
+    scale: new Vector3d(1, 1, 1),
+    eulerRotation: new Vector3d(0, 0, 0),
+    rotation: new Quaternion(1, 0, 0, 0),
+    color: "#ffffff",
+    customData: new Vector4d(0, 0, 0, 0),
+  },
+  resolve: { color: colorValue },
+  setup(self, props) {
+    self.$instance = true;
+    // An entry is turned by its angles, or by `rotation` where that was
+    // what it was given last.
+    const [angled, setAngled] = createSignal(!("rotation" in props) || "eulerRotation" in props, WRITABLE);
+    self.$angled = setAngled;
+    self.$turn = () => {
+      if (angled()) return math.fromEuler(...three(self.eulerRotation));
+      const { scalar, x, y, z } = self.rotation;
+      return [scalar, x, y, z];
+    };
+  },
+});
+
+for (const [name, angled] of [
+  ["eulerRotation", true],
+  ["rotation", false],
+]) {
+  const { get, set } = Object.getOwnPropertyDescriptor(InstanceListEntry.proto, name);
+  Object.defineProperty(InstanceListEntry.proto, name, {
+    get,
+    set(value) {
+      this.$angled(angled);
+      set.call(this, value);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+const list = (value) => (value == null ? [] : Array.isArray(value) ? value : [value]);
+
+export const InstanceList = defineType("InstanceList", Instancing, {
+  properties: {
+    instances: undefined,
+    instanceCount: derived((self) => self.$instances().length),
+  },
+  setup(self) {
+    // Its entries are those declared in it and those it was given.
+    self.$instances = () => {
+      self.$track();
+      const inside = [...(self.$static ?? []), ...(self.$extra ?? [])];
+      return [...inside, ...list(self.instances).filter((entry) => !inside.includes(entry))].filter((entry) => entry?.$instance);
+    };
+    self.$made = () => {
+      const entries = self.$instances();
+      const data = new Float32Array(entries.length * ENTRY);
+      entries.forEach((entry, index) => {
+        enter(data, index, three(entry.position), three(entry.scale), entry.$turn(), entry.color, four(entry.customData));
+      });
+      return data;
+    };
+  },
+});

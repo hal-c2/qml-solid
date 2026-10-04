@@ -281,8 +281,7 @@
       ],
       "cpp": [],
       "qt": {
-        "runnable": false,
-        "reason": "QtQuick3D is not installed (nor QtQuick3D.Physics, QtSensors)."
+        "runnable": true
       }
     },
     {

@@ -28,6 +28,8 @@
     "./QtQuick/LocalStorage": "./QtQuick/LocalStorage/index.js",
     "./QtQuick/Dialogs": "./QtQuick/Dialogs/index.js",
     "./QtQuick3D": "./QtQuick3D/index.js",
+    "./QtQuick3D/Helpers": "./QtQuick3D/Helpers/index.js",
+    "./QtQuick3D/Helpers/impl": "./QtQuick3D/Helpers/impl/index.js",
     "./QtQuick3D/Xr": "./QtQuick3D/Xr/index.js",
     "./QtQuick3D/Physics": "./QtQuick3D/Physics/index.js",
     "./QtMultimedia": "./QtMultimedia/index.js",

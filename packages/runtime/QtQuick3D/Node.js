@@ -177,6 +177,44 @@ export const Node = defineType("Node", Object3D, {
       } else turned = math.multiply(own, added);
       this.rotation = math.quaternion(math.turnOf(turned));
     },
+    // What Qt has as slots, which a program may call: each assigns the
+    // property it is named for.
+    setPosition(value) {
+      this.position = value;
+    },
+    setX(value) {
+      this.x = value;
+    },
+    setY(value) {
+      this.y = value;
+    },
+    setZ(value) {
+      this.z = value;
+    },
+    setRotation(value) {
+      this.rotation = value;
+    },
+    setEulerRotation(value) {
+      this.eulerRotation = value;
+    },
+    setScale(value) {
+      this.scale = value;
+    },
+    setPivot(value) {
+      this.pivot = value;
+    },
+    setLocalOpacity(value) {
+      this.opacity = value;
+    },
+    setVisible(value) {
+      this.visible = value;
+    },
+    setStaticFlags(value) {
+      this.staticFlags = value;
+    },
+    setLayers(value) {
+      this.layers = value;
+    },
     mapPositionToScene(local) {
       return math.vector(math.point(this.$world(), local.x, local.y, local.z));
     },
@@ -211,9 +249,11 @@ export const Node = defineType("Node", Object3D, {
       return this.mapDirectionFromScene(node ? node.mapDirectionToScene(local) : local);
     },
   },
-  setup(self) {
+  setup(self, props) {
     self.$spatial = true;
     for (const [name, view] of Object.entries(GROUPS)) self.$groups[name] = Object.create(view, { $self: { value: self } });
+    // `position.x: -3`: a member of the position is the node's `x`.
+    for (const axis of AXES) if (`position$${axis}` in props) slot(self, axis).bind(props, `position$${axis}`);
     self.$local = kept(self, () => math.placed([self.x, self.y, self.z], three(self.scale), three(self.pivot), turn(self)));
     self.$world = kept(self, () => {
       const above = self.parent;

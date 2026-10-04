@@ -4,17 +4,27 @@
 //
 // These say what there is; `render.js` draws it.
 //
-// Not here: shadows, a light's `scope`, light probes and sky boxes, the maps
-// of a material other than its colour's, and of a PrincipledMaterial what
-// only a reflected surrounding shows (it is lit by the lights alone).
-import { createSignal } from "solid-js";
-import { defineType, derived, flush, located } from "../object.js";
+// Not here: shadows, a sky box that is a cube of six
+// pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, a material's
+// own probe, what a ReflectionProbe would have the models round it mirror,
+// an environment's `effects`, which are held and not run, and
+// the distances a model draws the entries of its table between
+// (`instancingLodMin` and `instancingLodMax`). Of
+// a material's pictures: a height map moves nothing, nothing is let through
+// (`transmissionFactor` and its maps), a specular map and a translucency map
+// are not read, a picture is read whole where Qt can read one channel of it
+// (`baseColorSingleChannelEnabled` and the like), and the colours of a
+// mesh's corners mask nothing.
+import { createSignal, untrack } from "solid-js";
+import { defineType, derived, effect, flush, group, located } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";
 import { color } from "../QtQuick/color.js";
 import * as math from "./math.js";
 import { read } from "./mesh.js";
 import { Node, Object3D } from "./Node.js";
 import { primitive } from "./primitives.js";
+import { radiance } from "./TextureData.js";
+import { vectors } from "./vectors.js";
 
 const WRITABLE = { ownedWrite: true };
 
@@ -84,6 +94,18 @@ function picture(url) {
   return record.ready() ? record : null;
 }
 
+// A picture whose numbers are not held to what a screen can show, which a
+// browser does not read: the numbers themselves, once they are here.
+function bright(url) {
+  const read = file(url, "hdr", radiance).state();
+  if (read?.error) {
+    if (!warned.has(url)) console.warn(`Texture: ${url}: ${read.error}`);
+    warned.add(url);
+    return null;
+  }
+  return read;
+}
+
 function seenThrough(element) {
   const { naturalWidth: width, naturalHeight: height } = element;
   if (!width || !height) return false;
@@ -137,8 +159,49 @@ export const Model = defineType("Model", Node, {
     self.$model = true;
     self.$shape = () => self.geometry?.$shape?.() ?? shape(self.source);
     self.$materials = () => list(self.materials);
+    // What bends it: a skin's joints, else a skeleton's with the poses the
+    // model has for them.
+    self.$bones = () => (self.skin ? (self.skin.$bones?.() ?? null) : (self.skeleton?.$bones?.(list(self.inverseBindPoses)) ?? null));
+    // The table it is drawn by, once for each entry, and where the entries
+    // are: `above` is what the whole table is moved by and `local` what
+    // each entry is, in its own place. Null where it is drawn once.
+    self.$instances = () => {
+      const table = self.instancing?.$table?.();
+      return table ? { ...table, ...instanced(self) } : null;
+    };
   },
 });
+
+const above = (node) => (node.parent?.$spatial ? node.parent.$world() : math.IDENTITY);
+
+// Where the entries of a node's table are. With no `instanceRoot` the node's
+// position moves the whole table, and its turn and size are each entry's
+// own; with itself as the root its position too is each entry's own; with
+// another node as the root, the table is where that node's would be, and
+// everything between the two is each entry's own.
+function instanced(node, depth = 0) {
+  const root = node.instanceRoot;
+  if (root === node) return { local: node.$local(), above: above(node) };
+  if (root?.$spatial && depth < 16) {
+    const from = instanced(root, depth + 1);
+    let local = node.$local();
+    for (let over = node.parent; over?.$spatial; over = over.parent) {
+      if (over === root) {
+        local = math.multiply(from.local, local);
+        break;
+      }
+      local = math.multiply(over.$local(), local);
+    }
+    return { local, above: from.above };
+  }
+  const local = [...node.$local()];
+  const moved = [...math.IDENTITY];
+  for (const at of [12, 13, 14]) {
+    moved[at] = local[at];
+    local[at] = 0;
+  }
+  return { local, above: math.multiply(above(node), moved) };
+}
 
 const ClampToEdge = 1;
 const MirroredRepeat = 2;
@@ -176,12 +239,18 @@ export const Texture = defineType("Texture", Object3D, {
   setup(self) {
     // What the renderer needs of it: the picture once it is here, how it
     // is sampled, and where in it a corner's coordinates are, as Qt places
-    // them: flipped, moved, then turned and scaled about the pivot.
+    // them: flipped, moved, then turned and scaled about the pivot. The
+    // picture is an item's where it has one, else the numbers it is given,
+    // else the file it names, which is the order Qt looks in.
     self.$texture = () => {
       const source = String(self.source ?? "");
-      const loaded = source ? picture(located(source)) : null;
-      const element = source ? loaded?.element : (self.sourceItem?.$canvas?.element ?? self.sourceItem?.$shader?.canvas ?? null);
-      if (!element) return null;
+      const item = self.sourceItem;
+      const given = item ? null : self.textureData;
+      const url = item || given || !source ? null : located(source);
+      const data = given ? (given.$picture?.() ?? null) : url && /\.hdr$/i.test(url) ? bright(url) : null;
+      const loaded = url && !/\.hdr$/i.test(url) ? picture(url) : null;
+      const element = item ? (item.$canvas?.element ?? item.$shader?.canvas ?? null) : (loaded?.element ?? null);
+      if (!element && !data) return null;
       let transform = [...math.IDENTITY];
       const by = (m) => void (transform = math.multiply(transform, m));
       const move = (x, y) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1];
@@ -194,9 +263,10 @@ export const Texture = defineType("Texture", Object3D, {
       by(move(-self.pivotU, -self.pivotV));
       return {
         element,
+        data,
         // A canvas may have been drawn on since, and may be seen through.
-        live: !loaded,
-        sheer: loaded ? loaded.sheer : true,
+        live: Boolean(item),
+        sheer: data ? data.sheer : loaded ? loaded.sheer : true,
         horizontal: self.tilingModeHorizontal,
         vertical: self.tilingModeVertical,
         mag: self.magFilter,
@@ -234,6 +304,23 @@ export const Material = defineType("Material", Object3D, {
   },
 });
 
+// The pictures a material reads besides its colour's: for each that is
+// set, how it is sampled and which channel of it is read, which a property
+// of the material says or is always the same one. `waiting` is
+// whether any is not here yet.
+function mapped(self, base, named) {
+  const maps = {};
+  let waiting = Boolean(base) && !base.$texture?.();
+  for (const [name, [property, channel]] of Object.entries(named)) {
+    const texture = self[property];
+    if (!texture) continue;
+    const map = texture.$texture?.();
+    if (map) maps[name] = { ...map, channel: typeof channel === "string" ? self[channel] : (channel ?? 0) };
+    else waiting = true;
+  }
+  return { map: base?.$texture?.() ?? null, maps, waiting };
+}
+
 const NoLighting = 0;
 const FragmentLighting = 1;
 const SHADING = { NoLighting, FragmentLighting, SourceOver: 0, Screen: 1, Multiply: 2 };
@@ -246,7 +333,7 @@ export const DefaultMaterial = defineType("DefaultMaterial", Material, {
     blendMode: 0,
     diffuseColor: "#ffffff",
     diffuseMap: null,
-    emissiveFactor: new Vector3d(0, 0, 0),
+    emissiveFactor: group({ x: 0, y: 0, z: 0 }),
     emissiveMap: null,
     specularReflectionMap: null,
     specularMap: null,
@@ -274,14 +361,22 @@ export const DefaultMaterial = defineType("DefaultMaterial", Material, {
     self.$material = () => ({
       lit: self.lighting !== NoLighting,
       color: linear(self.diffuseColor),
-      map: self.diffuseMap?.$texture?.() ?? null,
-      waiting: Boolean(self.diffuseMap) && !self.diffuseMap.$texture?.(),
+      ...mapped(self, self.diffuseMap, {
+        normal: ["normalMap"],
+        bump: ["bumpMap"],
+        emissive: ["emissiveMap"],
+        opacity: ["opacityMap", 3],
+      }),
+      // How far a picture of the way it faces, or of heights, turns it.
+      bump: self.bumpAmount,
       emissive: vec(self.emissiveFactor),
       // How much of a light a surface that faces between it and the eye
-      // gives back, and how tight the spot of it is.
+      // gives back, in its own colour, and how tight the spot of it is.
+      // The tint is of what it gives back of its surroundings alone.
       specular: self.specularAmount,
       tint: linear(self.specularTint).slice(0, 3),
       shine: 2.56 / (self.specularRoughness + 0.01),
+      roughness: self.specularRoughness,
       metalness: 0,
       ior: self.indexOfRefraction,
       fresnel: self.fresnelPower,
@@ -294,6 +389,8 @@ export const DefaultMaterial = defineType("DefaultMaterial", Material, {
     });
   },
 });
+
+vectors(DefaultMaterial, "emissiveFactor");
 
 const Mask = 1;
 const Blend = 2;
@@ -322,7 +419,7 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
     opacityMap: null,
     opacityChannel: 3,
     invertOpacityMapValue: false,
-    emissiveFactor: new Vector3d(0, 0, 0),
+    emissiveFactor: group({ x: 0, y: 0, z: 0 }),
     emissiveMap: null,
     normalMap: null,
     normalStrength: 1,
@@ -335,7 +432,31 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
     minHeightMapSamples: 8,
     maxHeightMapSamples: 32,
     clearcoatAmount: 0,
+    clearcoatMap: null,
+    clearcoatChannel: 0,
     clearcoatRoughnessAmount: 0,
+    clearcoatRoughnessMap: null,
+    clearcoatRoughnessChannel: 1,
+    clearcoatNormalMap: null,
+    clearcoatNormalStrength: 1,
+    clearcoatFresnelPower: 5,
+    clearcoatFresnelScaleBiasEnabled: false,
+    clearcoatFresnelScale: 1,
+    clearcoatFresnelBias: 0,
+    fresnelScaleBiasEnabled: false,
+    fresnelScale: 1,
+    fresnelBias: 0,
+    baseColorSingleChannelEnabled: false,
+    baseColorChannel: 0,
+    specularSingleChannelEnabled: false,
+    specularChannel: 0,
+    emissiveSingleChannelEnabled: false,
+    emissiveChannel: 0,
+    transmissionMap: null,
+    transmissionChannel: 0,
+    thicknessMap: null,
+    thicknessChannel: 1,
+    vertexColorsMaskEnabled: false,
     transmissionFactor: 0,
     thicknessFactor: 0,
     attenuationDistance: Infinity,
@@ -353,13 +474,35 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
       return {
         lit: self.lighting !== NoLighting,
         color: [r, g, b, mode === Opaque ? 1 : a],
-        map: self.baseColorMap?.$texture?.() ?? null,
-        waiting: Boolean(self.baseColorMap) && !self.baseColorMap.$texture?.(),
+        ...mapped(self, self.baseColorMap, {
+          normal: ["normalMap"],
+          roughness: ["roughnessMap", "roughnessChannel"],
+          metalness: ["metalnessMap", "metalnessChannel"],
+          occlusion: ["occlusionMap", "occlusionChannel"],
+          emissive: ["emissiveMap"],
+          opacity: ["opacityMap", "opacityChannel"],
+          coat: ["clearcoatMap", "clearcoatChannel"],
+          coatRoughness: ["clearcoatRoughnessMap", "clearcoatRoughnessChannel"],
+          coatNormal: ["clearcoatNormalMap"],
+        }),
+        bump: self.normalStrength,
+        coat: self.clearcoatAmount,
+        coatRoughness: self.clearcoatRoughnessAmount,
+        coatBump: self.clearcoatNormalStrength,
+        coatEdge: [self.clearcoatFresnelPower, ...(self.clearcoatFresnelScaleBiasEnabled ? [self.clearcoatFresnelScale, self.clearcoatFresnelBias] : [1, 0])],
+        occlusion: self.occlusionAmount,
+        inverted: self.invertOpacityMapValue,
         emissive: vec(self.emissiveFactor),
         // A surface that is not metal gives back a little of a light as it
-        // is, and a metal all of it in its own colour.
+        // is, or as much in its own colour as `specularTint` says, and a
+        // metal all of it in its own colour. One that is neither metal nor
+        // gives any back has no shine at all, nor has its coat.
         specular: self.specularAmount,
-        tint: [1, 1, 1],
+        tint: [r, g, b].map((c) => 1 + (c - 1) * self.specularTint),
+        shiny: self.specularAmount > 0.01 || self.metalness > 0.01,
+        // How much more a surface seen from its side gives back of its
+        // surroundings than one seen from the front.
+        edge: self.fresnelScaleBiasEnabled ? [self.fresnelScale, self.fresnelBias] : [1, 0],
         roughness: self.roughness,
         metalness: self.metalness,
         principled: true,
@@ -378,8 +521,11 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
   },
 });
 
+vectors(PrincipledMaterial, "emissiveFactor");
+
 // A light: its colour times how bright it is, and what it adds to every
-// surface wherever that is (`ambientColor`).
+// surface wherever that is (`ambientColor`). One with a `scope` lights, and
+// adds to, only what is that node or inside it.
 export const Light = defineType("Light", Node, {
   properties: {
     color: "#ffffff",
@@ -421,6 +567,8 @@ export const Light = defineType("Light", Node, {
         kind: self.$lit,
         color: [r * by, g * by, b * by],
         ambient: linear(self.ambientColor).slice(0, 3),
+        // The node it is for, where it is not for the whole scene.
+        scope: self.scope ?? null,
         // A light shines along its own z, away from the eye.
         direction: math.normalized(math.turned(math.normal(world), 0, 0, -1)),
         position: world.slice(12, 15),
@@ -523,6 +671,20 @@ export const Camera = defineType("Camera", Node, {
   },
   setup(self) {
     self.$camera = true;
+    // A camera with a node to look at keeps looking at it, wherever either
+    // goes. Turning the camera by hand lasts until one of them moves.
+    let last = "";
+    effect(
+      () => {
+        const to = self.lookAtNode?.$spatial ? self.lookAtNode.scenePosition : null;
+        return to && `${self.scenePosition} ${to}`;
+      },
+      (places) => {
+        if (!places || places === last) return;
+        last = places;
+        untrack(() => self.lookAt(self.lookAtNode));
+      },
+    );
   },
 });
 
@@ -564,6 +726,10 @@ export const OrthographicCamera = defineType("OrthographicCamera", Camera, {
       return math.ortho(-across, across, -down, down, this.clipNear, this.clipFar);
     },
   },
+  setup(self) {
+    // It sees along one way from everywhere across it.
+    self.$flat = true;
+  },
 });
 
 export const FrustumCamera = defineType("FrustumCamera", PerspectiveCamera, {
@@ -584,8 +750,68 @@ export const CustomCamera = defineType("CustomCamera", Camera, {
   },
 });
 
+// Fog: what is far from the camera, or low, fades into one colour. With
+// neither of the two asked for there is none.
+export const Fog = defineType("Fog", Object3D, {
+  properties: {
+    enabled: false,
+    color: "#8099b3",
+    density: 1,
+    depthEnabled: false,
+    depthNear: 10,
+    depthFar: 1000,
+    depthCurve: 1,
+    heightEnabled: false,
+    leastIntenseY: 10,
+    mostIntenseY: 0,
+    heightCurve: 1,
+    transmitEnabled: false,
+    transmitCurve: 1,
+  },
+  setup(self) {
+    self.$fog = () => {
+      if (!self.enabled || !(self.depthEnabled || self.heightEnabled)) return null;
+      const [red, green, blue] = linear(self.color);
+      return {
+        color: [red, green, blue, self.density],
+        depth: [self.depthNear, self.depthFar, self.depthCurve, self.depthEnabled ? 1 : 0],
+        height: [self.leastIntenseY, self.mostIntenseY, self.heightCurve, self.heightEnabled ? 1 : 0],
+        through: [self.transmitCurve, self.transmitEnabled ? 1 : 0],
+      };
+    };
+  },
+});
+
+// A reflection probe: a place the scene is looked at from all round, for
+// the models near it that take reflections to mirror.
+//
+// What it is asked for is held and nothing is looked at: a model mirrors
+// what its scene's light probe shows, as in Qt one does with no reflection
+// probe near it.
+export const ReflectionProbe = defineType("ReflectionProbe", Node, {
+  properties: {
+    quality: 1,
+    clearColor: "#00000000",
+    refreshMode: 1,
+    timeSlicing: 0,
+    parallaxCorrection: false,
+    boxSize: group({ x: 0, y: 0, z: 0 }),
+    boxOffset: group({ x: 0, y: 0, z: 0 }),
+    debugView: false,
+    texture: null,
+  },
+  enums: { VeryLow: 0, Low: 1, Medium: 2, High: 3, VeryHigh: 4, FirstFrame: 0, EveryFrame: 1, None: 0, AllFacesAtOnce: 1, IndividualFaces: 2 },
+  methods: {
+    scheduleUpdate() {},
+  },
+});
+
+vectors(ReflectionProbe, "boxSize", "boxOffset");
+
 const Transparent = 0;
 const Color = 2;
+const SkyBox = 3;
+const SkyBoxCubeMap = 4;
 const NoAA = 0;
 
 export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
@@ -609,7 +835,7 @@ export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
     lightProbe: null,
     probeExposure: 1,
     probeHorizon: 0,
-    probeOrientation: new Vector3d(0, 0, 0),
+    probeOrientation: group({ x: 0, y: 0, z: 0 }),
     skyBoxCubeMap: null,
     skyboxBlurAmount: 0,
     tonemapMode: 1,
@@ -634,8 +860,8 @@ export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
     Transparent,
     Unspecified: 1,
     Color,
-    SkyBox: 3,
-    SkyBoxCubeMap: 4,
+    SkyBox,
+    SkyBoxCubeMap,
     TonemapModeNone: 0,
     TonemapModeLinear: 1,
     TonemapModeAces: 2,
@@ -647,16 +873,35 @@ export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
   },
   setup(self) {
     self.$environment = () => {
-      const { r, g, b, a } = color(self.clearColor);
-      const filled = self.backgroundMode === Color;
+      // The colour is behind the scene where that is asked for, and where
+      // surroundings are and there are none to show.
+      const mode = self.backgroundMode;
+      const filled = mode === Color || (mode === SkyBox && !self.lightProbe) || (mode === SkyBoxCubeMap && !self.skyBoxCubeMap);
+      // What everything is lit by from all round, and how: how bright, how
+      // far down it reaches (not below the horizon at 1, all the way at 0),
+      // and how it is turned.
+      const map = self.lightProbe?.$texture?.() ?? null;
+      const { x, y, z } = self.probeOrientation;
+      const turn = math.rotation(math.fromEuler(x, y, z));
       return {
-        clear: filled ? [r * a, g * a, b * a, a] : [0, 0, 0, 0],
+        clear: filled ? linear(self.clearColor) : [0, 0, 0, 0],
+        probe: map && {
+          map,
+          exposure: self.probeExposure,
+          horizon: Math.min(Math.min(1, Math.max(0, self.probeHorizon)) - 1, -0.001),
+          turn: [turn[0], turn[1], turn[2], turn[4], turn[5], turn[6], turn[8], turn[9], turn[10]],
+        },
+        sky: mode === SkyBox,
+        blur: self.skyboxBlurAmount,
         // Smoothed edges: each pixel drawn several times over. The other
         // ways Qt has of it are drawn this way too.
         samples: self.antialiasingMode === NoAA ? 0 : self.antialiasingQuality,
         tonemap: self.tonemapMode,
         depth: self.depthTestEnabled,
+        fog: self.fog?.$fog?.() ?? null,
       };
     };
   },
 });
+
+vectors(SceneEnvironment, "probeOrientation");
