@@ -107,6 +107,10 @@ A type Qt has in C++ and the runtime does not have yet is in its module all the
 same (`qmlc --types` says which those are): a style names every control, and a
 program that uses three of them needs those three. Using one that is not there
 is an error that names it, `QtQuick.Templates: Dial is not in qml-solid yet`.
+Likewise a type that is QML of Qt's own (`qmlc --qml-types`), where that module
+of Qt's is not installed: `QtQuick3D.Helpers: OrbitCameraController is QML of
+Qt's own, and Qt's QtQuick3D.Helpers is not installed here`. The gallery tells
+of such an example and does not hold it to what it rendered before.
 
 ## Components
 

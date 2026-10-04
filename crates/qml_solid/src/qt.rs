@@ -54,12 +54,22 @@ pub(crate) fn module(uri: &str) -> Option<&'static Module> {
 /// The types of the module `uri` that Qt has in C++ and not as QML files:
 /// what a runtime has to have of it. None when the table has no such module.
 pub fn native_types(uri: &str) -> Option<Vec<&'static str>> {
+    types_of(uri, false)
+}
+
+/// The types of the module `uri` that Qt has as QML files: what is there only
+/// where Qt's own module is installed. None when the table has no such module.
+pub fn written_types(uri: &str) -> Option<Vec<&'static str>> {
+    types_of(uri, true)
+}
+
+fn types_of(uri: &str, written: bool) -> Option<Vec<&'static str>> {
     let module = module(uri)?;
     let types = &table().types;
     let mut names: Vec<&'static str> = module
         .exports
         .iter()
-        .filter(|(name, index)| name.starts_with(|c: char| c.is_ascii_uppercase()) && types[**index].qml_file.is_none())
+        .filter(|(name, index)| name.starts_with(|c: char| c.is_ascii_uppercase()) && types[**index].qml_file.is_some() == written)
         .map(|(name, _)| *name)
         .collect();
     names.sort_unstable();

@@ -1492,10 +1492,14 @@ export function $url(value, base) {
 
 // A type of Qt's that this runtime does not have yet. It is there to be
 // named, since a style of Qt's names every control there is, and says what
-// it is when something is made of it or read off it.
-export function absent(module, name) {
+// it is when something is made of it or read off it. One that is QML of
+// Qt's own is absent where that module of Qt's is not `installed`: the build
+// reads such a type out of Qt.
+export function absent(module, name, installed = true) {
   const fail = () => {
-    throw new Error(`${module}: ${name} is not in qml-solid yet`);
+    throw new Error(
+      installed ? `${module}: ${name} is not in qml-solid yet` : `${module}: ${name} is QML of Qt's own, and Qt's ${module} is not installed here`,
+    );
   };
   return new Proxy(fail, {
     // What is asked of any function, and what the runtime asks of any value

@@ -1,5 +1,5 @@
 //! `qmlc [--emit js|lowered] [--out-dir DIR] [--root DIR] [--with DIR]... [--select NAME]... [--host MODULE] [--runtime MODULE] [--alone] FILE.qml...`
-//! `qmlc --types URI...`
+//! `qmlc --types|--qml-types URI...`
 //!
 //! Compiles each QML file to a JavaScript module, and each `.js` file as the
 //! script a QML file imports. Without `--out-dir` the output goes to stdout. A file is compiled with the QML files next to it
@@ -18,7 +18,9 @@
 //!
 //! `--types` prints, for each module of Qt's, the types Qt has of it in C++:
 //! a line of the URI and its names. That is what a runtime has to have of
-//! the module, the rest of which is QML.
+//! the module, the rest of which is QML. `--qml-types` prints that rest
+//! likewise: the types Qt has of the module as QML files, which are there
+//! only where that module of Qt's is installed.
 
 use std::{
     collections::HashSet,
@@ -27,7 +29,7 @@ use std::{
     sync::OnceLock,
 };
 
-use qml_solid::{Options, Project, compile, compile_script, discover, lowered_source, native_types};
+use qml_solid::{Options, Project, compile, compile_script, discover, lowered_source, native_types, written_types};
 
 /// The file selectors given, the first to have a file deciding.
 static SELECTORS: OnceLock<Vec<String>> = OnceLock::new();
@@ -212,7 +214,7 @@ fn main() -> ExitCode {
     let mut options = Options::default();
     let mut lowered = false;
     let mut alone = false;
-    let mut types = false;
+    let mut types = None;
     let mut out_dir = None;
     let mut root = None;
     let mut with = Vec::new();
@@ -230,7 +232,8 @@ fn main() -> ExitCode {
             "--host" => options.host_module = value("--host"),
             "--runtime" => options.runtime_module = value("--runtime"),
             "--alone" => alone = true,
-            "--types" => types = true,
+            "--types" => types = Some(native_types as fn(&str) -> _),
+            "--qml-types" => types = Some(written_types),
             "--component-extension" => options.component_extension = value("--component-extension"),
             _ => files.push(arg),
         }
@@ -238,10 +241,10 @@ fn main() -> ExitCode {
 
     SELECTORS.get_or_init(|| selectors);
 
-    if types {
+    if let Some(types) = types {
         for uri in &files {
             // A module the table does not have is one with no line.
-            if let Some(names) = native_types(uri) {
+            if let Some(names) = types(uri) {
                 println!("{uri} {}", names.join(" "));
             }
         }

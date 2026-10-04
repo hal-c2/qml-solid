@@ -30,6 +30,17 @@ fn a_module_has_its_own_types() {
     assert!(ty("Qt.labs.qmlmodels", "TableModelColumn").property("display").is_some());
 }
 
+/// What a runtime has to have of a module, and what is QML of Qt's own.
+#[test]
+fn a_module_has_types_in_cpp_and_types_in_qml() {
+    let native = native_types("QtQuick3D.Helpers").unwrap();
+    let written = written_types("QtQuick3D.Helpers").unwrap();
+    assert!(native.contains(&"ProceduralMesh") && !native.contains(&"OrbitCameraController"));
+    assert!(written.contains(&"OrbitCameraController") && !written.contains(&"ProceduralMesh"));
+    assert_eq!(written_types("QtQuick.Layouts"), Some(vec![]));
+    assert_eq!((native_types("QtQuick.NoSuchModule"), written_types("QtQuick.NoSuchModule")), (None, None));
+}
+
 /// `import QtQuick` is also `QtQml`, `QtQml.Models` and the builtins.
 #[test]
 fn a_module_has_the_types_of_the_modules_it_imports() {
