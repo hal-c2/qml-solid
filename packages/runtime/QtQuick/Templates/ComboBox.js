@@ -125,27 +125,33 @@ function viewOf(popup) {
   return untrack(() => find(popup?.contentItem, 0));
 }
 
-function updateCurrentText(self) {
-  const text = untrack(() => self.textAt(self.currentIndex));
+function updateCurrentText(self, text = untrack(() => self.textAt(self.currentIndex))) {
   put(self, "currentText", text);
   if (!self.$combo.accepting) setEditText(self, text);
 }
 
-function updateCurrentValue(self) {
-  const value = untrack(() => self.valueAt(self.currentIndex));
+function updateCurrentValue(self, value = untrack(() => self.valueAt(self.currentIndex))) {
   if (!equal(now(self, "currentValue"), value)) put(self, "currentValue", value);
 }
 
 // Qt's `updateCurrentElements`: what follows from what says which row is
-// current.
-function updateCurrentElements(self) {
+// current. `row` is that row, where it was asked for already.
+function updateCurrentElements(self, row) {
   if (self.$combo.criteria === VALUE) {
-    put(self, "currentIndex", untrack(() => self.indexOfValue(self.currentValue)));
-    updateCurrentText(self);
+    put(self, "currentIndex", row ? row.index : untrack(() => self.indexOfValue(self.currentValue)));
+    updateCurrentText(self, row?.text);
   } else {
-    updateCurrentText(self);
-    updateCurrentValue(self);
+    updateCurrentText(self, row?.text);
+    updateCurrentValue(self, row?.value);
   }
+}
+
+// The row a box starts at: the one its value is in, the one its index
+// says, or the first when neither was given.
+function starting(self, at) {
+  const criteria = self.$combo.criteria;
+  const index = criteria === VALUE ? self.indexOfValue(self.currentValue) : criteria === NONE && at === -1 ? 0 : at;
+  return { index, text: self.textAt(index), value: self.valueAt(index) };
 }
 
 // The text a style's field shows is what the box says it is, whatever was
@@ -620,11 +626,17 @@ export const ComboBox = defineType("ComboBox", Control, {
     // is given another model, when that has no rows left, and whenever the
     // current row says something else.
     let last = null;
+    // What the box starts as is asked for with the rest and not where it
+    // is said: that is while what holds the box is being made (a page, a
+    // header), which Solid makes again when a value that changed since it
+    // was first computed is asked for there.
+    let start = null;
     effect(
       () => {
         const model = self.model;
         const at = self.currentIndex;
         version();
+        start = mine.complete ? null : starting(self, at);
         return [model, self.count, at, self.currentValue, self.textRole, self.valueRole, self.textAt(at), self.valueAt(at), version()];
       },
       (seen) =>
@@ -643,8 +655,8 @@ export const ComboBox = defineType("ComboBox", Control, {
             mine.model = Array.isArray(model) ? model.slice() : model;
             mine.count = count;
             if (count === 0) return;
-            if (mine.criteria === NONE && self.currentIndex === -1) put(self, "currentIndex", 0);
-            return updateCurrentElements(self);
+            if (mine.criteria === NONE && seen[2] === -1) put(self, "currentIndex", 0);
+            return updateCurrentElements(self, start);
           }
           const had = mine.count;
           mine.count = count;
