@@ -212,6 +212,9 @@ importers:
 
   packages/runtime:
     dependencies:
+      physx-js-webidl:
+        specifier: 2.8.0
+        version: 2.8.0
       sql.js:
         specifier: ^1.14.2
         version: 1.14.2
@@ -445,6 +448,9 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
+  physx-js-webidl@2.8.0:
+    resolution: {integrity: sha512-ojB30BYBlWf0EK1q2lqKM5FcokNjMJUySoGmvIp3weIK/Wgwcw9PoEbQIrHHbUslclpkK0yfou3RBhcOttlNbg==}
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -671,6 +677,8 @@ snapshots:
       lightningcss-win32-x64-msvc: 1.33.0
 
   nanoid@3.3.19: {}
+
+  physx-js-webidl@2.8.0: {}
 
   picocolors@1.1.1: {}
 
