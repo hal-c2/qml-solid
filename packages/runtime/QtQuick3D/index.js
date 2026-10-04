@@ -1,4 +1,5 @@
 // QtQuick3D.
+export { Buffer, BufferInput, Command, Effect, Pass, SetUniformValue, Shader, TextureInput } from "./effects.js";
 export { Geometry } from "./Geometry.js";
 export { Node, Object3D } from "./Node.js";
 export { Repeater3D } from "./Repeater3D.js";

@@ -15,6 +15,11 @@
 // a rough surface takes from all round. The same cube is what is behind the
 // scene where its background is a sky box.
 //
+// Under an ExtendedSceneEnvironment a scene is drawn in linear light, into
+// a picture whose numbers are fractions, and brought to the screen after:
+// which a browser that cannot draw into such a picture does not do, and
+// there the scene is drawn as under a SceneEnvironment.
+//
 // Not here: a probe that is a canvas is folded once, as it is when first
 // drawn, and a material's own probe is not looked at.
 import * as math from "./math.js";
@@ -676,6 +681,133 @@ void main() {
 }
 `;
 
+// What an ExtendedSceneEnvironment does to the picture of a scene drawn in
+// linear light, as Qt's own shader for it does: how exposed it is, edges
+// smoothed and the whole sharpened, dithering, the tone mapping with its
+// white point, brightness, contrast and saturation, and the vignette.
+const OVER = `#version 300 es
+out vec2 v_at;
+void main() {
+    v_at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    gl_Position = vec4(v_at * 2.0 - 1.0, 0.0, 1.0);
+}
+`;
+
+const GRADE = `#version 300 es
+precision highp float;
+uniform sampler2D u_from;
+uniform int u_tonemap;
+uniform vec4 u_grade;
+uniform bvec2 u_fine;
+uniform vec4 u_adjust;
+uniform vec4 u_vignette;
+uniform vec2 u_vignetting;
+in vec2 v_at;
+out vec4 fragColor;
+
+vec3 filmic(vec3 c, float white) {
+    const float A = 0.22 * 2.0 * 2.0;
+    const float B = 0.30 * 2.0;
+    const float C = 0.10;
+    const float D = 0.20;
+    const float E = 0.01;
+    const float F = 0.30;
+    vec3 toned = ((c * (A * c + C * B) + D * E) / (c * (A * c + B) + D * F)) - E / F;
+    float most = ((white * (A * white + C * B) + D * E) / (white * (A * white + B) + D * F)) - E / F;
+    return clamp(toned / most, vec3(0.0), vec3(1.0));
+}
+
+vec3 aces(vec3 c, float white) {
+    const float A = 2.51 * 0.85 * 0.85;
+    const float B = 0.03 * 0.85;
+    const float C = 2.43 * 0.85 * 0.85;
+    const float D = 0.59 * 0.85;
+    const float E = 0.14;
+    vec3 toned = (c * (A * c + B)) / (c * (C * c + D) + E);
+    float most = (white * (A * white + B)) / (white * (C * white + D) + E);
+    return clamp(toned / most, vec3(0.0), vec3(1.0));
+}
+
+vec3 reinhard(vec3 c, float white) {
+    return clamp((white * c + c) / (c * white + white), vec3(0.0), vec3(1.0));
+}
+
+vec3 toScreen(vec3 c) {
+    return mix(1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, 12.92 * c, lessThan(c, vec3(0.0031308)));
+}
+
+vec3 tonemap(vec3 c, float white) {
+    if (u_tonemap == 0) return c;
+    if (u_tonemap == 1) return toScreen(clamp(c, vec3(0.0), vec3(1.0)));
+    c = max(vec3(0.0), c);
+    if (u_tonemap == 2) return toScreen(aces(c, white));
+    if (u_tonemap == 3) return toScreen(reinhard(c, white));
+    return toScreen(filmic(c, white));
+}
+
+vec3 smoothed(vec3 color, float exposure, vec2 pixel) {
+    vec3 nw = textureLod(u_from, v_at + vec2(-1.0, -1.0) * pixel, 0.0).xyz * exposure;
+    vec3 ne = textureLod(u_from, v_at + vec2(1.0, -1.0) * pixel, 0.0).xyz * exposure;
+    vec3 sw = textureLod(u_from, v_at + vec2(-1.0, 1.0) * pixel, 0.0).xyz * exposure;
+    vec3 se = textureLod(u_from, v_at + vec2(1.0, 1.0) * pixel, 0.0).xyz * exposure;
+    vec3 luma = vec3(0.299, 0.587, 0.114);
+    float lumaNW = dot(nw, luma);
+    float lumaNE = dot(ne, luma);
+    float lumaSW = dot(sw, luma);
+    float lumaSE = dot(se, luma);
+    float lumaM = dot(color, luma);
+    float least = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+    float most = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+    vec2 way = vec2(-((lumaNW + lumaNE) - (lumaSW + lumaSE)), (lumaNW + lumaSW) - (lumaNE + lumaSE));
+    float less = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 / 8.0), 1.0 / 128.0);
+    way = min(vec2(8.0), max(vec2(-8.0), way / (min(abs(way.x), abs(way.y)) + less))) * pixel;
+    vec3 near = 0.5 * exposure * (textureLod(u_from, v_at + way * (1.0 / 3.0 - 0.5), 0.0).xyz + textureLod(u_from, v_at + way * (2.0 / 3.0 - 0.5), 0.0).xyz);
+    vec3 far = near * 0.5 + 0.25 * exposure * (textureLod(u_from, v_at + way * -0.5, 0.0).xyz + textureLod(u_from, v_at + way * 0.5, 0.0).xyz);
+    float lumaFar = dot(far, luma);
+    return lumaFar < least || lumaFar > most ? near : far;
+}
+
+vec3 sharpened(vec3 e, float exposure, float amount) {
+    ivec2 here = ivec2(gl_FragCoord.xy);
+    vec3 a = texelFetch(u_from, here + ivec2(-1, -1), 0).rgb * exposure;
+    vec3 b = texelFetch(u_from, here + ivec2(0, -1), 0).rgb * exposure;
+    vec3 c = texelFetch(u_from, here + ivec2(1, -1), 0).rgb * exposure;
+    vec3 d = texelFetch(u_from, here + ivec2(-1, 0), 0).rgb * exposure;
+    vec3 f = texelFetch(u_from, here + ivec2(1, 0), 0).rgb * exposure;
+    vec3 g = texelFetch(u_from, here + ivec2(-1, 1), 0).rgb * exposure;
+    vec3 h = texelFetch(u_from, here + ivec2(0, 1), 0).rgb * exposure;
+    vec3 i = texelFetch(u_from, here + ivec2(1, 1), 0).rgb * exposure;
+    vec3 least = min(min(min(d, e), min(f, b)), h);
+    least += min(min(min(least, a), min(g, c)), i);
+    vec3 most = max(max(max(d, e), max(f, b)), h);
+    most += max(max(max(most, a), max(g, c)), i);
+    vec3 room = inversesqrt(clamp(min(least, 2.0 - most) / most, 0.0, 1.0));
+    vec3 weight = -vec3(1.0) / (room * (8.0 - 3.0 * amount));
+    return max(vec3(0.0), ((b + d + f + h) * weight + e) / (1.0 + 4.0 * weight));
+}
+
+void main() {
+    vec4 source = textureLod(u_from, v_at, 0.0);
+    float exposure = u_grade.x;
+    vec3 color = source.rgb * exposure;
+    if (u_fine.x) color = smoothed(color, exposure, 1.0 / vec2(textureSize(u_from, 0)));
+    if (u_grade.z >= 0.001) color = sharpened(color, exposure, u_grade.z);
+    if (u_fine.y) color += (fract(vec3(dot(vec2(171.0, 231.0), gl_FragCoord.xy)) / vec3(103.0, 71.0, 97.0)) - 0.5) / 255.0;
+    color = tonemap(color, u_grade.y);
+    if (u_adjust.x > 0.5) {
+        color = mix(vec3(0.0), color, u_adjust.y);
+        color = mix(vec3(0.5), color, u_adjust.z);
+        color = mix(vec3(dot(vec3(1.0), color) * 0.33333), color, u_adjust.w);
+    }
+    if (u_vignette.w > 0.5) {
+        vec2 uv = v_at * (1.0 - v_at.yx);
+        float edge = pow(uv.x * uv.y * u_vignetting.x, u_vignetting.y);
+        color = mix(u_vignette.rgb * edge, color, edge);
+    }
+    fragColor = vec4(color, source.a);
+}
+`;
+
 let surface;
 let gl;
 let at;
@@ -939,7 +1071,7 @@ function probed(map) {
 }
 
 // The surroundings behind everything, as blurred as the scene says.
-function backdrop(probe, environment, projection, eye) {
+function backdrop(probe, environment, projection, eye, tonemap) {
   sky ??= program(BEHIND, SKY, ["u_back", "u_eye", "u_turn", "u_from", "u_level", "u_exposure", "u_tonemap"]);
   const back = sky && math.inverse(projection);
   if (!back) return;
@@ -951,7 +1083,7 @@ function backdrop(probe, environment, projection, eye) {
   gl.uniformMatrix3fv(sky.at.u_turn, false, environment.probe.turn);
   gl.uniform1f(sky.at.u_level, environment.blur * (probe.levels - 2));
   gl.uniform1f(sky.at.u_exposure, environment.probe.exposure);
-  gl.uniform1i(sky.at.u_tonemap, environment.tonemap);
+  gl.uniform1i(sky.at.u_tonemap, tonemap);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   gl.useProgram(shaded.program);
 }
@@ -977,14 +1109,14 @@ function toned([r, g, b], mode) {
 // Where edges are to be smooth, everything is drawn several times to the
 // pixel into this, and from it to the surface.
 let smooth = null;
-function smoothed(width, height, samples) {
+function smoothed(width, height, samples, format) {
   samples = Math.min(samples, gl.getParameter(gl.MAX_SAMPLES));
   if (samples < 2) return null;
   smooth ??= { frame: gl.createFramebuffer(), color: gl.createRenderbuffer(), depth: gl.createRenderbuffer() };
-  if (smooth.width !== width || smooth.height !== height || smooth.samples !== samples) {
-    Object.assign(smooth, { width, height, samples });
+  if (smooth.width !== width || smooth.height !== height || smooth.samples !== samples || smooth.format !== format) {
+    Object.assign(smooth, { width, height, samples, format });
     gl.bindRenderbuffer(gl.RENDERBUFFER, smooth.color);
-    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, width, height);
+    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, format, width, height);
     gl.bindRenderbuffer(gl.RENDERBUFFER, smooth.depth);
     gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, width, height);
     gl.bindFramebuffer(gl.FRAMEBUFFER, smooth.frame);
@@ -992,6 +1124,53 @@ function smoothed(width, height, samples) {
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, smooth.depth);
   }
   return smooth.frame;
+}
+
+// Where the whole picture is brought to the screen after it is drawn, it
+// is drawn in linear light into this, which holds more than a screen shows.
+// Null where the browser cannot draw into such a thing.
+let linear = null;
+function unscreened(width, height) {
+  if (!gl.getExtension("EXT_color_buffer_float")) return null;
+  linear ??= { frame: gl.createFramebuffer(), color: gl.createTexture(), depth: gl.createRenderbuffer() };
+  if (linear.width !== width || linear.height !== height) {
+    Object.assign(linear, { width, height });
+    gl.bindTexture(gl.TEXTURE_2D, linear.color);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, linear.depth);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, width, height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, linear.frame);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, linear.color, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, linear.depth);
+  }
+  return linear.frame;
+}
+
+// That picture brought to the screen, as the environment says.
+let graded = null;
+function finished(grade) {
+  graded ??= program(OVER, GRADE, ["u_from", "u_tonemap", "u_grade", "u_fine", "u_adjust", "u_vignette", "u_vignetting"]);
+  if (!graded) return;
+  covering();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.useProgram(graded.program);
+  gl.bindTexture(gl.TEXTURE_2D, linear.color);
+  gl.uniform1i(graded.at.u_from, 0);
+  gl.uniform1i(graded.at.u_tonemap, grade.tonemap);
+  gl.uniform4f(graded.at.u_grade, grade.exposure, grade.white, grade.sharpness, 0);
+  gl.uniform2i(graded.at.u_fine, grade.smooth ? 1 : 0, grade.dither ? 1 : 0);
+  gl.uniform4f(graded.at.u_adjust, grade.adjust ? 1 : 0, ...(grade.adjust ?? [1, 1, 1]));
+  gl.uniform4f(graded.at.u_vignette, ...(grade.vignette?.slice(0, 3) ?? [0, 0, 0]), grade.vignette ? 1 : 0);
+  gl.uniform2f(graded.at.u_vignetting, grade.vignette?.[3] ?? 0, grade.vignette?.[4] ?? 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  gl.depthMask(true);
+  gl.useProgram(shaded.program);
 }
 
 // The joints of a bent shape, as a texture the corners look their matrices
@@ -1091,14 +1270,21 @@ export function draw(scene, canvas, paper) {
   if (surface.height !== height) surface.height = height;
   const { environment } = scene;
   const probe = environment.probe ? probed(environment.probe.map) : null;
-  const frame = smoothed(width, height, environment.samples);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
+  // What an effect brings to the screen afterwards is drawn in linear
+  // light, into something that holds it.
+  const grade = environment.grade && unscreened(width, height) ? environment.grade : null;
+  // Left as it is drawn (-1): which is not the same as no tone mapping
+  // being asked for (0), where what lights from all round is as bright as
+  // its picture says.
+  const tonemap = grade && environment.tonemap !== 0 ? -1 : environment.tonemap;
+  const frame = smoothed(width, height, environment.samples, grade ? gl.RGBA16F : gl.RGBA8);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (grade ? linear.frame : null));
   gl.viewport(0, 0, width, height);
   gl.depthMask(true);
   // What is behind the scene is a colour of the screen's, which Qt brings
   // to linear light and back as it does everything it draws.
   const [red, green, blue, alpha] = environment.clear;
-  gl.clearColor(...toned([red, green, blue], environment.tonemap).map((channel) => channel * alpha), alpha);
+  gl.clearColor(...toned([red, green, blue], tonemap).map((channel) => channel * alpha), alpha);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.activeTexture(gl.TEXTURE0 + PROBE);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, probe?.cube ?? nothing);
@@ -1110,7 +1296,7 @@ export function draw(scene, canvas, paper) {
     const eye = math.unscaled(scene.camera);
     const view = math.inverse(eye) ?? math.IDENTITY;
     const seen = math.multiply(scene.projection, view);
-    if (probe && environment.sky) backdrop(probe, environment, scene.projection, eye);
+    if (probe && environment.sky) backdrop(probe, environment, scene.projection, eye, tonemap);
     gl.uniform4f(at.u_probing, probe ? 1 : 0, probe ? probe.levels - 1 : 0, environment.probe?.horizon ?? -1, environment.probe?.exposure ?? 0);
     gl.uniformMatrix3fv(at.u_probeTurn, false, environment.probe?.turn ?? UNTURNED);
     const lights = scene.lights.slice(0, LIGHTS);
@@ -1118,7 +1304,7 @@ export function draw(scene, canvas, paper) {
     for (const light of scene.lights) for (let index = 0; index < 3; index++) ambient[index] += light.ambient[index];
     gl.uniform3fv(at.u_eye, eye.slice(12, 15));
     gl.uniform3fv(at.u_ambient, ambient);
-    gl.uniform1i(at.u_tonemap, environment.tonemap);
+    gl.uniform1i(at.u_tonemap, tonemap);
     gl.uniform1i(at.u_count, lights.length);
     if (lights.length) {
       gl.uniform3fv(at.u_lightColor, lights.flatMap((light) => light.color));
@@ -1171,10 +1357,11 @@ export function draw(scene, canvas, paper) {
 
   if (frame) {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, frame);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, grade ? linear.frame : null);
     gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
+  if (grade) finished(grade);
   // The picture leaves the surface for the canvas: nothing is copied.
   paper.transferFromImageBitmap(surface.transferToImageBitmap());
 }

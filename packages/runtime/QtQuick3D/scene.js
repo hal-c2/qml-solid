@@ -5,12 +5,13 @@
 // These say what there is; `render.js` draws it.
 //
 // Not here: shadows, a light's `scope`, a sky box that is a cube of six
-// pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, and a
-// material's own probe. Of a material's pictures: a height map moves nothing,
-// nothing is let through (`transmissionFactor` and its maps), a specular
-// map and a translucency map are not read, a picture is read whole where
-// Qt can read one channel of it (`baseColorSingleChannelEnabled` and the
-// like), and the colours of a mesh's corners mask nothing.
+// pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, a material's
+// own probe, and an environment's `effects`, which are held and not run. Of
+// a material's pictures: a height map moves nothing, nothing is let through
+// (`transmissionFactor` and its maps), a specular map and a translucency map
+// are not read, a picture is read whole where Qt can read one channel of it
+// (`baseColorSingleChannelEnabled` and the like), and the colours of a
+// mesh's corners mask nothing.
 import { createSignal, untrack } from "solid-js";
 import { defineType, derived, effect, flush, located } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";

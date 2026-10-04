@@ -27,6 +27,7 @@
     "./QtQuick/Dialogs": "./QtQuick/Dialogs/index.js",
     "./QtQuick3D": "./QtQuick3D/index.js",
     "./QtQuick3D/Helpers": "./QtQuick3D/Helpers/index.js",
+    "./QtQuick3D/Helpers/impl": "./QtQuick3D/Helpers/impl/index.js",
     "./QtMultimedia": "./QtMultimedia/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtQml/Models": "./QtQml/Models/index.js",
