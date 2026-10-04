@@ -107,7 +107,7 @@ export function evaluate(particle, system, now) {
     // A particle that goes backwards is at the end of its way when it
     // starts and at the beginning when its life is over.
     const seconds = (datum.reversed ? datum.life - age : age) / 1000;
-    const current = moved(datum, seconds, affecting, { datum, age });
+    const current = moved(datum, seconds, affecting, { datum, age, place });
     let turn = math.fromEuler(current.rx, current.ry, current.rz);
     const aligned =
       alignMode === AlignTowardsStartVelocity
@@ -176,16 +176,17 @@ export const Particle3D = defineType("Particle3D", Object3D, {
       if (kept) {
         if (this.$kept >= most) return -1;
         this.$next = Math.max(this.$next, this.$kept + 1);
-        return this.$kept++;
+        return (this.$last = this.$kept++);
       }
       if (this.$kept >= most) return -1;
       if (this.$next >= most) this.$next = this.$kept;
-      return this.$next++;
+      return (this.$last = this.$next++);
     },
     $clear() {
       this.$data = [];
       this.$next = 0;
       this.$kept = 0;
+      this.$last = 0;
     },
   },
   setup(self) {

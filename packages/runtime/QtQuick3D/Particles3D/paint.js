@@ -248,6 +248,20 @@ function frames(sequence, seed, datum, age, into, at) {
   into[at + 16] = (((whole + 1) % count) + count) % count;
 }
 
+// The order the particles of a kind are drawn in, the last on top. As Qt
+// has it: unsorted they are in the order of their places in the table; the
+// newest first is from the place that was written last back through the
+// table; and the oldest first is from that same place on through it, which
+// has the newest of all first and the oldest after it.
+function ordered(kind, alive) {
+  const { sortMode } = kind;
+  if (sortMode !== SortNewest && sortMode !== SortOldest) return alive;
+  const most = Math.max(1, Math.floor(kind.maxAmount));
+  const from = kind.$last;
+  const after = sortMode === SortNewest ? (one) => (from - one.place + most) % most : (one) => (one.place - from + most) % most;
+  return [...alive].sort((a, b) => after(a) - after(b));
+}
+
 // The sprites there are of a kind, as the numbers they are drawn from.
 function sprites(kind, system) {
   const picture = kind.sprite;
@@ -260,8 +274,7 @@ function sprites(kind, system) {
   const sequence = map ? kind.spriteSequence : null;
   const seed = system.$seed();
   const size = Number(kind.particleScale) || 0;
-  const { sortMode } = kind;
-  const order = sortMode === SortNewest ? [...alive].sort((a, b) => b.datum.begin - a.datum.begin) : sortMode === SortOldest ? [...alive].sort((a, b) => a.datum.begin - b.datum.begin) : alive;
+  const order = ordered(kind, alive);
   const rows = new Float32Array(order.length * EACH);
   order.forEach((one, index) => {
     const { datum } = one;
@@ -291,7 +304,7 @@ function sprites(kind, system) {
     // `offsetX` and `offsetY` are in the particle's own size, which the
     // square is `particleScale` times.
     offset: size ? [(Number(kind.offsetX) || 0) / size, (Number(kind.offsetY) || 0) / size] : [0, 0],
-    far: sortMode === SortDistance,
+    far: kind.sortMode === SortDistance,
   };
 }
 
@@ -351,7 +364,7 @@ function lines(kind, system, now) {
       row: table ? random(seed, datum.index, TABLE) : 0,
     });
   };
-  for (const each of alive) one(each.datum, (each.datum.reversed ? each.datum.life - each.age : each.age) / 1000, each.scale * width, each.a / 255);
+  for (const each of ordered(kind, alive)) one(each.datum, (each.datum.reversed ? each.datum.life - each.age : each.age) / 1000, each.scale * width, each.a / 255);
   // One whose life is over is still to be seen for a while, going.
   if (eolFadeOutDuration > 0) {
     const time = Math.fround(now / 1000);
@@ -364,8 +377,6 @@ function lines(kind, system, now) {
     }
   }
   if (!found.length) return null;
-  if (kind.sortMode === SortNewest) found.sort((a, b) => b.datum.begin - a.datum.begin);
-  else if (kind.sortMode === SortOldest) found.sort((a, b) => a.datum.begin - b.datum.begin);
   return {
     lines: found,
     map,
@@ -388,7 +399,9 @@ function ribbons(kind, world, view, flat) {
   for (const line of kind.lines) total += line.points.length - 1;
   const corners = new Float32Array(total * 6 * CORNER);
   let at = 0;
-  const lines = kind.far ? [...kind.lines].sort((a, b) => math.point(all, ...a.points[0])[2] - math.point(all, ...b.points[0])[2]) : kind.lines;
+  const way = kind.far ? away(world, view) : null;
+  const far = (line) => way[0] * line.points[0][0] + way[1] * line.points[0][1] + way[2] * line.points[0][2];
+  const lines = way ? [...kind.lines].sort((a, b) => far(b) - far(a)) : kind.lines;
   for (const line of lines) {
     const seen = line.points.map((point) => math.point(all, ...point));
     const count = seen.length;
@@ -440,15 +453,25 @@ function ribbons(kind, world, view, flat) {
   return corners;
 }
 
-// The rows of a kind's sprites with the farthest from the eye first.
-function farthest(kind, all) {
+// The way particles are sorted by how far they are: the way the eye looks,
+// as it is in the system. Qt takes that way through the system's matrix as
+// if it were a place, so a system that is not where the scene begins sorts
+// its particles along a way that is not quite the eye's, and so is it here.
+function away(world, view) {
+  const way = math.point(math.inverse(world), -view[2], -view[6], -view[10]);
+  const long = Math.hypot(...way);
+  return long > 0 ? way.map((value) => value / long) : [0, 0, 0];
+}
+
+// The rows of a kind's sprites with the farthest that way first.
+function farthest(kind, way) {
   const { rows, count } = kind;
-  const depth = new Float32Array(count);
+  const far = new Float32Array(count);
   for (let index = 0; index < count; index++) {
     const at = index * EACH;
-    depth[index] = all[2] * rows[at] + all[6] * rows[at + 1] + all[10] * rows[at + 2] + all[14];
+    far[index] = way[0] * rows[at] + way[1] * rows[at + 1] + way[2] * rows[at + 2];
   }
-  const order = Array.from(depth.keys()).sort((a, b) => depth[a] - depth[b]);
+  const order = Array.from(far.keys()).sort((a, b) => far[b] - far[a]);
   const sorted = new Float32Array(rows.length);
   order.forEach((from, to) => sorted.set(rows.subarray(from * EACH, (from + 1) * EACH), to * EACH));
   return sorted;
@@ -515,7 +538,7 @@ export function painted(system, opacity) {
         gl.uniform1i(at.u_blended, kind.blended ? 1 : 0);
         gl.bindVertexArray(own.squares);
         gl.bindBuffer(gl.ARRAY_BUFFER, own.rows);
-        gl.bufferData(gl.ARRAY_BUFFER, kind.far ? farthest(kind, math.multiply(view, world)) : kind.rows, gl.DYNAMIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, kind.far ? farthest(kind, away(world, view)) : kind.rows, gl.DYNAMIC_DRAW);
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, kind.count);
       }
     }
