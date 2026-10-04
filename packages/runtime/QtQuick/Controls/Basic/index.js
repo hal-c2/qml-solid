@@ -7,6 +7,8 @@ import { preferred } from "../attached.js";
 // What a SplitView's handle says of itself is this module's in Qt, and what
 // a program that imports the controls names it by.
 export { SplitHandle } from "../../Templates/SplitView.js";
+// And so is the menu a field of any style is asked for.
+export { ContextMenu } from "../../Templates/ContextMenu.js";
 
 themed("QtQuick.Controls.Basic", {
   palette: colours(

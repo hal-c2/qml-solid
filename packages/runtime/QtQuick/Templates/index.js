@@ -7,6 +7,7 @@ export { Button, RoundButton, TabButton, ToolButton } from "./Button.js";
 export { ButtonGroup } from "./ButtonGroup.js";
 export { CheckBox, RadioButton } from "./CheckBox.js";
 export { Container } from "./Container.js";
+export { ContextMenu } from "./ContextMenu.js";
 export { Control } from "./Control.js";
 export { DelayButton } from "./DelayButton.js";
 export { Dial } from "./Dial.js";
