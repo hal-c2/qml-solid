@@ -8,8 +8,9 @@ export default defineConfig({
     qml({
       qmlc: process.env.QMLC ?? join(import.meta.dirname, "../../../target/debug/qmlc"),
       // A stand-in for the Qt that is installed: the tests are of the
-      // runtime, whatever Qt the machine has.
-      qt: join(import.meta.dirname, "qt"),
+      // runtime, whatever Qt the machine has. In two places, as a Qt with
+      // some of its modules elsewhere is.
+      qt: [join(import.meta.dirname, "qt"), join(import.meta.dirname, "qt-more")],
       style: (importer) => (importer?.includes("-oak") ? "Oak" : undefined),
       // What an application says of its controls: the file Qt reads, for
       // the scenes that are of one, or what would be in it.

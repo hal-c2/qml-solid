@@ -95,7 +95,8 @@ files over the types of `QtQuick.Templates`. Those are not rewritten here. The
 plugin puts a module of Qt's together from what the runtime has of it (the
 types Qt has in C++) and the QML files of the Qt that is installed, which it
 compiles as it does the project's. `qt` is where that Qt keeps its QML modules,
-when not where `qtpaths6 --query QT_INSTALL_QML` says; `style` is what
+when not where `qtpaths6 --query QT_INSTALL_QML` says: a directory, or several,
+as `QML_IMPORT_PATH` names more of them when `qt` is not given; `style` is what
 `import QtQuick.Controls` is (`"Material"`, `"Fusion"`), or a function of the
 importing file that says. The pictures a style names by `qrc:/` are inside
 its plugin; Qt's own `qml` tool reads them out, once, into Vite's cache. Qt's

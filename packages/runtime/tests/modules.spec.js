@@ -27,7 +27,7 @@ test("a module of Qt's is what the runtime has of it and the QML Qt has", async 
 test("a type Qt has and the runtime does not is there to be named, and says so when it is used", async ({ page }) => {
   await open(page, "modules");
   const read = await page.evaluate(() => {
-    const { FlexboxLayout, make } = window.objects;
+    const { FlexboxLayout, Flexed, make } = window.objects;
     const said = (work) => {
       try {
         work();
@@ -35,10 +35,12 @@ test("a type Qt has and the runtime does not is there to be named, and says so w
         return error.message;
       }
     };
-    return [typeof FlexboxLayout, said(() => make(FlexboxLayout)), said(() => FlexboxLayout.Wrap)];
+    // QML of the module itself may be of such a type: it is there before
+    // the QML is.
+    return [typeof FlexboxLayout, said(() => make(FlexboxLayout)), said(() => FlexboxLayout.Wrap), said(() => make(Flexed))];
   });
   const message = "QtQuick.Layouts: FlexboxLayout is not in qml-solid yet";
-  expect(read).toEqual(["function", message, message]);
+  expect(read).toEqual(["function", message, message, message]);
 });
 
 test("a picture Qt keeps inside a module is one the build has", async ({ page }) => {
@@ -54,4 +56,15 @@ test("a picture Qt keeps inside a module is one the build has", async ({ page })
 test("the style of a module is chosen by the file that imports it", async ({ page }) => {
   await open(page, "modules-oak");
   expect(await page.evaluate(() => [window.objects.shelf.width, window.objects.shelf.height])).toEqual([60, 20]);
+});
+
+test("QML of Qt's own is of the style of the program that came to it", async ({ page }) => {
+  // The module is in the second of the places Qt's modules are in.
+  await open(page, "modules-oak-cabinet");
+  const read = await page.evaluate(() => {
+    const { cabinet, make } = window.objects;
+    const shelf = make(cabinet.kind);
+    return [shelf.width, shelf.height];
+  });
+  expect(read).toEqual([60, 20]);
 });
