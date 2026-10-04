@@ -30,6 +30,7 @@
     "./QtQuick3D": "./QtQuick3D/index.js",
     "./QtQuick3D/Xr": "./QtQuick3D/Xr/index.js",
     "./QtQuick3D/Physics": "./QtQuick3D/Physics/index.js",
+    "./QtQuick3D/Particles3D": "./QtQuick3D/Particles3D/index.js",
     "./QtMultimedia": "./QtMultimedia/index.js",
     "./QtQml": "./QtQml/index.js",
     "./QtQml/Models": "./QtQml/Models/index.js",
