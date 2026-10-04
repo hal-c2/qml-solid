@@ -137,4 +137,4 @@ export const View3D = defineType("View3D", Item, {
   },
 });
 
-const PLAIN = { clear: [0, 0, 0, 0], samples: 0, tonemap: 1, depth: true };
+const PLAIN = { clear: [0, 0, 0, 0], probe: null, sky: false, blur: 0, samples: 0, tonemap: 1, depth: true };

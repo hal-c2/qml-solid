@@ -4,9 +4,9 @@
 //
 // These say what there is; `render.js` draws it.
 //
-// Not here: shadows, a light's `scope`, light probes and sky boxes, and of a
-// PrincipledMaterial what only a reflected surrounding shows (it is lit by
-// the lights alone). Of a material's pictures: a height map moves nothing,
+// Not here: shadows, a light's `scope`, a sky box that is a cube of six
+// pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, and a
+// material's own probe. Of a material's pictures: a height map moves nothing,
 // nothing is let through (`transmissionFactor` and its maps), a specular
 // map and a translucency map are not read, a picture is read whole where
 // Qt can read one channel of it (`baseColorSingleChannelEnabled` and the
@@ -19,6 +19,7 @@ import * as math from "./math.js";
 import { read } from "./mesh.js";
 import { Node, Object3D } from "./Node.js";
 import { primitive } from "./primitives.js";
+import { radiance } from "./TextureData.js";
 
 const WRITABLE = { ownedWrite: true };
 
@@ -86,6 +87,18 @@ function picture(url) {
     element.src = url;
   }
   return record.ready() ? record : null;
+}
+
+// A picture whose numbers are not held to what a screen can show, which a
+// browser does not read: the numbers themselves, once they are here.
+function bright(url) {
+  const read = file(url, "hdr", radiance).state();
+  if (read?.error) {
+    if (!warned.has(url)) console.warn(`Texture: ${url}: ${read.error}`);
+    warned.add(url);
+    return null;
+  }
+  return read;
 }
 
 function seenThrough(element) {
@@ -183,12 +196,18 @@ export const Texture = defineType("Texture", Object3D, {
   setup(self) {
     // What the renderer needs of it: the picture once it is here, how it
     // is sampled, and where in it a corner's coordinates are, as Qt places
-    // them: flipped, moved, then turned and scaled about the pivot.
+    // them: flipped, moved, then turned and scaled about the pivot. The
+    // picture is an item's where it has one, else the numbers it is given,
+    // else the file it names, which is the order Qt looks in.
     self.$texture = () => {
       const source = String(self.source ?? "");
-      const loaded = source ? picture(located(source)) : null;
-      const element = source ? loaded?.element : (self.sourceItem?.$canvas?.element ?? self.sourceItem?.$shader?.canvas ?? null);
-      if (!element) return null;
+      const item = self.sourceItem;
+      const given = item ? null : self.textureData;
+      const url = item || given || !source ? null : located(source);
+      const data = given ? (given.$picture?.() ?? null) : url && /\.hdr$/i.test(url) ? bright(url) : null;
+      const loaded = url && !/\.hdr$/i.test(url) ? picture(url) : null;
+      const element = item ? (item.$canvas?.element ?? item.$shader?.canvas ?? null) : (loaded?.element ?? null);
+      if (!element && !data) return null;
       let transform = [...math.IDENTITY];
       const by = (m) => void (transform = math.multiply(transform, m));
       const move = (x, y) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1];
@@ -201,9 +220,10 @@ export const Texture = defineType("Texture", Object3D, {
       by(move(-self.pivotU, -self.pivotV));
       return {
         element,
+        data,
         // A canvas may have been drawn on since, and may be seen through.
-        live: !loaded,
-        sheer: loaded ? loaded.sheer : true,
+        live: Boolean(item),
+        sheer: data ? data.sheer : loaded ? loaded.sheer : true,
         horizontal: self.tilingModeHorizontal,
         vertical: self.tilingModeVertical,
         mag: self.magFilter,
@@ -308,10 +328,12 @@ export const DefaultMaterial = defineType("DefaultMaterial", Material, {
       bump: self.bumpAmount,
       emissive: vec(self.emissiveFactor),
       // How much of a light a surface that faces between it and the eye
-      // gives back, and how tight the spot of it is.
+      // gives back, in its own colour, and how tight the spot of it is.
+      // The tint is of what it gives back of its surroundings alone.
       specular: self.specularAmount,
       tint: linear(self.specularTint).slice(0, 3),
       shine: 2.56 / (self.specularRoughness + 0.01),
+      roughness: self.specularRoughness,
       metalness: 0,
       ior: self.indexOfRefraction,
       fresnel: self.fresnelPower,
@@ -433,6 +455,9 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
         specular: self.specularAmount,
         tint: [r, g, b].map((c) => 1 + (c - 1) * self.specularTint),
         shiny: self.specularAmount > 0.01 || self.metalness > 0.01,
+        // How much more a surface seen from its side gives back of its
+        // surroundings than one seen from the front.
+        edge: self.fresnelScaleBiasEnabled ? [self.fresnelScale, self.fresnelBias] : [1, 0],
         roughness: self.roughness,
         metalness: self.metalness,
         principled: true,
@@ -659,6 +684,8 @@ export const CustomCamera = defineType("CustomCamera", Camera, {
 
 const Transparent = 0;
 const Color = 2;
+const SkyBox = 3;
+const SkyBoxCubeMap = 4;
 const NoAA = 0;
 
 export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
@@ -707,8 +734,8 @@ export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
     Transparent,
     Unspecified: 1,
     Color,
-    SkyBox: 3,
-    SkyBoxCubeMap: 4,
+    SkyBox,
+    SkyBoxCubeMap,
     TonemapModeNone: 0,
     TonemapModeLinear: 1,
     TonemapModeAces: 2,
@@ -720,10 +747,26 @@ export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
   },
   setup(self) {
     self.$environment = () => {
-      const { r, g, b, a } = color(self.clearColor);
-      const filled = self.backgroundMode === Color;
+      // The colour is behind the scene where that is asked for, and where
+      // surroundings are and there are none to show.
+      const mode = self.backgroundMode;
+      const filled = mode === Color || (mode === SkyBox && !self.lightProbe) || (mode === SkyBoxCubeMap && !self.skyBoxCubeMap);
+      // What everything is lit by from all round, and how: how bright, how
+      // far down it reaches (not below the horizon at 1, all the way at 0),
+      // and how it is turned.
+      const map = self.lightProbe?.$texture?.() ?? null;
+      const { x, y, z } = self.probeOrientation;
+      const turn = math.rotation(math.fromEuler(x, y, z));
       return {
-        clear: filled ? [r * a, g * a, b * a, a] : [0, 0, 0, 0],
+        clear: filled ? linear(self.clearColor) : [0, 0, 0, 0],
+        probe: map && {
+          map,
+          exposure: self.probeExposure,
+          horizon: Math.min(Math.min(1, Math.max(0, self.probeHorizon)) - 1, -0.001),
+          turn: [turn[0], turn[1], turn[2], turn[4], turn[5], turn[6], turn[8], turn[9], turn[10]],
+        },
+        sky: mode === SkyBox,
+        blur: self.skyboxBlurAmount,
         // Smoothed edges: each pixel drawn several times over. The other
         // ways Qt has of it are drawn this way too.
         samples: self.antialiasingMode === NoAA ? 0 : self.antialiasingQuality,

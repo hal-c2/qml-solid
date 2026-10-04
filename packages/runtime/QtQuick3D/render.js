@@ -8,11 +8,52 @@
 // and the whole brought from linear light to the screen's by Qt's tone
 // mapping. What nothing is seen through is drawn first, nearest first; what
 // something is, after, farthest first.
+//
+// A scene may be lit by its surroundings besides its lights: a picture of
+// everything round it (a light probe), which is folded into a cube and that
+// blurred as Qt blurs it, once for each step of roughness and once for what
+// a rough surface takes from all round. The same cube is what is behind the
+// scene where its background is a sky box.
+//
+// Not here: a probe that is a canvas is folded once, as it is when first
+// drawn, and a material's own probe is not looked at.
 import * as math from "./math.js";
 import { Triangles } from "./mesh.js";
 
 // As many lights as Qt lets a surface have.
 const LIGHTS = 15;
+
+// Linear light and the screen's, by Qt's own sums, and Qt's ways of bringing
+// the one to the other.
+const TONES = `
+uniform int u_tonemap;
+
+vec3 toLinear(vec3 c) {
+    return c * (c * (c * 0.305306011 + 0.682171111) + 0.012522878);
+}
+
+vec3 toScreen(vec3 c) {
+    vec3 s1 = sqrt(c);
+    vec3 s2 = sqrt(s1);
+    vec3 s3 = sqrt(s2);
+    return 0.585122381 * s1 + 0.783140355 * s2 - 0.368262736 * s3;
+}
+
+vec3 filmic(vec3 c) {
+    return ((c * (0.15 * c + 0.05) + 0.004) / (c * (0.15 * c + 0.5) + 0.06)) - 0.02 / 0.3;
+}
+
+vec3 tonemap(vec3 c) {
+    if (u_tonemap == 1) return toScreen(c);
+    if (u_tonemap == 2) return toScreen(clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0));
+    if (u_tonemap == 3) {
+        c = max(vec3(0.0), c - vec3(0.004));
+        return (c * (6.2 * c + 0.5)) / (c * (6.2 * c + 1.7) + 0.06);
+    }
+    if (u_tonemap == 4) return toScreen(filmic(c * 2.0) / filmic(vec3(11.2)));
+    return c;
+}
+`;
 
 const VERTEX = `#version 300 es
 layout(location = 0) in vec3 attr_pos;
@@ -107,9 +148,10 @@ uniform float u_cutoff;
 // The pictures a material reads: its colour's, the way it faces, how rough
 // and how much a metal it is, how much of the light reaches it, what it
 // gives off, how much of it is there, and how much of a clear coat is over
-// it and how rough that is. Of each: whether there is one,
-// which channel of it is read and which of a corner's two places in a
-// picture it is read at, and how that place is moved.
+// it and how rough that is. Of each: whether there is one (and with two,
+// that it is in linear light), which channel of it is read and which of a
+// corner's two places in a picture it is read at, and how that place is
+// moved.
 const int BASE = 0;
 const int NORMAL = 1;
 const int ROUGHNESS = 2;
@@ -156,37 +198,69 @@ uniform vec4 u_lightPlace[LIGHTS];
 uniform vec3 u_lightWay[LIGHTS];
 uniform vec3 u_lightFade[LIGHTS];
 uniform vec2 u_lightCone[LIGHTS];
-uniform int u_tonemap;
+// The surroundings, folded and blurred: whether there are any, the last of
+// the cube's levels, how far below the horizon they are dimmed (-1 is not
+// at all) and how bright they are; and how they are turned.
+uniform samplerCube u_probe;
+uniform vec4 u_probing;
+uniform mat3 u_probeTurn;
+// How what a surface gives back of its surroundings as it is turned from
+// the eye is scaled and shifted.
+uniform vec2 u_edge;
 out vec4 fragColor;
-
-vec3 toLinear(vec3 c) {
-    return c * (c * (c * 0.305306011 + 0.682171111) + 0.012522878);
+${TONES}
+// What is read of the surroundings is brought under one before the tone
+// mapping, where there is any.
+vec3 exposed(vec3 c) {
+    return u_tonemap == 0 ? c : vec3(1.0) - exp(-c * u_probing.w);
 }
 
-vec3 toScreen(vec3 c) {
-    vec3 s1 = sqrt(c);
-    vec3 s2 = sqrt(s1);
-    vec3 s3 = sqrt(s2);
-    return 0.585122381 * s1 + 0.783140355 * s2 - 0.368262736 * s3;
+float horizon(vec3 way) {
+    float low = u_probing.z;
+    if (low <= -1.0) return 1.0;
+    float middle = 0.5 + 0.5 * low;
+    return mix(1.0, smoothstep(middle * 0.25, middle + 0.25, way.y), low + 1.0);
 }
 
-vec3 filmic(vec3 c) {
-    return ((c * (0.15 * c + 0.05) + 0.004) / (c * (0.15 * c + 0.5) + 0.06)) - 0.02 / 0.3;
+// What the surroundings light a surface with from all round: the last
+// level of the cube.
+vec3 around(vec3 N) {
+    vec3 way = u_probeTurn * N;
+    return exposed(textureLod(u_probe, way, u_probing.y).rgb * horizon(way));
 }
 
-vec3 tonemap(vec3 c) {
-    if (u_tonemap == 1) return toScreen(c);
-    if (u_tonemap == 2) return toScreen(clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0));
-    if (u_tonemap == 3) {
-        c = max(vec3(0.0), c - vec3(0.004));
-        return (c * (6.2 * c + 0.5)) / (c * (6.2 * c + 1.7) + 0.06);
-    }
-    if (u_tonemap == 4) return toScreen(filmic(c * 2.0) / filmic(vec3(11.2)));
-    return c;
+// What a DefaultMaterial gives back of them, the rougher from the further
+// down the levels.
+vec3 glossy(vec3 N, vec3 V, float rough) {
+    float sigma = smoothstep(0.0, 1.0, clamp(rough, 0.0001, 1.0));
+    vec3 way = u_probeTurn * reflect(-V, N);
+    float NdotL = clamp(dot(way, N), 0.0, 0.999995);
+    float k = sigma * 0.31830988618;
+    float seen = clamp((NdotL / (NdotL * (1.0 - k) + k) + (1.0 - k * k)) * 0.5, 0.0, 1.0);
+    return seen * exposed(textureLod(u_probe, way, sigma * (u_probing.y - 1.0)).rgb * horizon(way));
+}
+
+// And what a PrincipledMaterial does, which gives back F of them.
+vec3 mirrored(vec3 N, vec3 V, vec3 F, float roughness) {
+    float level = clamp(roughness * 5.0, 0.0, u_probing.y - 1.0);
+    vec3 way = u_probeTurn * normalize(reflect(-V, N));
+    vec3 read = textureLod(u_probe, way, level).rgb * horizon(way);
+    vec4 r = roughness * vec4(-1.0, -0.0275, -0.572, 0.022) + vec4(1.0, 0.0425, 1.04, -0.04);
+    float a004 = min(r.x * r.x, exp2(-9.28 * clamp(dot(N, V), 0.0, 1.0))) * r.x + r.y;
+    vec2 brdf = vec2(-1.04, 1.04) * a004 + r.zw;
+    return exposed(read * (F * brdf.x + brdf.y));
 }
 
 bool has(int which) {
     return u_reads[which].x > 0.5;
+}
+
+// Whether a picture is in linear light already, as one of fractions is.
+// Qt takes it so where it is a PrincipledMaterial's colour, and nowhere
+// else: a DefaultMaterial's colour and any material's glow are read as a
+// screen shows them whatever they are.
+bool plain(int which) {
+    return u_principled && u_reads[which].x > 1.5;
 }
 
 vec2 placed(int which) {
@@ -243,7 +317,7 @@ void main() {
     if (u_colors) base *= v_color;
     if (has(BASE)) {
         vec4 picture = texture(u_map, placed(BASE));
-        base *= vec4(toLinear(picture.rgb), picture.a);
+        base *= vec4(plain(BASE) ? picture.rgb : toLinear(picture.rgb), picture.a);
     }
     // How much of the colour is there is all of it where the material says
     // nothing is seen through it; how much of the material is, is its own.
@@ -308,7 +382,10 @@ void main() {
         float reached = 1.0;
         if (has(OCCLUSION)) reached = channel(u_occlusionMap, OCCLUSION) * u_occlusion;
         vec3 given = u_emissive;
-        if (has(EMISSIVE)) given *= toLinear(texture(u_emissiveMap, placed(EMISSIVE)).rgb);
+        if (has(EMISSIVE)) {
+            vec3 picture = texture(u_emissiveMap, placed(EMISSIVE)).rgb;
+            given *= toLinear(picture);
+        }
         float coat = u_coat;
         if (has(COAT)) coat *= channel(u_coatMap, COAT);
         float coatRoughness = u_coatRoughness;
@@ -317,15 +394,20 @@ void main() {
         vec3 V = normalize(u_eye - v_position);
         vec3 diffuse = u_ambient * (1.0 - metalness) * base.rgb;
         vec3 shine = vec3(0.0);
-        float plain = ((u_ior - 1.0) * (u_ior - 1.0)) / ((u_ior + 1.0) * (u_ior + 1.0));
-        vec3 f0 = vec3(plain) * (1.0 - metalness) + base.rgb * metalness;
+        float bent = ((u_ior - 1.0) * (u_ior - 1.0)) / ((u_ior + 1.0) * (u_ior + 1.0));
+        vec3 f0 = vec3(bent) * (1.0 - metalness) + base.rgb * metalness;
         bool coats = u_principled && u_coat > 0.0;
         // What a surface that is no metal gives back of a light can take
         // the surface's own colour.
         vec3 tint = mix(vec3(1.0), u_tint, 1.0 - metalness);
         float NdotV = clamp(dot(N, V), 0.0, 1.0);
         float edge = u_fresnel == 0.0 ? 1.0 : pow(1.0 - NdotV, u_fresnel);
-        vec3 amount = u_specular * (f0 + (max(vec3(1.0 - roughness), f0) - f0) * edge);
+        vec3 turning = f0 + (max(vec3(1.0 - roughness), f0) - f0) * edge;
+        // How much a surface gives back as shine: a DefaultMaterial in its
+        // own colour, a PrincipledMaterial all of it where it is metal. The
+        // lights heed the first, and of the second only whether there is
+        // any; the surroundings heed both.
+        vec3 amount = u_principled ? vec3(metalness + u_specular * (1.0 - metalness)) * clamp(u_edge.y + u_edge.x * turning, 0.0, 1.0) : base.rgb * u_specular * turning;
         for (int index = 0; index < u_count; index++) {
             vec3 L = -u_lightWay[index];
             float fade = 1.0;
@@ -348,7 +430,7 @@ void main() {
                 diffuse += base.rgb * light * (1.0 - metalness) * burley(N, L, V, roughness);
                 if (u_shiny) {
                     shine += light * tint * ggx(N, L, V, f0, roughness);
-                    if (coats) coating += light * ggx(coated, L, V, vec3(plain), coatRoughness);
+                    if (coats) coating += light * ggx(coated, L, V, vec3(bent), coatRoughness);
                 }
             } else {
                 diffuse += base.rgb * light * max(0.0, dot(N, L));
@@ -358,13 +440,23 @@ void main() {
         // What a light gives a surface all round is less where less of the
         // light reaches it.
         diffuse *= reached;
+        if (u_probing.x > 0.5 && u_probing.w >= 0.005) {
+            if (u_principled) {
+                diffuse += base.rgb * (1.0 - amount) * around(N) * reached;
+                shine += tint * mirrored(N, V, amount, roughness) * reached;
+                if (coats) coating += mirrored(coated, V, vec3(bent), coatRoughness) * reached;
+            } else {
+                diffuse += base.rgb * around(N) * reached;
+                shine += amount * u_tint * glossy(N, V, roughness) * reached;
+            }
+        }
         if (u_principled) diffuse *= 1.0 - metalness;
         sum = diffuse + shine + given;
         // What is under a clear coat shows less the more the coat itself
         // gives back, which is more the further it is turned from the eye.
         if (coats) {
             float turn = clamp(pow(clamp(dot(coated, V), 0.0, 1.0), u_coatEdge.x), 0.0, 1.0);
-            vec3 back = vec3(plain) + (vec3(1.0) - vec3(plain)) * (1.0 - turn);
+            vec3 back = vec3(bent) + (vec3(1.0) - vec3(bent)) * (1.0 - turn);
             back = clamp(vec3(u_coatEdge.z) + u_coatEdge.y * back, 0.0, 1.0);
             sum = sum * (1.0 - coat * back) + coating * coat;
         }
@@ -426,42 +518,219 @@ const UNIFORMS = [
   "u_lightFade",
   "u_lightCone",
   "u_tonemap",
+  "u_probe",
+  "u_probing",
+  "u_probeTurn",
+  "u_edge",
 ];
+
+// The three corners of a triangle that covers everything, which is all the
+// passes that draw no shape draw.
+const COVER = `#version 300 es
+out vec2 v_at;
+void main() {
+    v_at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;
+    gl_Position = vec4(v_at, 0.0, 1.0);
+}
+`;
+
+// The way a place on one side of a cube lies from its middle, the sides in
+// OpenGL's order.
+const SIDE = `
+uniform int u_side;
+in vec2 v_at;
+
+vec3 outward() {
+    if (u_side == 0) return vec3(1.0, -v_at.y, -v_at.x);
+    if (u_side == 1) return vec3(-1.0, -v_at.y, v_at.x);
+    if (u_side == 2) return vec3(v_at.x, 1.0, v_at.y);
+    if (u_side == 3) return vec3(v_at.x, -1.0, -v_at.y);
+    if (u_side == 4) return vec3(v_at.x, -v_at.y, 1.0);
+    return vec3(-v_at.x, -v_at.y, -1.0);
+}
+`;
+
+// A picture of everything round a place, laid out as a map of the world is,
+// onto one side of a cube: Qt's `environmentmap.frag`.
+const FOLD = `#version 300 es
+precision highp float;
+uniform sampler2D u_from;
+uniform bool u_screen;
+out vec4 fragColor;
+${SIDE}
+void main() {
+    vec3 v = normalize(outward());
+    vec2 uv = vec2(atan(v.z, v.x), asin(v.y)) * vec2(0.1591, 0.3183) + 0.5;
+    vec4 read = texture(u_from, uv);
+    if (u_screen) read.rgb = read.rgb * (read.rgb * (read.rgb * 0.305306011 + 0.682171111) + 0.012522878);
+    fragColor = read;
+}
+`;
+
+// One side of one level of the blurred cube: what a surface of one
+// roughness facing this way gives back of the surroundings, or what a rough
+// one takes from all round, summed over as many ways as Qt sums it over.
+// Qt's `environmentmapprefilter.frag`.
+const WAYS = 1024;
+const BLUR = `#version 300 es
+precision highp float;
+const int WAYS = ${WAYS};
+const float PI = 3.14159265359;
+uniform samplerCube u_from;
+uniform float u_roughness;
+uniform float u_resolution;
+uniform bool u_round;
+out vec4 fragColor;
+${SIDE}
+float radicalInverse(uint bits) {
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10;
+}
+
+mat3 frame(vec3 normal) {
+    vec3 bitangent = vec3(0.0, 1.0, 0.0);
+    float up = dot(normal, vec3(0.0, 1.0, 0.0));
+    if (1.0 - abs(up) <= 0.0000001) bitangent = up > 0.0 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 0.0, -1.0);
+    vec3 tangent = normalize(cross(bitangent, normal));
+    return mat3(tangent, cross(normal, tangent), normal);
+}
+
+float spread(float NdotH, float roughness) {
+    float a = NdotH * roughness;
+    float k = roughness / (1.0 - NdotH * NdotH + a * a);
+    return k * k * (1.0 / PI);
+}
+
+void main() {
+    vec3 N = normalize(outward());
+    // A surface that is not rough at all gives back what is the way it faces.
+    if (!u_round && u_roughness == 0.0) {
+        fragColor = vec4(textureLod(u_from, N, 0.0).rgb, 1.0);
+        return;
+    }
+    mat3 about = frame(N);
+    vec3 color = vec3(0.0);
+    float weight = 0.0;
+    for (int index = 0; index < WAYS; index++) {
+        vec2 xi = vec2(float(index) / float(WAYS), radicalInverse(uint(index)));
+        float cosine;
+        float sine;
+        float chance;
+        if (u_round) {
+            cosine = sqrt(1.0 - xi.y);
+            sine = sqrt(xi.y);
+            chance = cosine / PI;
+        } else {
+            float alpha = u_roughness * u_roughness;
+            cosine = clamp(sqrt((1.0 - xi.y) / (1.0 + (alpha * alpha - 1.0) * xi.y)), 0.0, 1.0);
+            sine = sqrt(1.0 - cosine * cosine);
+            chance = spread(cosine, alpha) / 4.0;
+        }
+        float phi = 2.0 * PI * xi.x;
+        vec3 H = about * normalize(vec3(sine * cos(phi), sine * sin(phi), cosine));
+        float level = 0.5 * log2(6.0 * u_resolution * u_resolution / (float(WAYS) * chance));
+        if (u_round) color += textureLod(u_from, H, level).rgb;
+        else {
+            vec3 L = normalize(reflect(-N, H));
+            float NdotL = dot(N, L);
+            if (NdotL > 0.0) {
+                color += textureLod(u_from, L, level).rgb * NdotL;
+                weight += NdotL;
+            }
+        }
+    }
+    fragColor = vec4(weight != 0.0 ? color / weight : color / float(WAYS), 1.0);
+}
+`;
+
+// The surroundings behind the scene: for each place in the view, what lies
+// the way the eye looks through it. Qt's `skybox.vert` and `skybox.frag`.
+const BEHIND = `#version 300 es
+uniform mat4 u_back;
+uniform mat3 u_eye;
+uniform mat3 u_turn;
+out vec3 v_way;
+void main() {
+    vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;
+    gl_Position = vec4(at, 0.0, 1.0);
+    v_way = u_turn * (u_eye * (u_back * gl_Position).xyz);
+}
+`;
+
+const SKY = `#version 300 es
+precision highp float;
+uniform samplerCube u_from;
+uniform float u_level;
+uniform float u_exposure;
+in vec3 v_way;
+out vec4 fragColor;
+${TONES}
+void main() {
+    vec3 read = textureLod(u_from, normalize(v_way), u_level).rgb;
+    if (u_tonemap != 0) read = vec3(1.0) - exp(-read * u_exposure);
+    fragColor = vec4(tonemap(read), 1.0);
+}
+`;
 
 let surface;
 let gl;
 let at;
+let shaded;
+// Whether a picture of fractions can be drawn into, which the cube of a
+// light probe is where it can.
+let fractions = false;
 
-// The context, and the one program everything is drawn with. Null when the
+// A program, and where each of its uniforms is. Null when it does not link.
+function program(vertex, fragment, names) {
+  const made = gl.createProgram();
+  for (const [type, source] of [
+    [gl.VERTEX_SHADER, vertex],
+    [gl.FRAGMENT_SHADER, fragment],
+  ]) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) console.warn(`View3D: ${gl.getShaderInfoLog(shader)}`);
+    gl.attachShader(made, shader);
+    gl.deleteShader(shader);
+  }
+  gl.linkProgram(made);
+  if (!gl.getProgramParameter(made, gl.LINK_STATUS)) {
+    console.warn(`View3D: ${gl.getProgramInfoLog(made)}`);
+    return null;
+  }
+  return { program: made, at: Object.fromEntries(names.map((name) => [name, gl.getUniformLocation(made, name)])) };
+}
+
+// The context, and the program every shape is drawn with. Null when the
 // browser has none to give.
 function context() {
   if (gl !== undefined) return gl;
   surface = new OffscreenCanvas(1, 1);
   gl = surface.getContext("webgl2", { antialias: false, depth: true }) ?? null;
   if (!gl) return gl;
-  const program = gl.createProgram();
-  for (const [type, source] of [
-    [gl.VERTEX_SHADER, VERTEX],
-    [gl.FRAGMENT_SHADER, FRAGMENT],
-  ]) {
-    const shader = gl.createShader(type);
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) console.warn(`View3D: ${gl.getShaderInfoLog(shader)}`);
-    gl.attachShader(program, shader);
-    gl.deleteShader(shader);
-  }
-  gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    console.warn(`View3D: ${gl.getProgramInfoLog(program)}`);
-    return (gl = null);
-  }
-  gl.useProgram(program);
-  at = {};
-  for (const name of UNIFORMS) at[name] = gl.getUniformLocation(program, name);
+  shaded = program(VERTEX, FRAGMENT, UNIFORMS);
+  if (!shaded) return (gl = null);
+  fractions = Boolean(gl.getExtension("EXT_color_buffer_float"));
+  gl.useProgram(shaded.program);
+  at = shaded.at;
   gl.uniform1i(at.u_map, 0);
   gl.uniform1i(at.u_bones, 1);
+  gl.uniform1i(at.u_probe, PROBE);
   SAMPLERS.forEach((name, index) => name && gl.uniform1i(at[name], UNITS[index]));
+  // A cube there is always, for a program that could read one: of nothing,
+  // where the scene has no surroundings.
+  nothing = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + PROBE);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, nothing);
+  for (let side = 0; side < 6; side++) gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + side, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.activeTexture(gl.TEXTURE0);
   // A picture's first row is its bottom one to a mesh, as it is to Qt.
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   // What a mesh says nothing of: it faces the eye, and is white.
@@ -487,6 +756,11 @@ const ATTRIBUTES = ["attr_pos", "attr_norm", "attr_uv0", "attr_color", "attr_joi
 const MAPS = ["map", "normal", "roughness", "metalness", "occlusion", "emissive", "opacity", "bump", "coat", "coatRoughness", "coatNormal"];
 const SAMPLERS = [null, "u_normalMap", "u_roughnessMap", "u_metalnessMap", "u_occlusionMap", "u_emissiveMap", "u_opacityMap", "u_normalMap", "u_coatMap", "u_coatRoughnessMap", "u_coatNormalMap"];
 const UNITS = [0, 2, 3, 4, 5, 6, 7, 2, 8, 9, 10];
+// Where the cube of the surroundings is read, and where what it is made
+// from is while it is made.
+const PROBE = 11;
+const MAKING = 12;
+let nothing;
 
 // A shape as OpenGL holds it: its corners as the mesh file has them, each
 // part of a corner said where it is in the row.
@@ -523,17 +797,37 @@ function held(shape) {
 
 const WRAPS = { 1: 0x812f, 2: 0x8370, 3: 0x2901 };
 
-// A picture as a texture, sampled as its Texture says.
+// How the numbers of a picture given as numbers are handed over. Whole
+// fractions are kept as halves, which is what can be smoothed.
+const forms = () => ({
+  RGBA8: [gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE],
+  RGBA16F: [gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT],
+  RGBA32F: [gl.RGBA16F, gl.RGBA, gl.FLOAT],
+  R8: [gl.R8, gl.RED, gl.UNSIGNED_BYTE],
+  R16F: [gl.R16F, gl.RED, gl.HALF_FLOAT],
+  R32F: [gl.R16F, gl.RED, gl.FLOAT],
+});
+
+// A picture as a texture, sampled as its Texture says: an element of the
+// page, or numbers, whose first row is the bottom one already.
 const textures = new WeakMap();
 function bound(map, unit = 0) {
-  const { element } = map;
-  let made = textures.get(element);
+  const from = map.element ?? map.data;
+  let made = textures.get(from);
   const fresh = !made;
-  if (fresh) textures.set(element, (made = { texture: gl.createTexture(), mipped: false }));
+  if (fresh) textures.set(from, (made = { texture: gl.createTexture(), mipped: false }));
   gl.activeTexture(gl.TEXTURE0 + unit);
   gl.bindTexture(gl.TEXTURE_2D, made.texture);
-  if (fresh || map.live) {
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, element);
+  if (fresh && map.data) {
+    const { pixels, width, height, format } = map.data;
+    const [inner, outer, kind] = forms()[format];
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, inner, width, height, 0, outer, kind, pixels);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  } else if (!map.data && (fresh || map.live)) {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, map.element);
     made.mipped = false;
   }
   if (map.mip && !made.mipped) {
@@ -547,6 +841,137 @@ function bound(map, unit = 0) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, WRAPS[map.horizontal] ?? gl.REPEAT);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, WRAPS[map.vertical] ?? gl.REPEAT);
   if (unit) gl.activeTexture(gl.TEXTURE0);
+}
+
+// A cube of so many levels, each side of the first `size` across.
+function cube(size, levels) {
+  const made = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + MAKING);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, made);
+  gl.texStorage2D(gl.TEXTURE_CUBE_MAP, levels, fractions ? gl.RGBA16F : gl.RGBA8, size, size);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return made;
+}
+
+// The passes that draw no shape: made when first there is something for
+// them to draw.
+let fold;
+let blur;
+let sky;
+
+function covering() {
+  gl.bindVertexArray(null);
+  gl.disable(gl.DEPTH_TEST);
+  gl.disable(gl.BLEND);
+  gl.disable(gl.CULL_FACE);
+  gl.depthMask(false);
+}
+
+// The picture of a light probe as the cube that is read when a scene is lit
+// by it, made as Qt makes it: each side at least 512 across, half the
+// picture's height where that is more, and six levels. The first is the
+// picture itself; the next four what surfaces of a roughness of a quarter,
+// a half, three quarters and one give back of it; the last what one takes
+// of it from all round.
+const probes = new WeakMap();
+const LEVELS = 6;
+function probed(map) {
+  const from = map.element ?? map.data;
+  let made = probes.get(from);
+  if (made !== undefined) return made;
+  fold ??= program(COVER, FOLD, ["u_from", "u_screen", "u_side"]);
+  blur ??= program(COVER, BLUR, ["u_from", "u_roughness", "u_resolution", "u_round", "u_side"]);
+  if (!fold || !blur) {
+    probes.set(from, null);
+    return null;
+  }
+  const high = map.data?.height ?? map.element.naturalHeight ?? map.element.height;
+  const size = Math.max(512, Math.floor(high * 0.5));
+  const levels = Math.min(Math.floor(Math.log2(size)) + 1, LEVELS);
+  covering();
+  const frame = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
+  const sides = (onto, level, across, at) => {
+    gl.viewport(0, 0, across, across);
+    for (let side = 0; side < 6; side++) {
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + side, onto, level);
+      gl.uniform1i(at.u_side, side);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+  };
+
+  // The picture, folded: read between its pixels, and not past its edges.
+  const folded = cube(size, Math.floor(Math.log2(size)) + 1);
+  bound(map, MAKING);
+  gl.activeTexture(gl.TEXTURE0 + MAKING);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.useProgram(fold.program);
+  gl.uniform1i(fold.at.u_from, MAKING);
+  gl.uniform1i(fold.at.u_screen, map.data?.linear ? 0 : 1);
+  sides(folded, 0, size, fold.at);
+  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+
+  // And blurred, level by level.
+  const cubed = cube(size, levels);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, folded);
+  gl.useProgram(blur.program);
+  gl.uniform1i(blur.at.u_from, MAKING);
+  gl.uniform1f(blur.at.u_resolution, size);
+  for (let level = 0; level < levels; level++) {
+    gl.uniform1f(blur.at.u_roughness, level / (levels - 2));
+    gl.uniform1i(blur.at.u_round, level === levels - 1 ? 1 : 0);
+    sides(cubed, level, size >> level, blur.at);
+  }
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(frame);
+  gl.deleteTexture(folded);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.useProgram(shaded.program);
+  probes.set(from, (made = { cube: cubed, levels }));
+  return made;
+}
+
+// The surroundings behind everything, as blurred as the scene says.
+function backdrop(probe, environment, projection, eye) {
+  sky ??= program(BEHIND, SKY, ["u_back", "u_eye", "u_turn", "u_from", "u_level", "u_exposure", "u_tonemap"]);
+  const back = sky && math.inverse(projection);
+  if (!back) return;
+  covering();
+  gl.useProgram(sky.program);
+  gl.uniform1i(sky.at.u_from, PROBE);
+  gl.uniformMatrix4fv(sky.at.u_back, false, back);
+  gl.uniformMatrix3fv(sky.at.u_eye, false, [eye[0], eye[1], eye[2], eye[4], eye[5], eye[6], eye[8], eye[9], eye[10]]);
+  gl.uniformMatrix3fv(sky.at.u_turn, false, environment.probe.turn);
+  gl.uniform1f(sky.at.u_level, environment.blur * (probe.levels - 2));
+  gl.uniform1f(sky.at.u_exposure, environment.probe.exposure);
+  gl.uniform1i(sky.at.u_tonemap, environment.tonemap);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.useProgram(shaded.program);
+}
+
+// A colour in linear light as the screen shows it, by the same sums as the
+// shader's.
+function toned([r, g, b], mode) {
+  const screen = (c) => 0.585122381 * Math.sqrt(c) + 0.783140355 * c ** 0.25 - 0.368262736 * c ** 0.125;
+  const filmic = (c) => (c * (0.15 * c + 0.05) + 0.004) / (c * (0.15 * c + 0.5) + 0.06) - 0.02 / 0.3;
+  const one = (c) => {
+    if (mode === 1) return screen(c);
+    if (mode === 2) return screen(Math.min(1, Math.max(0, (c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14))));
+    if (mode === 3) {
+      c = Math.max(0, c - 0.004);
+      return (c * (6.2 * c + 0.5)) / (c * (6.2 * c + 1.7) + 0.06);
+    }
+    if (mode === 4) return screen(filmic(c * 2) / filmic(11.2));
+    return c;
+  };
+  return [one(r), one(g), one(b)];
 }
 
 // Where edges are to be smooth, everything is drawn several times to the
@@ -622,13 +1047,14 @@ function part(piece) {
   gl.uniform3fv(at.u_coatEdge, material.coatEdge ?? [5, 1, 0]);
   gl.uniform3fv(at.u_tint, material.tint ?? [1, 1, 1]);
   gl.uniform1i(at.u_shiny, material.shiny === false ? 0 : 1);
+  gl.uniform2fv(at.u_edge, material.edge ?? [1, 0]);
   const reads = new Float32Array(MAPS.length * 3);
   const places = new Float32Array(MAPS.length * 9);
   MAPS.forEach((name, index) => {
     const map = name === "map" ? material.map : material.maps?.[name];
     if (!map) return;
     bound(map, UNITS[index]);
-    reads.set([1, map.channel ?? 0, map.index ? 1 : 0], index * 3);
+    reads.set([map.data?.linear ? 2 : 1, map.channel ?? 0, map.index ? 1 : 0], index * 3);
     const m = map.transform;
     places.set([m[0], m[1], 0, m[4], m[5], 0, m[12], m[13], 1], index * 9);
   });
@@ -664,12 +1090,19 @@ export function draw(scene, canvas, paper) {
   if (surface.width !== width) surface.width = width;
   if (surface.height !== height) surface.height = height;
   const { environment } = scene;
+  const probe = environment.probe ? probed(environment.probe.map) : null;
   const frame = smoothed(width, height, environment.samples);
   gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
   gl.viewport(0, 0, width, height);
   gl.depthMask(true);
-  gl.clearColor(...environment.clear);
+  // What is behind the scene is a colour of the screen's, which Qt brings
+  // to linear light and back as it does everything it draws.
+  const [red, green, blue, alpha] = environment.clear;
+  gl.clearColor(...toned([red, green, blue], environment.tonemap).map((channel) => channel * alpha), alpha);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.activeTexture(gl.TEXTURE0 + PROBE);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, probe?.cube ?? nothing);
+  gl.activeTexture(gl.TEXTURE0);
 
   if (scene.camera) {
     // The eye sees from where the camera is and the way it is turned,
@@ -677,6 +1110,9 @@ export function draw(scene, canvas, paper) {
     const eye = math.unscaled(scene.camera);
     const view = math.inverse(eye) ?? math.IDENTITY;
     const seen = math.multiply(scene.projection, view);
+    if (probe && environment.sky) backdrop(probe, environment, scene.projection, eye);
+    gl.uniform4f(at.u_probing, probe ? 1 : 0, probe ? probe.levels - 1 : 0, environment.probe?.horizon ?? -1, environment.probe?.exposure ?? 0);
+    gl.uniformMatrix3fv(at.u_probeTurn, false, environment.probe?.turn ?? UNTURNED);
     const lights = scene.lights.slice(0, LIGHTS);
     const ambient = [0, 0, 0];
     for (const light of scene.lights) for (let index = 0; index < 3; index++) ambient[index] += light.ambient[index];

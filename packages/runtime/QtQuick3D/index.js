@@ -19,4 +19,5 @@ export {
   Texture,
 } from "./scene.js";
 export { Joint, MorphTarget, Skeleton, Skin } from "./skin.js";
+export { TextureData } from "./TextureData.js";
 export { View3D } from "./View3D.js";
