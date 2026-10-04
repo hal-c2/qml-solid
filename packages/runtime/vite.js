@@ -253,13 +253,16 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
   let cache = join(runtime, "node_modules/.vite/qml-solid");
   // The pictures of a module, by what its QML names them: next to the QML
   // when the installation has them there, otherwise read out of the plugin
-  // when the QML names any. An `@2x` one is for a screen that is not asked
-  // about yet.
+  // when the QML names any, or what the runtime has of the module does: the
+  // QML of the Imagine style asks `Imagine` where its pictures are. An `@2x`
+  // one is for a screen that is not asked about yet.
   const kept = (module, about) => {
     const folder = `${KEPT}/${module}/images`;
     let directory = join(home(module), "images");
     if (!existsSync(directory)) {
-      const named = [...about.types.values()].some((file) => readFileSync(join(home(module), file), "utf8").includes(folder));
+      const native = natives()[`./${module}`];
+      const texts = [...about.types.values()].map((file) => join(home(module), file));
+      const named = [...texts, ...(native ? [join(runtime, native)] : [])].some((file) => readFileSync(file, "utf8").includes(folder));
       if (!named) return [];
       const { bins, version } = found();
       directory = join(cache, version || "qt", module, "images");
