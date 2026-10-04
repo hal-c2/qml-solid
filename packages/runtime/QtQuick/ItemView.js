@@ -131,7 +131,7 @@ function reveal(self, state, bounded) {
     const end = self.preferredHighlightEnd;
     if (at > position + end - span) position = at - end + span;
     if (at < position + begin) position = at - begin;
-    if (mode === StrictlyEnforceRange) bounded = false;
+    if (mode === StrictlyEnforceRange) bounded = state.lax !== null;
   }
   if (bounded) position = clamp(position, least(self, state), most(self, state));
   moveTo(self, state, position);
@@ -143,6 +143,20 @@ function notify(self, item, name, handler) {
   const Type = self.$type;
   if (!item?.$props) return;
   if (`${Type.typeName}$${handler}` in item.$props || item.$attached?.[Type.typeName]) Type.attached(item)[name]();
+}
+
+// A view that starts inside its content though its range is enforced (the
+// list Qt's TumblerView makes, which says so only once the list has its
+// rows) stays there until something is other than it was: `lax` is what it
+// was laid out by.
+function loosened(self, state, count, current) {
+  const lax = state.lax;
+  const by = [count, current, self.width, self.height, self.preferredHighlightBegin, self.preferredHighlightEnd];
+  if (!lax.length) {
+    if (count && current >= 0 && extent(self, state)) lax.push(...by);
+    return true;
+  }
+  return !self.moving && by.every((value, index) => value === lax[index]);
 }
 
 function refresh(self, state) {
@@ -182,6 +196,7 @@ function refresh(self, state) {
     state.follow = true;
   }
   if (current < 0 || current >= count) current = -1;
+  if (state.lax && !loosened(self, state, count, current)) state.lax = null;
   // Where the current item is decides which rows are needed.
   if (state.follow && current >= 0) {
     self.$seek(state, current);
@@ -265,6 +280,12 @@ function position(self, index, mode, edge = 0) {
       }
       to = Math.max(Math.min(to, most(self, state)), least(self, state));
       if (to !== self[key]) slot(self, key).write(to);
+      if (self.highlightRangeMode === StrictlyEnforceRange) {
+        // The row that came into a range that is enforced is the current
+        // one.
+        const under = self.$rowAt(state, to + self.preferredHighlightBegin);
+        if (under >= 0) setCurrent(self, state, under);
+      }
       layout(self, state);
     }
   });
@@ -346,7 +367,7 @@ export const ItemView = defineType("ItemView", Flickable, {
       else if (count && untrack(() => this.keyNavigationWraps)) this.currentIndex = wrapped;
     },
   },
-  setup(self) {
+  setup(self, props) {
     const [version, bump] = createSignal(0, WRITABLE);
     const content = self.$contentItem;
     const changed = () => {
@@ -426,6 +447,7 @@ export const ItemView = defineType("ItemView", Flickable, {
       // bring it into view.
       shown: undefined,
       follow: false,
+      lax: props.$lax ? [] : null,
       fresh: null,
       added: [],
       // What stands for a row in an item that is not one's.

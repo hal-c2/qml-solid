@@ -31,3 +31,4 @@ export { TabBar } from "./TabBar.js";
 export { TextArea } from "./TextArea.js";
 export { TextField } from "./TextField.js";
 export { MenuSeparator, ToolSeparator } from "./ToolSeparator.js";
+export { Tumbler } from "./Tumbler.js";
