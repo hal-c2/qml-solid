@@ -42,7 +42,7 @@ export async function still(page, scene) {
 }
 
 const SIGNAL =
-  /^\w+\.(pressed|released|clicked|canceled|toggled|doubleClicked|pressAndHold|activated|triggered|moved|wrapped)\b/;
+  /^\w+\.(pressed|released|clicked|canceled|toggled|doubleClicked|pressAndHold|activated|triggered|moved|wrapped|opened|closed|completed)\b/;
 
 // What was noted is what Qt notes, but for one thing: properties that changed
 // together say so in whatever order here, where Qt's is the order it set them

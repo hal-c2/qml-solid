@@ -116,6 +116,9 @@ function stopPressRepeat(self) {
   cancel(mine.repeat);
 }
 
+// What a row that is swiped does to the button it is.
+export { press as setPressed, stopPressAndHold, stopPressRepeat };
+
 export const AbstractButton = defineType("AbstractButton", Control, {
   properties: {
     text: derived((self) => self.action?.text ?? ""),

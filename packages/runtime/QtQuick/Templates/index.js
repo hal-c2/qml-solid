@@ -16,5 +16,6 @@ export { Frame, GroupBox, Page, Pane, ToolBar } from "./Pane.js";
 export { BusyIndicator, ProgressBar } from "./ProgressBar.js";
 export { RangeSlider } from "./RangeSlider.js";
 export { Slider } from "./Slider.js";
+export { SwipeDelegate } from "./SwipeDelegate.js";
 export { Switch } from "./Switch.js";
 export { MenuSeparator, ToolSeparator } from "./ToolSeparator.js";
