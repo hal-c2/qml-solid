@@ -146,8 +146,9 @@ Item {
     assert_contains(&code, "$attach={[Layout]}");
     assert_contains(&code, r#"import { Layout } from "qml-solid/QtQuick/Layouts";"#);
     assert_contains(&code, "width={ListView.attached(cell).view ? ListView.attached(cell).view.width : 0}");
-    assert_contains(&code, "style={Text.Raised} horizontalAlignment={Text.AlignHCenter} elide={Qt.ElideRight}");
-    assert_contains(&code, "orientation={ListView.Horizontal} snapMode={ListView.SnapOneItem}");
+    assert_contains(&code, "style={Text$Raised} horizontalAlignment={Text$AlignHCenter} elide={Qt$ElideRight}");
+    assert_contains(&code, "orientation={ListView$Horizontal} snapMode={ListView$SnapOneItem}");
+    assert_contains(&code, "const ListView$SnapOneItem = ListView.SnapOneItem;");
     assert_contains(&code, r#"import { Qt } from "qml-solid/QtQml";"#);
 }
 
@@ -184,7 +185,7 @@ PathView {
     }
 }"#,
     );
-    assert_contains(&code, "snapMode={PathView.SnapToItem}");
+    assert_contains(&code, "snapMode={PathView$SnapToItem}");
     assert_contains(&code, "scale={PathView.attached(cell).iconScale}");
     assert_contains(&code, "opacity={PathView.attached(cell).fade}");
 }
@@ -932,6 +933,43 @@ Item {
     assert_lacks(&code, "return item.count++");
     // A line to be anchored to is a script to Qt too, and a value here.
     assert_contains(&code, "anchors$left={item.parent.left}");
+}
+
+#[test]
+fn an_enum_key_is_a_constant() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Layouts
+Text {
+    id: text
+    property int named: Text.AlignRight
+    property var held: Text.AlignRight
+    property real number: Text.AlignRight
+    horizontalAlignment: Text.AlignHCenter
+    verticalAlignment: text.named ? Text.AlignTop : Text.AlignBottom
+    wrapMode: Text.Wrap
+    elide: text.elide
+    font.capitalization: Font.AllUppercase
+    Layout.alignment: Qt.AlignRight
+    Behavior on x { NumberAnimation { easing.type: Easing.InOutQuad } }
+    Text { wrapMode: Text.Wrap }
+}"#,
+    );
+    // The number it stands for, read once by the module: nothing to evaluate
+    // for each object, and no change to tell of when one is made.
+    assert_contains(&code, "const Text$AlignHCenter = Text.AlignHCenter;");
+    assert_contains(&code, "horizontalAlignment={Text$AlignHCenter}");
+    assert_contains(&code, "named={Text$AlignRight}");
+    assert_contains(&code, "font$capitalization={Font$AllUppercase}");
+    assert_contains(&code, "easing$type={Easing$InOutQuad}");
+    assert_contains(&code, "Layout$alignment={Qt$AlignRight}");
+    assert_eq!(code.matches("const Text$Wrap = ").count(), 1);
+    assert_eq!(code.matches("wrapMode={Text$Wrap}").count(), 2);
+    // Only for an enum or an `int`, and only a key by itself, as in Qt.
+    assert_contains(&code, "held={Text.AlignRight}");
+    assert_contains(&code, "number={Text.AlignRight}");
+    assert_contains(&code, "verticalAlignment={text.named ? Text.AlignTop : Text.AlignBottom}");
+    assert_contains(&code, "elide={text.elide}");
 }
 
 #[test]
