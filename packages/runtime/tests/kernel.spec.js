@@ -47,3 +47,15 @@ test("a binding that comes back to its own property ends there", async ({ page }
   // Qt's answers; where a loop of two ends is not for a program to lean on.
   expect(await page.evaluate(() => window.scene.read())).toEqual([20, 20, true, true, 5]);
 });
+
+test("a picture as wide as its own height says is loaded once more, and no more", async ({ page }) => {
+  await open(page, "imageloop");
+  await page.waitForFunction(() => window.scene.ready);
+  // Qt's answers.
+  expect(await page.evaluate(() => window.scene.read())).toEqual([
+    [90, 60, 90, 60, 90, 60],
+    [30, 20, 30, 20, 30, 20],
+    [60, 40, 60, 0, 60, 40],
+    [60, 20, 60, 20, 60, 20],
+  ]);
+});

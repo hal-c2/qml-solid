@@ -1,15 +1,13 @@
 // What several types ask of an object beyond its properties.
-import { createMemo, runWithOwner } from "solid-js";
-import { slot } from "../object.js";
-
-const SYNC = { sync: true };
+import { looped, slot } from "../object.js";
 
 // A value computed from the object's properties when first asked for, and
 // again only when one of them changes: a text's layout, an image's size.
-// Not made in `setup`, which may not read a property.
-export function lazy(self, compute) {
-  let memo;
-  return () => (memo ??= runWithOwner(self.$owner, () => createMemo(compute, SYNC)))();
+// Not made in `setup`, which may not read a property. A property it reads may
+// be bound to what it gives: a loop, ended as a binding's is, in which it
+// gives `first` until it is computed.
+export function lazy(self, compute, first) {
+  return looped(self.$owner, compute, first);
 }
 
 // Whether a property of a group was given, by itself or through the whole

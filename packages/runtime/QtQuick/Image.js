@@ -118,7 +118,7 @@ export const ImageBase = defineType("ImageBase", Item, {
         // `cache: false`: a load of its own, whatever the others have.
         return self.cache ? shared(self.$pictures, url, self.$load) : self.$load(url);
       }),
-      size: lazy(self, () => loaded(self)),
+      size: lazy(self, () => loaded(self), NONE),
     };
   },
 });
@@ -250,7 +250,7 @@ export const Image = defineType("Image", ImageBase, {
   },
   setup(self) {
     const style = face(self).style;
-    self.$image.painted = lazy(self, () => painted(self));
+    self.$image.painted = lazy(self, () => painted(self), NONE);
     effect(
       () => {
         const record = self.$image.record();

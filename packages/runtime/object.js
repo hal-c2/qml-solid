@@ -17,6 +17,7 @@ import {
   createRoot,
   createSignal,
   flush as drain,
+  getObserver,
   getOwner,
   onCleanup,
   runWithOwner,
@@ -184,6 +185,65 @@ function guarded(key, compute) {
   };
 }
 
+// A value computed from others and kept until one of them changes, which what
+// it is computed from may ask for: `sourceSize.width: height` on a picture as
+// high as it is loaded, `a.width: b.width + 1` where `b.width: a.width`. A
+// loop, which ends where it began as Qt ends it: whatever asks for the value
+// while it is computed gets what it had, and is told when that has changed,
+// once. What it then makes of it is not told of again; the value itself is
+// never told. `first` is what it had before it was ever computed.
+export function looped(owner, compute, first) {
+  let memo;
+  let node;
+  let held = first;
+  let evaluating = false;
+  // Who asked while it was computed, and asks for what it had ever since:
+  // asking for the value itself would close the loop.
+  let back = null;
+  let track = null;
+  let bump = null;
+  let echoing = false;
+  const echo = () => {
+    echoing = true;
+    try {
+      bump(next);
+      drain();
+    } finally {
+      echoing = false;
+    }
+    tell();
+  };
+  const evaluate = () => {
+    node = getObserver();
+    const before = held;
+    evaluating = true;
+    try {
+      held = compute();
+    } finally {
+      evaluating = false;
+    }
+    if (back && !echoing && !Object.is(before, held)) after(echo);
+    return held;
+  };
+  const read = () => {
+    const reader = getObserver();
+    if (evaluating ? reader !== node : reader && back?.has(reader)) {
+      if (!reader) return held;
+      back ??= new WeakSet();
+      back.add(reader);
+      if (!track) [track, bump] = createSignal(0, WRITABLE);
+      track();
+      return held;
+    }
+    if (evaluating) return held;
+    return read.start()();
+  };
+  // Evaluated when first read, unless begun before.
+  read.start = () => (memo ??= runWithOwner(owner, () => createMemo(evaluate, SYNC)));
+  read.busy = () => evaluating;
+  return read;
+}
+
 class Slot {
   constructor(self, key, initial, resolve, whole, member) {
     this.self = self;
@@ -196,9 +256,6 @@ class Slot {
     this.member = member;
     this.bound = null;
     this.given = undefined;
-    // While its binding is evaluated, and what that gave last.
-    this.evaluating = false;
-    this.last = undefined;
     this.assigned = false;
     this.value = undefined;
     // Set by whatever lays the object out: a positioner, a layout, a view.
@@ -226,26 +283,16 @@ class Slot {
     // changes, however many readers there are. An item it makes
     // (`background: Rectangle {}`) is made as a child of this one, or of
     // the content item of a window.
+    // What it reads of its own property, itself or through another's
+    // binding, is what the property had.
     this.bound = descriptor?.get
-      ? runWithOwner(self.$owner, () =>
-          createMemo(
-            guarded(key, () => {
-              // What it reads of its own property, itself or through
-              // another's binding, is what the property had: a loop ends
-              // there, as Qt ends it.
-              const before = this.evaluating;
-              this.evaluating = true;
-              try {
-                return (this.last = complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key])));
-              } finally {
-                this.evaluating = before;
-              }
-            }),
-            SYNC,
-          ),
+      ? looped(
+          self.$owner,
+          guarded(key, () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key]))),
         )
       : null;
     this.given = descriptor && !descriptor.get ? descriptor.value : undefined;
+    this.bound?.start();
   }
 
   // The same from somewhere else: what an instance binds to an alias is a
@@ -278,7 +325,7 @@ class Slot {
   own() {
     if (this.placed !== undefined && !this.over) return this.placed;
     if (this.assigned) return this.value;
-    let value = this.evaluating ? this.last : this.bound ? this.bound() : this.given;
+    let value = this.bound ? this.bound() : this.given;
     if (value === undefined && this.whole) value = slot(this.self, this.whole).get()?.[this.member];
     if (value === undefined) {
       const initial = this.initial;
@@ -292,7 +339,7 @@ class Slot {
   explicit() {
     if (this.version) this.version();
     else this.self.$track();
-    return this.assigned || this.evaluating || (this.bound ? this.bound() : this.given) !== undefined;
+    return this.assigned || (this.bound ? this.bound() : this.given) !== undefined || this.bound?.busy?.() === true;
   }
 
   changed() {
@@ -328,7 +375,8 @@ class Slot {
   // the object.
   rebind(compute) {
     const self = this.self;
-    this.bound = runWithOwner(self.$owner, () => createMemo(guarded(this.key, () => compute.call(self)), SYNC));
+    this.bound = looped(self.$owner, guarded(this.key, () => compute.call(self)));
+    this.bound.start();
     this.assigned = false;
     this.value = undefined;
     this.changed();
