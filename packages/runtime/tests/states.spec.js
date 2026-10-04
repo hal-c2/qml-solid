@@ -216,3 +216,13 @@ test("a Behavior animates what a transition does not", async ({ page }) => {
   await advance(page, 100);
   expect(await moving(page)).toEqual([200, 100, false, false, false]);
 });
+
+test("a state entered from the start changes what a property of the item holds", async ({ page }) => {
+  await open(page, "stateheld");
+  const read = () => page.evaluate(() => window.scene.read());
+  expect(await read()).toEqual(["big", 56, 62, 244]);
+  await page.evaluate(() => window.scene.step(0));
+  expect(await read()).toEqual(["", 62, 62, 238]);
+  await page.evaluate(() => window.scene.step(1));
+  expect(await read()).toEqual(["big", 56, 62, 244]);
+});

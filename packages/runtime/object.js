@@ -731,6 +731,8 @@ export function defineType(name, base, spec = {}) {
 let waiting = null;
 let watches = null;
 let completions = null;
+// The objects properties hold (`header: ToolBar {}`), still to be made.
+let holding = null;
 // The item whose children are being created.
 let parent = null;
 
@@ -752,12 +754,15 @@ function complete(make) {
   const works = (waiting = []);
   const watched = (watches = []);
   const handlers = (completions = []);
+  const held = (holding = []);
   let made;
   try {
     made = make();
   } finally {
-    waiting = watches = completions = null;
+    waiting = watches = completions = holding = null;
   }
+  // Each is complete before what holds it has anything to do with it.
+  for (const hold of held) hold();
   for (const work of works) work();
   // What changes from here on is a change: everything is as it was made.
   const firsts = [];
@@ -956,11 +961,15 @@ function create(Type, props) {
     }
     const completed = props.Component$onCompleted;
     if (completed) completions.push(() => untrack(completed));
-    // An object a property holds is made with the rest, whoever reads it.
+    // An object a property holds is made with the rest, whoever reads it:
+    // a state entered from the start may change what is in it.
     if (props.$made) {
-      whenComplete(() => {
-        for (const name of props.$made) untrack(() => self[name]);
-      });
+      const owner = getOwner();
+      holding.push(() =>
+        runWithOwner(owner, () => {
+          for (const name of props.$made) untrack(() => self[name]);
+        }),
+      );
     }
     const destruction = props.Component$onDestruction;
     if (destruction) onCleanup(() => destruction());
