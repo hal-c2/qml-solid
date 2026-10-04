@@ -5,6 +5,7 @@
 // shows none of them, as in Qt.
 import { untrack } from "solid-js";
 import { contents, defineType, derived, effect, slot } from "../../object.js";
+import { departing } from "../focus.js";
 import { Item } from "../Item.js";
 import { ObjectModel } from "../model.js";
 import { settle } from "../settle.js";
@@ -14,9 +15,14 @@ import { assignable, drive, driven, reads } from "./driven.js";
 const next = (version) => version + 1;
 
 // Where a content item's children are: a Flickable's are in its content.
-const within = (item) => item?.$contentItem ?? item ?? null;
+export const within = (item) => item?.$contentItem ?? item ?? null;
 
-function reparent(item, parent) {
+// Whether the content item shows the items itself: a view does, and so does
+// a Repeater in it over the model, whose items are its parent's children.
+export const shows = (item, model) =>
+  item?.$v !== undefined || within(item)?.$static?.some((child) => child.$repeat && child.model === model) === true;
+
+export function reparent(item, parent) {
   if (item.$parent === parent) return;
   item.$parent = parent;
   item.$touch(next);
@@ -76,6 +82,8 @@ function remove(self, index) {
     drive(self, "currentIndex", index$ - 1);
     settle();
   }
+  // The keys are no more the item's: they stay with what it was in.
+  departing(item);
   model.remove(index);
   if (index < index$) drive(self, "currentIndex", index$ - 1);
   const housed = self.$items.housed;
@@ -88,10 +96,9 @@ function remove(self, index) {
 }
 
 // The items are children of the content item. A view makes them that as it
-// comes to show them; with none it is done here.
-function house(self, into, viewed) {
-  const housed = self.$items.housed;
-  const objects = self.$model.$objects;
+// comes to show them; with none it is done here. `housed` is where each was
+// put: a menu keeps its items so too.
+export function house(housed, objects, into, viewed) {
   for (const [item, where] of housed) {
     if (where === into && !viewed && objects.includes(item)) continue;
     where.$remove(item);
@@ -107,10 +114,9 @@ function house(self, into, viewed) {
 }
 
 // A Repeater declared in a container: its items are the container's, where
-// the Repeater stands among what was declared.
-function repeat(self) {
-  const state = self.$items;
-  const objects = self.$model.$objects;
+// the Repeater stands among what was declared. `state` is what was declared
+// and which of the items are a Repeater's.
+export function repeat(state, objects, insert, remove) {
   const wanted = [];
   const made = new Set();
   for (const entry of state.declared) {
@@ -126,7 +132,7 @@ function repeat(self) {
   for (const item of [...state.repeated]) {
     if (made.has(item)) continue;
     const index = objects.indexOf(item);
-    if (index >= 0) remove(self, index);
+    if (index >= 0) remove(index);
     state.repeated.delete(item);
   }
   let at = -1;
@@ -135,7 +141,7 @@ function repeat(self) {
     if (index >= 0) at = index;
     else if (made.has(item) && !state.repeated.has(item)) {
       state.repeated.add(item);
-      insert(self, ++at, item, true);
+      insert(++at, item);
     }
   }
 }
@@ -211,6 +217,11 @@ export const Container = defineType("Container", Control, {
     $isContent() {
       return true;
     },
+    // The item that shows what is declared in it: a menu bar has one for
+    // each menu.
+    $itemFor(child) {
+      return child;
+    },
     // What the content would like to be.
     $contentWidth() {
       return this.contentItem?.implicitWidth ?? 0;
@@ -243,9 +254,9 @@ export const Container = defineType("Container", Control, {
       () => {
         const item = self.contentItem;
         model.$ordered();
-        return [within(item), item?.$v !== undefined];
+        return [within(item), shows(item, model)];
       },
-      ([into, viewed]) => house(self, into, viewed),
+      ([into, viewed]) => house(self.$items.housed, model.$objects, into, viewed),
     );
     // A view moves its current index itself: when it is flicked, and to
     // keep its current item when rows come and go. The container follows.
@@ -278,7 +289,8 @@ export const Container = defineType("Container", Control, {
   adopt(self, props) {
     const state = self.$items;
     const model = self.$model;
-    for (const child of contents(props, self)) {
+    for (const declared of contents(props, self)) {
+      const child = self.$itemFor(declared);
       if (child?.$siblings) state.declared.push(child);
       else if (child?.$node) {
         if (self.$isContent(child)) {
@@ -302,7 +314,15 @@ export const Container = defineType("Container", Control, {
         for (const child of state.declared) child.$siblings?.();
         return state.declared.length;
       },
-      () => untrack(() => repeat(self)),
+      () =>
+        untrack(() =>
+          repeat(
+            state,
+            model.$objects,
+            (index, item) => insert(self, index, item, true),
+            (index) => remove(self, index),
+          ),
+        ),
     );
   },
 });

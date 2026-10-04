@@ -120,6 +120,13 @@ export function windowOf(item) {
   return null;
 }
 
+// The outermost item above one that is in no window, when it is in the page.
+function viewed(item) {
+  let at = item;
+  while (at?.parent) at = at.parent;
+  return at?.$node?.isConnected ? at : null;
+}
+
 // The outermost object above one: where a floating window's layer goes.
 function top(object) {
   let at = object;
@@ -151,8 +158,10 @@ function fills(self) {
 const WindowAttached = defineType("WindowAttached", QtObject, {
   properties: {
     window: derived((self) => windowOf(self.$item)),
-    width: derived((self) => self.window?.width ?? 0),
-    height: derived((self) => self.window?.height ?? 0),
+    // A document that is an item is shown in a view of the item's size, as
+    // the `qml` tool shows it: that view is the window of what is in it.
+    width: derived((self) => self.window?.width ?? viewed(self.$item)?.width ?? 0),
+    height: derived((self) => self.window?.height ?? viewed(self.$item)?.height ?? 0),
     active: derived((self) => self.window?.active ?? false),
     contentItem: derived((self) => self.window?.contentItem ?? null),
     visibility: derived((self) => self.window?.visibility ?? Hidden),

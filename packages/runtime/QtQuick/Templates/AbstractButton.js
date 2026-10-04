@@ -297,10 +297,14 @@ export const AbstractButton = defineType("AbstractButton", Control, {
       settle();
       this.canceled();
     },
-    // A button that loses focus is pressed no longer.
+    // A button that loses the keys is pressed no longer. One that is given
+    // focus in a scope that has not the keys loses nothing.
     $reason(reason) {
       Control.proto.$reason.call(this, reason);
-      if (!this.$active) this.$handleUngrab();
+      const mine = this.$button;
+      const had = mine.active;
+      mine.active = this.$active === true;
+      if (had && !mine.active) this.$handleUngrab();
     },
     $keyPressed(event) {
       if (!CLICKS.includes(event.key)) return;
@@ -341,6 +345,8 @@ export const AbstractButton = defineType("AbstractButton", Control, {
       repeating: false,
       animating: false,
       triggering: false,
+      // Whether it had the keys when focus last moved.
+      active: false,
       hold: null,
       delay: null,
       repeat: null,

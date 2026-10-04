@@ -9,6 +9,7 @@
 import { createSignal, onCleanup, untrack } from "solid-js";
 import { defineType, derived, effect, instantiate, slot } from "../object.js";
 import { Flickable } from "./Flickable.js";
+import { Item } from "./Item.js";
 import { delegateOf, modelOf, moved, Rows, size } from "./model.js";
 import { settle } from "./settle.js";
 
@@ -555,6 +556,9 @@ export const ItemView = defineType("ItemView", Flickable, {
       },
     );
   },
+  // What is declared in a view is the view's, as in Qt, and stays where it
+  // is: only the rows are in what moves.
+  adopt: Item.adopt,
 });
 
 // `ListView.view`, `GridView.isCurrentItem`: what a delegate knows of the

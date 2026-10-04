@@ -9,6 +9,8 @@ import { preferred } from "../attached.js";
 export { SplitHandle } from "../../Templates/SplitView.js";
 // And so is the menu a field of any style is asked for.
 export { ContextMenu } from "../../Templates/ContextMenu.js";
+// And the overlay: a style's dialog asks whether it is in it.
+export { Overlay } from "../../Templates/Popup.js";
 
 themed("QtQuick.Controls.Basic", {
   palette: colours(

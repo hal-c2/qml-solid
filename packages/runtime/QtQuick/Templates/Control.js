@@ -10,7 +10,7 @@ import { defineType, derived, effect, settle, slot } from "../../object.js";
 import { locale } from "../../QtQml/locale.js";
 import { styleHints } from "../../QtQml/application.js";
 import { sized } from "../compute.js";
-import { forceActiveFocus, MouseFocusReason, OtherFocusReason, windowOf } from "../focus.js";
+import { departing, forceActiveFocus, MouseFocusReason, OtherFocusReason, windowOf } from "../focus.js";
 import { Item } from "../Item.js";
 import { mirrored } from "../LayoutMirroring.js";
 import { CancelGrabExclusive, drop, gone, hoverable, receive, UngrabExclusive, wheels } from "../pointer.js";
@@ -94,7 +94,8 @@ export const methods = {
     const into = this.$contentItem ?? this;
     if (!keep) {
       // Qt's `hideOldItem`: one that is replaced is hidden, and is in
-      // nothing.
+      // nothing. The keys are no more its own, or anything's in it.
+      departing(item);
       into.$remove(item);
       slot(item, "visible").write(false);
       slot(item, "parent").write(null);
