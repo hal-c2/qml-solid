@@ -30,9 +30,10 @@ if (!qml) {
   process.exit(1);
 }
 
-// The screen the examples see: several lay themselves out by `Screen`, and the
-// offscreen platform's own is 800x800.
-const screen = { width: 1920, height: 1080 };
+// The screen the examples see, which the gallery's browser is given too:
+// several lay themselves out by `Screen`, and the offscreen platform's own is
+// 800x800.
+const { screen } = manifest;
 
 // The harness for an entry whose root is an Item: what `QQuickView` with
 // `SizeRootObjectToView` shows, on the view's white.

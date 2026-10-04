@@ -6,11 +6,12 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { expect, test } from "@playwright/test";
-import { readManifest } from "../manifest.js";
+import { readManifest, readScreen } from "../manifest.js";
 import { compare } from "./compare.js";
 import { qmlc, readExpected, reportDirectory, runtimePackage } from "./settings.js";
 
 const expected = readExpected().examples ?? {};
+const screen = readScreen();
 
 // The modules of Qt the runtime has: what its package exports.
 const runtime = new Set(Object.keys(JSON.parse(readFileSync(runtimePackage, "utf8")).exports).map((path) => path.slice(2)));
@@ -57,7 +58,21 @@ for (const example of readManifest()) {
       await page.clock.install({ time: 0 });
       await page.clock.pauseAt(1000);
     }
-    await page.setViewportSize({ width: Math.max(width, 800), height: height + 200 });
+    const viewport = { width: Math.max(width, 800), height: height + 200 };
+    await page.setViewportSize(viewport);
+    // The screen is the reference's too: a browser under test says its
+    // screen is as large as its page, and an example may lay itself out by
+    // which way the screen is up.
+    if (screen) {
+      const session = await page.context().newCDPSession(page);
+      await session.send("Emulation.setDeviceMetricsOverride", {
+        ...viewport,
+        deviceScaleFactor: 1,
+        mobile: false,
+        screenWidth: screen.width,
+        screenHeight: screen.height,
+      });
+    }
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     // The page only learns that a module did not load. Why is what the dev

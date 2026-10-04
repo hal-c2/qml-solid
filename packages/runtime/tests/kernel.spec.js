@@ -129,3 +129,11 @@ plain("a binding that cannot be evaluated is told of, unless what it met is not 
   expect(new Set(warnings)).toEqual(new Set(["title: TypeError: Cannot read properties of null (reading 'title')"]));
   expect(warnings.length).toBeGreaterThanOrEqual(2);
 });
+
+test("what an object is made with is not a change, unless it was a binding", async ({ page }) => {
+  await open(page, "told");
+  // Qt's answers: a number, a text and the key of an enum are what the object
+  // is made with. (Qt tells of the bindings last made first; that order is
+  // not kept here.)
+  expect((await page.evaluate(() => window.scene.seen)).sort()).toEqual(["availability 1", "bound 2", "height 200"]);
+});

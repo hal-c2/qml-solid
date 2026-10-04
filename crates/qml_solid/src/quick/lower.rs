@@ -28,7 +28,7 @@ use oxc_span::Span;
 use super::{
     paths::{Paths, is_absolute, is_resolved},
     scope::{self, Tree},
-    types::{self, Member, Origin, Property, Types},
+    types::{self, Found, Kind, Member, Origin, Property, Types},
 };
 use crate::{Error, build::B, qt};
 
@@ -127,6 +127,8 @@ pub(crate) struct Lower<'a, 's> {
     specs: usize,
     /// The files the module names, each once: `$url1` is the first.
     urls: Vec<String>,
+    /// The enum keys each open frame has a constant for.
+    keys: Vec<HashSet<String>>,
     /// The keys of the enums the component being built declares.
     enums: Vec<(String, Expression<'a>)>,
     /// The names some component of the project takes from whatever made it.
@@ -148,6 +150,7 @@ impl<'a, 's> Lower<'a, 's> {
             default: None,
             specs: 0,
             urls: Vec::new(),
+            keys: Vec::new(),
             enums: Vec::new(),
             dynamic: types.project.dynamic_names(),
         }
@@ -172,11 +175,13 @@ impl<'a, 's> Lower<'a, 's> {
         let outer_children = self.children.replace(children);
         let outer_default = std::mem::replace(&mut self.default, default_property(&root));
         let outer_frames = std::mem::take(&mut self.frames);
+        let outer_keys = std::mem::take(&mut self.keys);
         let outer_enums = std::mem::take(&mut self.enums);
-        self.frames.push(Vec::new());
+        self.open();
         let element = self.element(root, Role::Root);
-        let frame = self.frames.pop().unwrap_or_default();
+        let frame = self.close();
         self.frames = outer_frames;
+        self.keys = outer_keys;
         let enums = std::mem::replace(&mut self.enums, outer_enums);
         self.children = outer_children;
         self.default = outer_default;
@@ -230,6 +235,16 @@ impl<'a, 's> Lower<'a, 's> {
 
     fn frame(&mut self) -> &mut Vec<Statement<'a>> {
         self.frames.last_mut().expect("an object is lowered inside a component")
+    }
+
+    fn open(&mut self) {
+        self.frames.push(Vec::new());
+        self.keys.push(HashSet::new());
+    }
+
+    fn close(&mut self) -> Vec<Statement<'a>> {
+        self.keys.pop();
+        self.frames.pop().unwrap_or_default()
     }
 
     fn element(&mut self, object: QmlObject<'a>, role: Role<'_>) -> Expression<'a> {
@@ -476,9 +491,9 @@ impl<'a, 's> Lower<'a, 's> {
         let b = self.b;
         let tree = self.tree;
         let data = tree.contexts[tree.objects[index].context].data.as_deref().unwrap_or("$data");
-        self.frames.push(Vec::new());
+        self.open();
         let element = self.element(object, Role::Template(data));
-        let frame = self.frames.pop().unwrap_or_default();
+        let frame = self.close();
         let mut statements = b.vec();
         statements.extend(frame);
         statements.push(b.return_(element));
@@ -773,6 +788,7 @@ impl<'a, 's> Lower<'a, 's> {
                 b.arrow_block(&[], self.statements(statement))
             }
             QmlBindingValue::Expression(expression) if property.is_url => self.url(expression),
+            QmlBindingValue::Expression(expression) if property.takes_key => self.key(expression),
             QmlBindingValue::Expression(expression) => expression,
             // A block is the body of a function whose result is the value.
             QmlBindingValue::Statement(statement) => b.iife(self.worth(statement)),
@@ -784,6 +800,43 @@ impl<'a, 's> Lower<'a, 's> {
                 b.array(objects)
             }
         }
+    }
+
+    /// `Text.AlignHCenter` written for an enum or an `int` is the number it
+    /// stands for, as Qt takes it: a constant, where anything else written
+    /// there is a binding to evaluate. It is read where the object is made
+    /// and not by the module, which may name a type the runtime does not
+    /// have in an object nothing makes.
+    fn key(&mut self, expression: Expression<'a>) -> Expression<'a> {
+        let b = self.b;
+        let Expression::StaticMemberExpression(member) = &expression else { return expression };
+        // `ListView.SnapMode.SnapOneItem`: the key by the name of its enum.
+        let (object, scope) = match &member.object {
+            Expression::StaticMemberExpression(scope) => (&scope.object, Some(scope.property.name.as_str())),
+            object => (object, None),
+        };
+        let Expression::Identifier(object) = object else { return expression };
+        let (name, key) = (object.name.as_str(), member.property.name.as_str());
+        let is_key = key.starts_with(|c: char| c.is_ascii_uppercase())
+            && match self.types.find(&[name]) {
+                Some(Found { kind: Kind::Qt(ty), origin: Origin::Module(_) }) => {
+                    ty.enum_value(key).is_some_and(|value| {
+                        let enumeration = value.enumeration;
+                        scope.is_none_or(|scope| scope == enumeration.name || Some(scope) == enumeration.alias)
+                    })
+                }
+                Some(_) => false,
+                None => name == "Qt" && scope.is_none(),
+            };
+        if !is_key {
+            return expression;
+        }
+        let constant = format!("{name}${key}");
+        if !self.keys.iter().any(|keys| keys.contains(&constant)) {
+            self.frame().push(b.const_(&constant, expression));
+            self.keys.last_mut().expect("a frame is open").insert(constant.clone());
+        }
+        b.id(&constant)
     }
 
     /// A URL is relative to the file it is written in, which only the

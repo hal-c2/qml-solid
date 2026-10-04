@@ -14,6 +14,10 @@
     "qt": "`runnable`: the `qml` tool of the Qt installed here renders it, or `reason` why not. For the run: `style` or `controlsConf` (the Controls style its main.cpp or resources choose), `env` (environment its main.cpp sets), `module` (the URI its files import it by), `properties` (initial properties main.cpp sets), `offline`, `settle` (ms before the picture, default 1500)"
   },
   "root": "qtdoc/examples",
+  "screen": {
+    "width": 1920,
+    "height": 1080
+  },
   "examples": [
     {
       "id": "alarms",
