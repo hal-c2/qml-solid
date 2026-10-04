@@ -33,6 +33,7 @@ Item {
     component Combo: T.ComboBox {
         id: combo
         property string name
+        readonly property bool framed: frame.parent === list && frame.width === list.width
         implicitWidth: 100
         implicitHeight: 24
         rightPadding: 12
@@ -60,12 +61,14 @@ Item {
             width: combo.width
             implicitHeight: contentItem.implicitHeight
             contentItem: ListView {
+                id: list
                 implicitHeight: contentHeight
                 model: combo.delegateModel
                 currentIndex: combo.highlightedIndex
                 interactive: false
+                // What a view is given besides its rows is the view's own.
+                Rectangle { id: frame; z: 10; width: parent.width; height: parent.height; color: "transparent"; border.color: "black" }
             }
-            background: Rectangle { border.color: "black" }
         }
         onActivated: (index) => root.note(name + " activated " + index)
         onHighlighted: (index) => root.note(name + " highlighted " + index)
@@ -113,32 +116,61 @@ Item {
     // One with nothing in it, and one whose popup has no room under it.
     Combo { id: empty; name: "empty"; x: 10; y: 110 }
     Combo { id: low; name: "low"; x: 150; y: 250; model: [{ only: "a" }, { only: "b" }, 3, true] }
+    // One made as Qt's styles make theirs: its text is a field that is not
+    // enabled, and a row of it says what the role with no name is.
+    Combo {
+        id: styled
+        name: "styled"
+        x: 290
+        y: 180
+        model: root.fruit
+        contentItem: TextInput { text: styled.displayText; enabled: styled.editable }
+        delegate: T.ItemDelegate {
+            id: row
+            required property var model
+            required property int index
+            width: styled.width
+            implicitHeight: 20
+            hoverEnabled: true
+            text: model[styled.textRole]
+            highlighted: styled.highlightedIndex === index
+            contentItem: Text { text: row.text }
+        }
+    }
 
     function tell(c) {
         const p = c.popup
         // A popup that is not seen is where and as big as it last had to be.
         return [c.name, c.count, c.currentIndex, c.currentText, c.currentValue, c.displayText, c.highlightedIndex, c.pressed, c.down,
-                p.visible ? [p.x, p.y, p.width, p.height] : null, p.closePolicy, c.activeFocus, c.editText]
+                p.visible ? [p.x, p.y, p.width, p.height] : null, p.closePolicy, c.activeFocus, c.editText, c.visualFocus]
     }
     function facts(c) {
         return [c.name, c.focusPolicy, c.editable, c.flat, c.implicitIndicatorWidth, c.implicitIndicatorHeight, c.indicator.parent === c,
                 c.popup.parent === c, c.inputMethodHints, c.acceptableInput, c.implicitContentWidthPolicy, c.selectTextByMouse,
-                c.delegateModel !== null, c.textRole, c.valueRole, c.wheelEnabled, c.activeFocusOnTab].join(" ")
+                c.delegateModel !== null, c.textRole, c.valueRole, c.wheelEnabled, c.activeFocusOnTab, c.framed,
+                c.Window.width, c.Window.height].join(" ")
     }
     function texts(c) {
         const all = []
         for (let i = -1; i <= c.count; i++) all.push(c.textAt(i), c.valueAt(i))
         return all
     }
+    // What the rows of a popup that is seen say.
+    function rows(c) {
+        const view = c.popup.contentItem
+        const all = []
+        for (let i = 0; c.popup.visible && i < c.count; i++) all.push(view.itemAtIndex(i)?.text)
+        return all
+    }
     function state() {
         const input = typed.contentItem
-        return [tell(words), tell(roles), tell(count), tell(things), tell(typed), tell(set), tell(empty), tell(low),
-                [input.text, input.selectedText, input.activeFocus, input.cursorPosition]]
+        return [tell(words), tell(roles), tell(count), tell(things), tell(typed), tell(set), tell(empty), tell(low), tell(styled),
+                [input.text, input.selectedText, input.activeFocus, input.cursorPosition], rows(styled)]
     }
 
     function step(i) {
         switch (i) {
-        case 0: made = true; [words, roles, count, things, typed, set, empty, low].forEach((c) => note(facts(c))); break
+        case 0: made = true; [words, roles, count, things, typed, set, empty, low, styled].forEach((c) => note(facts(c))); break
         case 1: [words, roles, count, things, set, empty, low].forEach((c) => note(JSON.stringify(texts(c)))); break
         case 2: words.currentIndex = 2; break
         case 3: words.incrementCurrentIndex(); words.incrementCurrentIndex(); break

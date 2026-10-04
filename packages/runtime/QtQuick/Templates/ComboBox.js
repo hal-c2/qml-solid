@@ -471,9 +471,12 @@ export const ComboBox = defineType("ComboBox", Control, {
     },
     $handlePress() {
       // A press of the box is the box's own: the keys it was given by it
-      // are its text's no more.
+      // are its text's no more, and it has them from the mouse.
       const content = now(this, "contentItem");
-      if (content?.$focus && now(this, "focusPolicy") & 2) setFocus(content, false, MouseFocusReason);
+      if (content?.$focus && now(this, "focusPolicy") & 2) {
+        setFocus(content, false, MouseFocusReason);
+        put(this, "focusReason", MouseFocusReason);
+      }
       put(this, "pressed", true);
     },
     $handleMove(x, y) {

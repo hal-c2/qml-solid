@@ -118,7 +118,7 @@ function editor(self, field, { changed, home, finished }) {
   });
   // A press beside the text, inside the item, is a press on the item.
   self.$node.addEventListener("mousedown", (event) => {
-    if (event.target !== self.$node || !self.activeFocusOnPress) return;
+    if (event.target !== self.$node || !self.activeFocusOnPress || !self.enabled) return;
     event.preventDefault();
     field.focus();
   });
@@ -162,6 +162,7 @@ function editor(self, field, { changed, home, finished }) {
       align: ALIGNS[self.effectiveHorizontalAlignment] ?? "left",
       capitals: CAPITALS[self.font.capitalization] ?? "",
       readOnly: Boolean(self.readOnly),
+      enabled: Boolean(self.enabled),
       hints: self.inputMethodHints,
     }),
     (next) => {
@@ -175,6 +176,9 @@ function editor(self, field, { changed, home, finished }) {
       style.textAlign = next.align;
       style.textTransform = next.capitals;
       field.readOnly = next.readOnly;
+      // A field that is not enabled is not there for the mouse: a press on
+      // it is for what is under it, as the text of a combo box is.
+      style.pointerEvents = next.enabled ? "" : "none";
       field.inputMode = KEYBOARDS.find(([hint]) => next.hints & hint)?.[1] ?? "";
       field.autocapitalize = next.hints & 0x4 ? "off" : "";
       field.spellcheck = !(next.hints & 0x40);
