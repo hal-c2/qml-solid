@@ -326,8 +326,18 @@ export const Map = defineType("Map", Item, {
     self.$tiles = { layer, shown: [], spare: [], view: IDLE, pattern: null, level: 0, left: 0, top: 0, right: 0, bottom: 0 };
     layer.style.display = "none";
     // A picture is shown once it is there, and one that is not there is
-    // the map's colour.
-    layer.addEventListener("load", (event) => void (event.target.style.visibility = "visible"), true);
+    // the map's colour. Whose the map is is said once any of it is there:
+    // Qt learns it from where the tiles come from, and says nothing of a
+    // map it could not reach.
+    notice.style.visibility = "hidden";
+    layer.addEventListener(
+      "load",
+      (event) => {
+        event.target.style.visibility = "visible";
+        notice.style.visibility = "";
+      },
+      true,
+    );
     effect(
       () => css(self.color),
       (background) => void (node.style.background = background),
