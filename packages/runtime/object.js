@@ -929,8 +929,6 @@ export function defineType(name, base, spec = {}) {
   Type.slots = Object.create(base ? base.slots : null);
   Type.groups = Object.create(base ? base.groups : null);
   Type.chain = base ? [...base.chain, Type] : [Type];
-  // `item instanceof Type`, which QML's JavaScript asks of an object.
-  Object.defineProperty(Type, Symbol.hasInstance, { value: (object) => object?.$type?.chain.includes(Type) === true });
   Type.adopt = spec.adopt ?? base?.adopt;
   for (const [property, initial] of Object.entries(spec.properties ?? {})) {
     if (initial?.[GROUP]) defineGroup(Type, proto, property, initial[GROUP]);
