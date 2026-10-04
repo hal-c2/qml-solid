@@ -43,6 +43,20 @@ test("a type Qt has and the runtime does not is there to be named, and says so w
   expect(read).toEqual(["function", message, message, message]);
 });
 
+test("QML of Qt's own in a module Qt has not installed is there to be named, and says so when it is used", async ({ page }) => {
+  await open(page, "modules");
+  const read = await page.evaluate(() => {
+    const { LightmapperOutputWindow, make } = window.objects;
+    try {
+      make(LightmapperOutputWindow);
+    } catch (error) {
+      return [typeof LightmapperOutputWindow, error.message];
+    }
+  });
+  // `tests/qt` has Qt Quick 3D's helpers and not Qt Quick 3D itself.
+  expect(read).toEqual(["function", "QtQuick3D: LightmapperOutputWindow is QML of Qt's own, and Qt's QtQuick3D is not installed here"]);
+});
+
 test("a picture Qt keeps inside a module is one the build has", async ({ page }) => {
   await open(page, "modules");
   await page.waitForFunction(() => window.objects.shelf.knot.status === 1);

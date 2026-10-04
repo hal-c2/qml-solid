@@ -222,10 +222,15 @@ function capture(example, display) {
       if (uri.includes("*") || existsSync(join(module, "qmldir"))) continue;
       const qmldir = place(directory, copy, join(path, "qmldir"));
       const lines = [`module ${uri}`];
-      for (const name of readdirSync(module)) {
-        if (!/^[A-Z]\w*\.qml$/.test(name)) continue;
-        const singleton = /^\s*pragma\s+Singleton\b/m.test(readFileSync(join(module, name), "utf8"));
-        lines.push(`${singleton ? "singleton " : ""}${name.slice(0, -4)} 1.0 ${name}`);
+      // Its files are those its build names, which may be in directories
+      // of its own, or else those that are in it.
+      const cmake = existsSync(join(module, "CMakeLists.txt")) ? readFileSync(join(module, "CMakeLists.txt"), "utf8") : "";
+      const named = /\bQML_FILES\s+((?:(?![A-Z_]{2,}\b|\))\S+\s+)*)/.exec(cmake)?.[1].split(/\s+/).filter((file) => existsSync(join(module, file)));
+      for (const file of named?.length ? named : readdirSync(module)) {
+        const name = /([A-Z]\w*)(?:\.ui)?\.qml$/.exec(file)?.[1];
+        if (!name || (!named?.length && file.includes("/"))) continue;
+        const singleton = /^\s*pragma\s+Singleton\b/m.test(readFileSync(join(module, file), "utf8"));
+        lines.push(`${singleton ? "singleton " : ""}${name} 1.0 ${file}`);
       }
       if (existsSync(join(standin, "qmldir"))) {
         for (const name of readdirSync(standin)) {

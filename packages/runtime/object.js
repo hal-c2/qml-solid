@@ -234,12 +234,17 @@ const next = (version) => version + 1;
 // An effect's callback runs while Solid settles what changed, and what it
 // assigns is settled by the same flush: it must not ask for another.
 let settling = 0;
+// How many of those callbacks are running: Solid's own flush does nothing
+// inside one, and says so.
+let applying = 0;
 function settled(work, ...args) {
   settling++;
+  applying++;
   try {
     return work(...args);
   } finally {
     settling--;
+    applying--;
   }
 }
 
@@ -306,9 +311,10 @@ function tell() {
   }
 }
 
-// Solid's `flush`, and then what it found to tell.
+// Solid's `flush`, and then what it found to tell. Inside an effect's
+// callback the flush that is on settles what is changed there.
 export function flush() {
-  drain();
+  if (!applying) drain();
   tell();
 }
 
@@ -809,6 +815,44 @@ function defineProperty(Type, proto, name, initial) {
   defineChange(proto, name);
 }
 
+// Takes an object out of where it was and puts it where it is to be, among
+// the children of each (`$add`, `$remove`), unless it is there already.
+function rehome(self, old, parent) {
+  if (old !== parent) old?.$remove?.(self);
+  if (parent?.$add && !untrack(() => parent.children)?.includes(self)) parent.$add(self);
+}
+
+// `parent`, of a type whose objects are inside one another: one a program
+// gives another parent is from then on among that one's children.
+export function parental(Type) {
+  const { get } = Object.getOwnPropertyDescriptor(Type.proto, "parent");
+  Object.defineProperty(Type.proto, "parent", {
+    get,
+    set(value) {
+      const old = untrack(() => get.call(this));
+      if (!slot(this, "parent").write(value)) return;
+      rehome(this, old, untrack(() => get.call(this)));
+      settle();
+    },
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+// The same for one whose `parent` is bound, whenever what it is bound to
+// changes. `declared` is where it was made, which is where it is until then.
+export function parented(self, props, declared) {
+  if (!("parent" in props)) return;
+  let among;
+  effect(
+    () => self.parent,
+    (parent) => {
+      rehome(self, among === undefined ? declared(self) : among, parent);
+      among = parent ?? null;
+    },
+  );
+}
+
 // `widthChanged`: a property's changes are a signal like any other, to emit
 // and to connect to.
 function defineChange(object, name) {
@@ -1043,16 +1087,20 @@ function inherit(own, given) {
     // What it finds names in is its own context, not the one it was made in.
     if (key === "children" || key === "$self" || key === "$given" || key === "$context") continue;
     const descriptor = Object.getOwnPropertyDescriptor(given, key);
+    // What both say is put in place of what the file said, which may be
+    // there as something computed (`$attach` of `T.Overlay`) that nothing
+    // can be assigned to.
+    const put = (value) => Object.defineProperty(props, key, { value, writable: true, enumerable: true, configurable: true });
     if (!(key in own)) Object.defineProperty(props, key, descriptor);
-    else if (key === "$declare") props.$declare = [own.$declare, given.$declare].flat();
-    else if (key === "$is") props.$is = [own.$is, given.$is].flat();
-    else if (key === "$attach" || key === "$made") props[key] = [...new Set([...own[key], ...given[key]])];
-    else if (key === "$functions" || key === "$aliases") props[key] = { ...own[key], ...given[key] };
+    else if (key === "$declare") put([own.$declare, given.$declare].flat());
+    else if (key === "$is") put([own.$is, given.$is].flat());
+    else if (key === "$attach" || key === "$made") put([...new Set([...own[key], ...given[key]])]);
+    else if (key === "$functions" || key === "$aliases") put({ ...own[key], ...given[key] });
     else if (HANDLER.test(key)) {
-      props[key] = (...args) => {
+      put((...args) => {
         own[key]?.(...args);
         return given[key]?.(...args);
-      };
+      });
     } else Object.defineProperty(props, key, descriptor);
   }
   // `default property list<QtObject> things`: what is written inside an
@@ -1482,10 +1530,14 @@ export function $url(value, base) {
 
 // A type of Qt's that this runtime does not have yet. It is there to be
 // named, since a style of Qt's names every control there is, and says what
-// it is when something is made of it or read off it.
-export function absent(module, name) {
+// it is when something is made of it or read off it. One that is QML of
+// Qt's own is absent where that module of Qt's is not `installed`: the build
+// reads such a type out of Qt.
+export function absent(module, name, installed = true) {
   const fail = () => {
-    throw new Error(`${module}: ${name} is not in qml-solid yet`);
+    throw new Error(
+      installed ? `${module}: ${name} is not in qml-solid yet` : `${module}: ${name} is QML of Qt's own, and Qt's ${module} is not installed here`,
+    );
   };
   return new Proxy(fail, {
     // What is asked of any function, and what the runtime asks of any value

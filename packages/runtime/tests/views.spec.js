@@ -554,3 +554,15 @@ test("a GridView makes delegates for the lines near what is shown, and keeps the
   });
   expect(changed).toEqual([50000, 100, 600, true, 4, 2, 100, ["a@0,50", "b@50,50", "c@50,0", "z@0,0"]]);
 });
+
+// What Qt 6.11 answers for the same scene. Making a delegate that is in a
+// state settles what has changed, and the view is among it while it is
+// being laid out: it makes each row once all the same.
+test("a view whose delegates are in a state makes each row once, also when its model is filled as it is made", async ({ page }) => {
+  await open(page, "viewrefill");
+  const answers = () => page.evaluate(() => JSON.parse(JSON.stringify(window.scene.answers())));
+  const rows = (tag) => [0, 1, 2, 3].map((index) => [`${tag}${index}`, index * 30, index < 2 ? "#fa8a8a" : "#000000"]);
+  expect(await answers()).toEqual([4, rows("a")]);
+  await page.evaluate(() => window.scene.step(0));
+  expect(await answers()).toEqual([8, rows("b")]);
+});

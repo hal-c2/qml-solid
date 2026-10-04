@@ -213,3 +213,14 @@ const NESTED = [
   [["early aboutToShow","early opened","deep aboutToShow","deep opened","nested aboutToShow","nested opened","outer aboutToShow","outer visible true","outer opened"],[true,true],[true,true],[true,true],[true,true]],
   [["deep aboutToHide","deep closed","nested aboutToHide","nested closed","nested aboutToShow","nested opened"],[true,true],[true,true],[false,false],[true,true]],
 ];
+
+// A style's Popup says what dims the window (`T.Overlay.modal`), and so may
+// the one who uses it: both are heard, and the user's is the one shown.
+test("a style's popup dims the window with its own dimmer, or with the one it is given", async ({ page }) => {
+  await open(page, "popupstyled");
+  await stages(page, [
+    [false, false, []],
+    [true, false, [["", "#12000000", 400, 300]]],
+    [false, true, [["own", "#80ff0000", 400, 300]]],
+  ]);
+});

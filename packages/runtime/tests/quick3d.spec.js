@@ -1728,3 +1728,22 @@ test("a CustomMaterial is drawn by its own shaders, handed what Qt hands them", 
   ];
   near(await painted(page, later), later.map(([, colour]) => colour), "", 3);
 });
+
+test("Quaternion makes the turns Qt's makes", async ({ page }) => {
+  await open(page, "quaternion3d");
+  near(await page.evaluate(() => window.scene.read()), {
+    euler: [0.92, -0.081, -0.381, -0.033],
+    eulerVector: [0.683, 0.5, 0.183, 0.5],
+    axis: [0.94, 0.091, 0.183, 0.274],
+    axisVector: [0.707, 0, 0.707, 0],
+    none: [1, 0, 0, 0],
+    two: [0.837, 0.224, 0.483, -0.129],
+    three: [0.683, -0.183, 0.5, 0.5],
+    look: [0.913, 0.183, -0.365, 0],
+    lookFrom: [0.34, 0.752, -0.564, 0],
+    ahead: [1, 0, 0, 0],
+    behind: [0, 0, 1, 0],
+    same: [0.707, 0, 0.707, 0],
+    square: [0.92, -0.081, -0.381, -0.033],
+  });
+});

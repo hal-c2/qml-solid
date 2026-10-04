@@ -585,7 +585,8 @@
       "qt": {
         "runnable": false,
         "reason": "QtQuick3D is not installed, and the map is built by the C++ types OSMManager and OSMGeometry."
-      }
+      },
+      "notes": "The C++ types are stood in for by corpus/standins/osmbuildings: OSMManager asks for the tiles as request.cpp does, OSMGeometry makes the mesh of geometry.cpp (its roofs cut into triangles the plain way, where the C++ has mapbox's earcut), and CustomTextureData has the browser decode a tile's picture. The picture is taken without a network: the sky and the line about the token, with no map. With one, a browser is given the pictures of the map and not the buildings, whose service does not let a page of another site read it."
     },
     {
       "id": "photosurface",

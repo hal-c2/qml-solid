@@ -218,6 +218,7 @@ uniform float u_coatBump;
 uniform vec3 u_coatEdge;
 uniform vec3 u_tint;
 uniform bool u_shiny;
+uniform bool u_glint;
 uniform vec3 u_reads[MAPS];
 uniform mat3 u_places[MAPS];
 uniform float u_specular;
@@ -473,8 +474,9 @@ void main() {
         // How much a surface gives back as shine: a DefaultMaterial in its
         // own colour, a PrincipledMaterial all of it where it is metal. The
         // lights heed the first, and of the second only whether there is
-        // any; the surroundings heed both.
-        vec3 amount = u_principled ? vec3(metalness + u_specular * (1.0 - metalness)) * clamp(u_edge.y + u_edge.x * turning, 0.0, 1.0) : base.rgb * u_specular * turning;
+        // any; the surroundings heed both. What a graph draws gives a light
+        // back in the light's colour.
+        vec3 amount = u_principled ? vec3(metalness + u_specular * (1.0 - metalness)) * clamp(u_edge.y + u_edge.x * turning, 0.0, 1.0) : (u_glint ? vec3(1.0) : base.rgb) * u_specular * turning;
         for (int index = 0; index < u_count; index++) {
             vec3 L = -u_lightWay[index];
             float fade = 1.0;
@@ -565,6 +567,7 @@ const UNIFORMS = [
   "u_coatEdge",
   "u_tint",
   "u_shiny",
+  "u_glint",
   "u_reads",
   "u_places",
   "u_colors",
@@ -1531,6 +1534,7 @@ function drawn(piece) {
   gl.uniform3fv(at.u_coatEdge, material.coatEdge ?? [5, 1, 0]);
   gl.uniform3fv(at.u_tint, material.tint ?? [1, 1, 1]);
   gl.uniform1i(at.u_shiny, material.shiny === false ? 0 : 1);
+  gl.uniform1i(at.u_glint, material.glint ? 1 : 0);
   gl.uniform2fv(at.u_edge, material.edge ?? [1, 0]);
   const reads = new Float32Array(MAPS.length * 3);
   const places = new Float32Array(MAPS.length * 9);
@@ -1663,6 +1667,9 @@ export function draw(scene, canvas, paper) {
         (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, lights, instances, placed, sheer: through });
       });
     }
+    // What nodes draw by themselves (`paints`), each with a program of its
+    // own, is among what is seen through: as far away as the node is.
+    for (const paint of scene.paints ?? []) clear.push({ paint, distance: -math.point(view, ...paint.at)[2] });
     solid.sort((a, b) => a.distance - b.distance);
     clear.sort((a, b) => b.distance - a.distance);
 
@@ -1714,6 +1721,12 @@ export function draw(scene, canvas, paper) {
     gl.enable(gl.BLEND);
     gl.depthMask(false);
     for (const piece of clear) {
+      if (piece.paint) {
+        const own = gl.getParameter(gl.CURRENT_PROGRAM);
+        piece.paint({ gl, view, projection: scene.projection, tonemap: environment.tonemap, bound });
+        gl.useProgram(own);
+        continue;
+      }
       // What is drawn is already times its own alpha.
       const { blend } = piece.material;
       if (blend === 1) gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);

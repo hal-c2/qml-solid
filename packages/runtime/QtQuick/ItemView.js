@@ -189,6 +189,22 @@ function last(self, vertical) {
 }
 
 function refresh(self, state) {
+  // Making a row's item may settle what has changed, which would lay the
+  // view out from inside its own layout and make the row once more: that
+  // turn waits for this one.
+  if (state.laying) {
+    state.dirty = true;
+    return false;
+  }
+  state.laying = true;
+  try {
+    return arrange(self, state);
+  } finally {
+    state.laying = false;
+  }
+}
+
+function arrange(self, state) {
   const rows = state.rows;
   const model = modelOf(self.model);
   const delegate = delegateOf(self.model, self.delegate);
@@ -485,6 +501,8 @@ export const ItemView = defineType("ItemView", Flickable, {
       // What a row is stamped with when a layout needs it.
       pass: 0,
       dirty: false,
+      // Whether it is being laid out now.
+      laying: false,
       fix: false,
       emptied: false,
       laidOut: false,

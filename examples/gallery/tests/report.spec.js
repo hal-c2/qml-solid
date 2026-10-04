@@ -155,8 +155,11 @@ for (const example of readManifest()) {
     };
     await testInfo.attach("example", { body: JSON.stringify(result), contentType: "application/json" });
 
-    // The ratchet.
-    const floor = expected[example.id];
+    // The ratchet, which is for what the runtime does: an example that needs
+    // a module of Qt's that is not installed here is told of and not held to.
+    const uninstalled = result.error?.match(/Qt's (\S+) is not installed here/)?.[1];
+    if (uninstalled) testInfo.annotations.push({ type: "uninstalled", description: `Qt's ${uninstalled} is not installed here` });
+    const floor = uninstalled ? null : expected[example.id];
     if (floor) {
       expect(renders, `${example.id} must keep rendering: ${result.error}`).toBe(true);
       for (const score of ["pixels", "content"]) {

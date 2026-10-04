@@ -142,3 +142,20 @@ test("declared properties, signals and change handlers", async ({ page }) => {
   expect(await page.evaluate(() => window.objects.log)).toEqual(["width 40", "completed 40", "width 100", "poked 3"]);
   expect((await rect(page, "follower")).width).toBe(100);
 });
+
+// What Qt 6.11 answers for the same scene, as it is and after each step.
+test("an item or a node given another parent is among that one's children and placed in it", async ({ page }) => {
+  await open(page, "reparent");
+  const answers = () => page.evaluate(() => JSON.parse(JSON.stringify(window.scene.answers())));
+  expect(await answers()).toEqual([["bound"], ["moved"], ["a", 15, 25], ["b", 230, 80], ["child"], [], "one", [100, 7, 0]]);
+  const after = [
+    [["bound", "moved"], [], ["a", 15, 25], ["a", 40, 50], ["child"], [], "one", [100, 7, 0]],
+    [["moved"], ["bound"], ["b", 205, 55], ["a", 40, 50], ["child"], [], "one", [100, 7, 0]],
+    [["moved"], ["bound"], ["b", 205, 55], ["a", 40, 50], [], ["child"], "two", [-57, 0, 0]],
+    [[], ["bound"], ["b", 205, 55], [null, 30, 30], [], ["child"], "two", [-57, 0, 0]],
+  ];
+  for (const [index, expected] of after.entries()) {
+    await page.evaluate((index) => window.scene.step(index), index);
+    expect(await answers()).toEqual(expected);
+  }
+});

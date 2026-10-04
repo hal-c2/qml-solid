@@ -53,3 +53,10 @@ test("a Binding gives a property its value while `when` holds", async ({ page })
   // The handler heard each width once: none between two values.
   expect(await log(page)).toEqual(["width of two 100", "width of two 200", "width of two 30", "width of two 90"]);
 });
+
+test("a Connections' handler is a function it may call itself", async ({ page }) => {
+  await open(page, "connectioncalled");
+  expect(await page.evaluate(() => window.scene.heard)).toEqual([0]);
+  await page.evaluate(() => (window.scene.count = 2));
+  expect(await page.evaluate(() => window.scene.heard)).toEqual([0, 2]);
+});
