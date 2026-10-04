@@ -69,6 +69,7 @@ Item {
         y: 110
         width: 180
         height: 50
+        hoverEnabled: true
 
         handle: Rectangle { implicitWidth: 10; implicitHeight: 3; color: "gray" }
 

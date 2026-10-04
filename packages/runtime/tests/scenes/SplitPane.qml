@@ -6,6 +6,10 @@ import QtQuick.Templates as T
 T.SplitView {
     id: control
 
+    // What a style does not say: Qt asks the platform, which says no where
+    // nothing is shown.
+    hoverEnabled: true
+
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
                             implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
