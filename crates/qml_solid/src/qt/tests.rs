@@ -79,6 +79,19 @@ fn a_property_knows_what_it_holds() {
     assert!(!property("QtQuick", "Item", "width").is_readonly);
 }
 
+/// QtCharts and QtGraphs each have a `QAbstractAxis`, and they are not one
+/// class: an axis of a graph has a delegate for its labels, one of a chart
+/// has a font for them.
+#[test]
+fn classes_of_one_name_are_each_their_modules() {
+    assert!(property("QtGraphs", "ValueAxis", "labelDelegate").is_component);
+    assert!(ty("QtGraphs", "ValueAxis").property("labelsFont").is_none());
+    assert_eq!(property("QtCharts", "ValueAxis", "labelsFont").type_name, "QFont");
+    assert!(ty("QtCharts", "ValueAxis").property("labelDelegate").is_none());
+    assert_eq!(property("QtGraphs", "GraphsView", "axisX").type_name, "QAbstractAxis@QtGraphs");
+    assert_eq!(property("QtCharts", "LineSeries", "axisX").type_name, "QAbstractAxis@QtCharts");
+}
+
 #[test]
 fn the_default_property_is_inherited() {
     assert_eq!(ty("QtQuick", "Item").default_property(), Some("data"));
