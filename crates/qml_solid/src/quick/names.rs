@@ -218,16 +218,21 @@ impl<'a> Resolver<'a, '_, '_> {
 
     fn access(&mut self, name: &str, member: &str, span: Span) -> Access {
         let Some(kind) = self.type_name(name, span) else { return Access::Static };
-        match self.types.declared_enum(&kind, member) {
+        self.member_of(&kind, member)
+    }
+
+    /// What `member` is to a type, by whatever name the type is found.
+    fn member_of(&self, kind: &Kind, member: &str) -> Access {
+        match self.types.declared_enum(kind, member) {
             Some(true) => return Access::Enum,
             Some(false) => return Access::Static,
             None => {}
         }
         // The keys of the type a singleton is are on its name, as they are
         // on any component's; everything else of it is on the one object.
-        let is_singleton = self.types.is_singleton(&kind);
+        let is_singleton = self.types.is_singleton(kind);
         let rest = if is_singleton { Access::Singleton } else { Access::Static };
-        let Some(ty) = self.types.base(&kind) else { return rest };
+        let Some(ty) = self.types.base(kind) else { return rest };
         if ty.enum_value(member).is_some() {
             return Access::Static;
         }
@@ -241,6 +246,19 @@ impl<'a> Resolver<'a, '_, '_> {
     fn type_member(&mut self, expression: &mut Expression<'a>) -> bool {
         let b = self.b;
         let Expression::StaticMemberExpression(member) = expression else { return false };
+        // `Namespace.Type.Enum`, of `Namespace.Type.Enum.Key`: the keys are
+        // on the type by whatever name it is found.
+        if let Expression::StaticMemberExpression(ty) = &member.object
+            && let Expression::Identifier(namespace) = &ty.object
+            && self.is_free(namespace)
+            && self.types.namespace(namespace.name.as_str()).is_some()
+            && let Some(found) = self.types.find(&[namespace.name.as_str(), ty.property.name.as_str()])
+            && matches!(self.member_of(&found.kind, member.property.name.as_str()), Access::Enum)
+        {
+            self.uses.namespaces.insert(namespace.name.to_string());
+            *expression = member.object.take_in(&b.allocator());
+            return true;
+        }
         let Expression::Identifier(object) = &member.object else { return false };
         let name = object.name.as_str();
         if !self.is_free(object) || !name.starts_with(|c: char| c.is_ascii_uppercase()) {

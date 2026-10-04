@@ -648,10 +648,12 @@ Item {
     ];
     let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
     // `Type.Enum.Key` and `Type.Key` are the same key, as they are in Qt's types.
-    assert_contains(&code, "theme={Swatch.Dark}");
-    assert_contains(&code, "tone={Swatch.Light}");
+    assert_contains(&code, "const Swatch$Dark = Swatch.Dark;");
+    assert_contains(&code, "theme={Swatch$Dark}");
+    assert_contains(&code, "tone={Swatch$Light}");
     // The file is a type to itself too, and is not imported for it.
-    assert_contains(&code, "mine={Sample.Narrow}");
+    assert_contains(&code, "const Sample$Narrow = Sample.Narrow;");
+    assert_contains(&code, "mine={Sample$Narrow}");
     assert_lacks(&code, "import Sample");
     assert_contains(&code, "Object.assign(Sample, {\n\tWide: 0,\n\tNarrow: 4\n});");
     assert_contains(&code, "Object.assign(Chip, {\n\tRound: 0,\n\tSquare: 1\n});");
@@ -677,7 +679,8 @@ Item {
     // `Caption.ElideRight` is a key of Text, which the runtime has and we do
     // not: the component is read for it as Text would be.
     let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
-    assert_contains(&code, "elide={Caption.ElideRight}");
+    assert_contains(&code, "const Caption$ElideRight = Caption.ElideRight;");
+    assert_contains(&code, "elide={Caption$ElideRight}");
     assert_contains(&code, "Object.setPrototypeOf(Sample, Item);");
     assert_contains(&code, "Object.setPrototypeOf(Chip, Caption);");
 
@@ -728,12 +731,12 @@ T.Calendar {
     // `T.Calendar`: a key is read off the name, and the object is not made
     // for it.
     let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
-    assert_contains(&code, "last={Almanac.December}");
-    assert_contains(&code, "march={Almanac.March}");
-    assert_contains(&code, "after={Almanac.After}");
+    assert_contains(&code, "const Almanac$December = Almanac.December;");
+    assert_contains(&code, "const Almanac$March = Almanac.March;");
+    assert_contains(&code, "const Almanac$After = Almanac.After;");
     assert_contains(&code, "month === Almanac.December || month === Solo.B");
     // The keys of a component its root is, too.
-    assert_contains(&code, "kind={Solo.B}");
+    assert_contains(&code, "const Solo$B = Solo.B;");
     // What is not a key is the object's.
     assert_contains(&code, "first={Almanac().firstYear}");
 
@@ -1071,6 +1074,31 @@ Text {
     assert_contains(&code, "number={Text.AlignRight}");
     assert_contains(&code, "verticalAlignment={text.named ? Text.AlignTop : Text.AlignBottom}");
     assert_contains(&code, "elide={text.elide}");
+}
+
+#[test]
+fn an_enum_key_of_a_type_of_a_namespace_is_a_constant() {
+    let code = lowered(
+        r#"import QtQuick
+import QtQuick.Templates as T
+Item {
+    property int month: T.Calendar.Month.March
+    property var held: T.Calendar.Month.March
+    T.Label { elide: T.Label.ElideRight; wrapMode: T.Label.WrapMode.WordWrap }
+    function third() { return T.Calendar.Month.March + T.Label.TextElideMode.ElideRight }
+    function none() { return T.Calendar.Nope.March }
+}"#,
+    );
+    // The keys are on the type, by whatever name it is found: with the name
+    // of the enum between, Qt gives the same number and JavaScript nothing.
+    assert_contains(&code, "const T$Calendar$March = T.Calendar.March;");
+    assert_contains(&code, "month={T$Calendar$March}");
+    assert_contains(&code, "held={T.Calendar.March}");
+    assert_contains(&code, "elide={T$Label$ElideRight}");
+    assert_contains(&code, "const T$Label$WordWrap = T.Label.WordWrap;");
+    assert_contains(&code, "return T.Calendar.March + T.Label.ElideRight;");
+    // What is no enum of the type is left to be what it is.
+    assert_contains(&code, "return T.Calendar.Nope.March;");
 }
 
 #[test]

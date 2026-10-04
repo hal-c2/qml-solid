@@ -29,7 +29,7 @@ use oxc_span::Span;
 use super::{
     paths::{Paths, is_absolute, is_resolved},
     scope::{self, Tree},
-    types::{self, Found, Kind, Member, Origin, Property, Types},
+    types::{self, Member, Origin, Property, Types},
 };
 use crate::{Error, build::B, qt};
 
@@ -858,24 +858,37 @@ impl<'a, 's> Lower<'a, 's> {
     fn key(&mut self, expression: Expression<'a>) -> Expression<'a> {
         let b = self.b;
         let Expression::StaticMemberExpression(member) = &expression else { return expression };
-        // `ListView.SnapMode.SnapOneItem`: the key by the name of its enum.
-        let (object, scope) = match &member.object {
-            Expression::StaticMemberExpression(scope) => (&scope.object, Some(scope.property.name.as_str())),
-            object => (object, None),
-        };
-        let Expression::Identifier(object) = object else { return expression };
-        let (name, key) = (object.name.as_str(), member.property.name.as_str());
-        let is_key = key.starts_with(|c: char| c.is_ascii_uppercase())
-            && match self.types.find(&[name]) {
-                Some(Found { kind: Kind::Qt(ty), origin: Origin::Module(_) }) => {
-                    ty.enum_value(key).is_some_and(|value| {
-                        let enumeration = value.enumeration;
-                        scope.is_none_or(|scope| scope == enumeration.name || Some(scope) == enumeration.alias)
-                    })
+        let key = member.property.name.as_str();
+        let mut path = Vec::new();
+        let mut object = &member.object;
+        loop {
+            match object {
+                Expression::StaticMemberExpression(inner) => {
+                    path.push(inner.property.name.as_str());
+                    object = &inner.object;
                 }
-                Some(_) => false,
-                None => name == "Qt" && scope.is_none(),
+                Expression::Identifier(identifier) => {
+                    path.push(identifier.name.as_str());
+                    break;
+                }
+                _ => return expression,
+            }
+        }
+        path.reverse();
+        // `T.Label.ElideRight`: a type of a namespace is named by both.
+        let named = if self.types.namespace(path[0]).is_some() { 2 } else { 1 };
+        // `ListView.SnapMode.SnapOneItem`: the key by the name of its enum.
+        let (name, scope) = match path.split_at_checked(named) {
+            Some((name, [])) => (name, None),
+            Some((name, [scope])) => (name, Some(*scope)),
+            _ => return expression,
+        };
+        let is_key = key.starts_with(|c: char| c.is_ascii_uppercase())
+            && match self.types.find(name) {
+                Some(found) => self.types.is_key(&found.kind, scope, key),
+                None => name == ["Qt"] && scope.is_none(),
             };
+        let name = name.join("$");
         if !is_key {
             return expression;
         }

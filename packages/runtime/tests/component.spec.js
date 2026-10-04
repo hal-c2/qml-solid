@@ -149,3 +149,23 @@ plain("a binding that cannot be evaluated leaves the property what it was, and s
   expect(warnings.length).toBeGreaterThan(0);
   for (const warning of warnings) expect(warning).toMatch(/^(on|n|label|width|visible|when): TypeError: /);
 });
+
+test("an enum's keys are on a type of the project and on a type of a namespace", async ({ page }) => {
+  await open(page, "enumkeys");
+  const read = await page.evaluate(() => window.scene.read());
+  // Qt 6.11.
+  expect(read).toEqual([
+    // `Swatch.Mid`, `Swatch.Shade.Mid`, `Swatch.Deep`, and what it gives itself.
+    1, 1, 9, 1, 9,
+    // `Chart`, a `Swatch`: its keys, its own, and what an object is given.
+    1, 9, 21, 21, 9, 21, 1,
+    // The keys of `Text`, which both are.
+    1, 1, 1, 1,
+    // `T.Calendar.March`, `T.Calendar.Month.March`, and in a binding.
+    2, 2, 2, 3,
+    // `T.Label.ElideRight`, `T.Label.TextElideMode.ElideRight`, and given.
+    1, 1, 2, 1,
+    // No key at all is undefined.
+    true, true,
+  ]);
+});

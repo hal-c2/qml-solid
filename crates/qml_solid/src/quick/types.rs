@@ -207,6 +207,33 @@ impl<'p> Types<'p> {
         None
     }
 
+    /// Whether `Type.key`, or `Type.scope.key`, is a key of an enum of the
+    /// type: one a component in its chain declares, or one of the Qt type
+    /// the chain ends in.
+    pub(crate) fn is_key(&self, kind: &Kind, scope: Option<&str>, key: &str) -> bool {
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            let file = match kind {
+                Kind::Qt(ty) => {
+                    return ty.enum_value(key).is_some_and(|value| {
+                        let enumeration = value.enumeration;
+                        scope.is_none_or(|scope| scope == enumeration.name || Some(scope) == enumeration.alias)
+                    });
+                }
+                Kind::Component(file) => file,
+            };
+            let Some(shape) = self.project.shape(&file) else { return false };
+            if shape.enums.iter().any(|(name, keys)| {
+                scope.is_none_or(|scope| scope == name) && keys.iter().any(|known| known == key)
+            }) {
+                return true;
+            }
+            let Some(root) = self.root(&file, shape) else { return false };
+            kind = root;
+        }
+        false
+    }
+
     /// Whether `name` is what the file imports something `as`.
     pub(crate) fn namespace(&self, name: &str) -> Option<&'p Source> {
         let summary = self.project.summary(self.file)?;
