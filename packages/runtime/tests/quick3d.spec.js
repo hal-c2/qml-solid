@@ -1222,3 +1222,34 @@ test("an ExtendedSceneEnvironment brings a scene to the screen as Qt's does", as
   await page.evaluate(() => window.scene.dithered());
   near(await painted(page, dithered, 2), dithered.map(([, colour]) => colour), "dithered", 1);
 });
+
+test("a scene's fog hides what is far and what is low, as Qt's does", async ({ page }) => {
+  // The three cubes from the nearest back, the tall one near its top, at
+  // its middle and near its foot, the two that take no light, of which the
+  // second gives off light of its own, and what is behind them all.
+  const at = [[40, 100], [115, 60], [135, 30], [170, 40], [170, 100], [170, 160], [215, 75], [215, 130], [270, 100]];
+  const states = [
+    // What is not lit is not in the fog, nor is what is behind the scene.
+    ["", [[91, 155, 224], [168, 174, 193], [190, 160, 103], [176, 171, 163], [176, 171, 164], [176, 171, 163], [64, 192, 96], [196, 146, 96], [30, 47, 64]]],
+    ["halved()", [[85, 154, 227], [154, 181, 225], [148, 157, 181], [175, 172, 168], [175, 172, 169], [175, 172, 168], [64, 192, 96], [201, 124, 97], [30, 47, 64]]],
+    ["curved()", [[78, 154, 229], [150, 183, 232], [187, 159, 112], [173, 173, 172], [173, 173, 173], [173, 173, 172], [64, 192, 96], [200, 130, 97], [30, 47, 64]]],
+    ["high()", [[150, 157, 179], [140, 188, 249], [78, 154, 230], [173, 173, 173], [183, 166, 141], [192, 160, 96], [64, 192, 96], [192, 157, 96], [30, 47, 64]]],
+    // By its height a fog is as thick as it is whatever `density` and
+    // `heightCurve` say.
+    ["highCurved()", [[150, 157, 179], [140, 188, 249], [78, 154, 230], [173, 173, 173], [183, 166, 141], [192, 160, 96], [64, 192, 96], [192, 157, 96], [30, 47, 64]]],
+    ["both()", [[150, 157, 179], [168, 174, 193], [190, 160, 103], [176, 171, 163], [183, 166, 141], [192, 160, 96], [64, 192, 96], [192, 157, 96], [30, 47, 64]]],
+    ["through()", [[91, 155, 229], [168, 181, 224], [190, 160, 109], [176, 173, 171], [176, 173, 172], [176, 173, 171], [64, 192, 96], [199, 146, 97], [30, 47, 64]]],
+    ["throughCurved()", [[91, 155, 230], [168, 187, 248], [190, 160, 124], [176, 173, 173], [176, 173, 173], [176, 173, 173], [64, 192, 96], [203, 146, 97], [30, 47, 64]]],
+    // With no far end said the fog ends where the camera stops seeing,
+    // which here is nearer than the last cube.
+    ["far()", [[106, 155, 216], [188, 163, 123], [30, 47, 64], [180, 168, 150], [180, 169, 152], [180, 168, 150], [64, 192, 96], [192, 160, 96], [30, 47, 64]]],
+    // Neither by how far nor by how high: no fog.
+    ["neither()", [[78, 154, 230], [138, 188, 252], [78, 154, 230], [173, 173, 173], [173, 173, 173], [173, 173, 173], [64, 192, 96], [206, 97, 97], [30, 47, 64]]],
+    ["off()", [[78, 154, 230], [138, 188, 252], [78, 154, 230], [173, 173, 173], [173, 173, 173], [173, 173, 173], [64, 192, 96], [206, 97, 97], [30, 47, 64]]],
+  ];
+  for (const [call, colours] of states) {
+    await open(page, "fog3d");
+    if (call) await page.evaluate(`window.scene.${call}`);
+    near(await painted(page, at.map((point, index) => [point, colours[index]])), colours, call, 3);
+  }
+});

@@ -697,6 +697,38 @@ export const CustomCamera = defineType("CustomCamera", Camera, {
   },
 });
 
+// Fog: what is far from the camera, or low, fades into one colour. With
+// neither of the two asked for there is none.
+export const Fog = defineType("Fog", Object3D, {
+  properties: {
+    enabled: false,
+    color: "#8099b3",
+    density: 1,
+    depthEnabled: false,
+    depthNear: 10,
+    depthFar: 1000,
+    depthCurve: 1,
+    heightEnabled: false,
+    leastIntenseY: 10,
+    mostIntenseY: 0,
+    heightCurve: 1,
+    transmitEnabled: false,
+    transmitCurve: 1,
+  },
+  setup(self) {
+    self.$fog = () => {
+      if (!self.enabled || !(self.depthEnabled || self.heightEnabled)) return null;
+      const [red, green, blue] = linear(self.color);
+      return {
+        color: [red, green, blue, self.density],
+        depth: [self.depthNear, self.depthFar, self.depthCurve, self.depthEnabled ? 1 : 0],
+        height: [self.leastIntenseY, self.mostIntenseY, self.heightCurve, self.heightEnabled ? 1 : 0],
+        through: [self.transmitCurve, self.transmitEnabled ? 1 : 0],
+      };
+    };
+  },
+});
+
 const Transparent = 0;
 const Color = 2;
 const SkyBox = 3;
@@ -787,6 +819,7 @@ export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
         samples: self.antialiasingMode === NoAA ? 0 : self.antialiasingQuality,
         tonemap: self.tonemapMode,
         depth: self.depthTestEnabled,
+        fog: self.fog?.$fog?.() ?? null,
       };
     };
   },

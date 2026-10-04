@@ -8,6 +8,7 @@ export {
   CustomCamera,
   DefaultMaterial,
   DirectionalLight,
+  Fog,
   FrustumCamera,
   Light,
   Material,

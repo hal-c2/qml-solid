@@ -20,6 +20,9 @@
 // which a browser that cannot draw into such a picture does not do, and
 // there the scene is drawn as under a SceneEnvironment.
 //
+// A surface that is lit is in the scene's fog, where it has one. One that
+// is not lit, and what is behind the scene, are not, as in Qt.
+//
 // Not here: a probe that is a canvas is folded once, as it is when first
 // drawn, and a material's own probe is not looked at.
 import * as math from "./math.js";
@@ -27,6 +30,7 @@ import { Triangles } from "./mesh.js";
 
 // As many lights as Qt lets a surface have.
 const LIGHTS = 15;
+const NONE = [0, 0, 0, 0];
 
 // Linear light and the screen's, by Qt's own sums, and Qt's ways of bringing
 // the one to the other.
@@ -212,6 +216,11 @@ uniform mat3 u_probeTurn;
 // How what a surface gives back of its surroundings as it is turned from
 // the eye is scaled and shifted.
 uniform vec2 u_edge;
+uniform vec4 u_fog;
+uniform vec4 u_fogDepth;
+uniform vec4 u_fogHeight;
+uniform vec2 u_fogLet;
+uniform float u_far;
 out vec4 fragColor;
 ${TONES}
 // What is read of the surroundings is brought under one before the tone
@@ -315,6 +324,32 @@ vec3 ggx(vec3 N, vec3 L, vec3 V, vec3 f0, float roughness) {
     float seen = ggx2cos(NdotL, alpha) * ggx2cos(NdotV, alpha);
     vec3 F = mix(vec3(schlick(LdotH)), vec3(1.0), f0);
     return NdotL * spread * F * seen;
+}
+
+// From nothing at one end to all at the other, slowly at both, whichever of
+// the ends is the greater.
+float eased(float from, float to, float at) {
+    float t = clamp((at - from) / (to - from), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+// Fog, by Qt's own sums: more of it the further a surface is from the eye,
+// and the lower it lies, in place of what the surface gives back. Where it
+// lets light through, what is brighter than the fog shows in it, the less
+// the further off. How thick the fog is and the curve of the height are not
+// heeded for the height, as Qt does not heed them.
+void fogged(inout vec3 given, inout vec3 shine, inout vec3 diffuse) {
+    float amount = 0.0;
+    vec3 colour = u_fog.rgb;
+    if (u_fogDepth.w > 0.5) {
+        float far = eased(u_fogDepth.x, u_fogDepth.y > 0.0 ? u_fogDepth.y : u_far, length(u_eye - v_position));
+        amount = pow(far, u_fogDepth.z) * u_fog.a;
+        if (u_fogLet.y > 0.5) colour = mix(max(given + shine + diffuse, colour), colour, pow(far, u_fogLet.x));
+    }
+    if (u_fogHeight.w > 0.5) amount = max(amount, eased(u_fogHeight.x, u_fogHeight.y, v_position.y));
+    given = given * (1.0 - amount) + colour * amount;
+    shine *= 1.0 - amount;
+    diffuse *= 1.0 - amount;
 }
 
 void main() {
@@ -456,6 +491,7 @@ void main() {
             }
         }
         if (u_principled) diffuse *= 1.0 - metalness;
+        if (u_fogDepth.w + u_fogHeight.w > 0.5) fogged(given, shine, diffuse);
         sum = diffuse + shine + given;
         // What is under a clear coat shows less the more the coat itself
         // gives back, which is more the further it is turned from the eye.
@@ -527,6 +563,11 @@ const UNIFORMS = [
   "u_probing",
   "u_probeTurn",
   "u_edge",
+  "u_fog",
+  "u_fogDepth",
+  "u_fogHeight",
+  "u_fogLet",
+  "u_far",
 ];
 
 // The three corners of a triangle that covers everything, which is all the
@@ -1303,6 +1344,11 @@ export function draw(scene, canvas, paper) {
     const ambient = [0, 0, 0];
     for (const light of scene.lights) for (let index = 0; index < 3; index++) ambient[index] += light.ambient[index];
     gl.uniform3fv(at.u_eye, eye.slice(12, 15));
+    gl.uniform4fv(at.u_fog, environment.fog?.color ?? NONE);
+    gl.uniform4fv(at.u_fogDepth, environment.fog?.depth ?? NONE);
+    gl.uniform4fv(at.u_fogHeight, environment.fog?.height ?? NONE);
+    gl.uniform2fv(at.u_fogLet, environment.fog?.through ?? NONE.slice(0, 2));
+    gl.uniform1f(at.u_far, scene.far ?? 0);
     gl.uniform3fv(at.u_ambient, ambient);
     gl.uniform1i(at.u_tonemap, tonemap);
     gl.uniform1i(at.u_count, lights.length);
