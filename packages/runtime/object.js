@@ -916,7 +916,19 @@ export function defineType(name, base, spec = {}) {
   for (const signalName of spec.signals ?? []) defineSignal(proto, signalName);
   if (spec.methods) Object.defineProperties(proto, Object.getOwnPropertyDescriptors(spec.methods));
   if (spec.attached) Type.attached = (self) => attach(name, spec.attached, self);
+  Object.defineProperty(Type, Symbol.hasInstance, { value: isA });
   return Type;
+}
+
+// `item instanceof Shape`: the object is of the type, or of one that extends
+// it. A component (`Tile.qml`) finds this through the type of its root, and
+// its objects are the ones it made.
+function isA(object) {
+  const type = object?.$type;
+  if (!type) return false;
+  if (Object.hasOwn(this, "chain")) return type.chain.includes(this);
+  const made = object.$props.$is;
+  return Array.isArray(made) ? made.includes(this) : made === this;
 }
 
 // What waits for the tree being created: QML makes every object of a
@@ -995,6 +1007,7 @@ function inherit(own, given) {
     const descriptor = Object.getOwnPropertyDescriptor(given, key);
     if (!(key in own)) Object.defineProperty(props, key, descriptor);
     else if (key === "$declare") props.$declare = [own.$declare, given.$declare].flat();
+    else if (key === "$is") props.$is = [own.$is, given.$is].flat();
     else if (key === "$attach" || key === "$made") props[key] = [...new Set([...own[key], ...given[key]])];
     else if (key === "$functions" || key === "$aliases") props[key] = { ...own[key], ...given[key] };
     else if (HANDLER.test(key)) {
@@ -1175,7 +1188,16 @@ function create(Type, props) {
       );
     }
     const destruction = props.Component$onDestruction;
-    if (destruction) onCleanup(() => destruction());
+    if (destruction) {
+      // Told once: when `destroy()` ends the object, or what owns it ends.
+      const tell = () => {
+        if (self.$gone) return;
+        hidden(self, "$gone", true);
+        destruction();
+      };
+      hidden(self, "$destruction", tell);
+      onCleanup(tell);
+    }
     // Whoever read the object before it existed reads it again.
     if (props.$self) self.$touch(next);
     return self;
@@ -1290,7 +1312,8 @@ export function $component(make) {
   make.errorString = () => "";
   make.statusChanged = make.progressChanged = silent;
   make.createObject = (item, properties) => {
-    const { object } = instantiate(make, properties ?? {}, item);
+    const { object, dispose } = instantiate(make, properties ?? {}, item);
+    hidden(object, "$dispose", dispose);
     for (const [name, value] of Object.entries(properties ?? {})) {
       if (name in object) object[name] = value;
     }
@@ -1516,4 +1539,28 @@ export function $signal(initial) {
 
 export const QtObject = defineType("QtObject", null, {
   properties: { objectName: "" },
+  methods: {
+    // Gone once what asked is done, or `delay` milliseconds on: out of what
+    // it is in, and told of its destruction. One that a component made by
+    // `createObject` stops there; what one written in a file does goes on
+    // until what the file made ends.
+    destroy(delay = 0) {
+      if (this.$destroyed) return;
+      hidden(this, "$destroyed", true);
+      setTimeout(() => {
+        (this.parent ?? this.$parent)?.$remove?.(this);
+        this.$destruction?.();
+        this.$dispose?.();
+        flush();
+      }, delay);
+    },
+    // True of everything the object has, as in Qt: a property of its type's
+    // is its own, and so is the handler of a signal.
+    hasOwnProperty(name) {
+      if (typeof name !== "string" || name[0] === "$") return false;
+      if (name in this) return true;
+      const signal = /^on([A-Z])(\w*)$/.exec(name);
+      return signal !== null && typeof this[signal[1].toLowerCase() + signal[2]]?.connect === "function";
+    },
+  },
 });

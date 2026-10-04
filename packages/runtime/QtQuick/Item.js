@@ -293,10 +293,12 @@ export const Item = defineType("Item", QtObject, {
       arranged(this);
       this.$touch((version) => version + 1);
     },
+    // Takes one out, whether it was made with this or added later.
     $remove(item) {
       const index = this.$extra?.indexOf(item) ?? -1;
-      if (index < 0) return;
-      this.$extra.splice(index, 1);
+      if (index >= 0) this.$extra.splice(index, 1);
+      else if (this.$static.includes(item)) this.$static = this.$static.filter((child) => child !== item);
+      else return;
       this.$touch((version) => version + 1);
     },
     // `mapToItem`, `mapFromItem`, `mapToGlobal`, `mapFromGlobal`, `contains`

@@ -53,7 +53,7 @@ Rectangle {
     assert_contains(&code, "const root = $props.$self ?? $object();");
     assert_contains(
         &code,
-        r#"<Rectangle $self={root} $given={$props} width={200} color={"red"} border$width={2} border$color={"black"}>"#,
+        r#"<Rectangle $self={root} $given={$props} $is={Sample} width={200} color={"red"} border$width={2} border$color={"black"}>"#,
     );
     // `parent` is the Text's: an object nothing else names gets a name of ours.
     assert_contains(&code, "const $1 = $object();");
