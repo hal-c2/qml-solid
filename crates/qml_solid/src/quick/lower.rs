@@ -767,6 +767,11 @@ impl<'a, 's> Lower<'a, 's> {
     fn value(&mut self, value: QmlBindingValue<'a>, property: Property) -> Expression<'a> {
         let b = self.b;
         match value {
+            // A script is a function of nothing, run when its time comes.
+            QmlBindingValue::Expression(expression) if property.is_script => b.arrow(&[], expression),
+            QmlBindingValue::Statement(statement) if property.is_script => {
+                b.arrow_block(&[], self.statements(statement))
+            }
             QmlBindingValue::Expression(expression) if property.is_url => self.url(expression),
             QmlBindingValue::Expression(expression) => expression,
             // A block is the body of a function whose result is the value.

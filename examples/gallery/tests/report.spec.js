@@ -49,6 +49,14 @@ for (const example of readManifest()) {
       (route) => route.abort(),
     );
     if (example.volatile === "time" && example.capturedAt) await page.clock.setFixedTime(example.capturedAt);
+    // What moves is where it was in the reference only at the same moment:
+    // its time stands still until it is there, and then runs as long as Qt's
+    // did.
+    const moving = example.volatile === "animation";
+    if (moving) {
+      await page.clock.install({ time: 0 });
+      await page.clock.pauseAt(1000);
+    }
     await page.setViewportSize({ width: Math.max(width, 800), height: height + 200 });
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -75,7 +83,8 @@ for (const example of readManifest()) {
     // Its pictures and fonts are asked for when it is made: a busy server
     // may take longer over them than the wait that follows.
     await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
-    await page.waitForTimeout(example.qt?.settle ?? 1500);
+    if (moving) await page.clock.runFor(example.qt?.settle ?? 1500);
+    else await page.waitForTimeout(example.qt?.settle ?? 1500);
     // A window nothing shows is there and not to be seen: its QML does not
     // say `visible`, and main.cpp is what shows it.
     const state = await page.evaluate(() => {

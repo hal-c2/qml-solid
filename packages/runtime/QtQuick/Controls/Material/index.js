@@ -203,6 +203,7 @@ function fonts(dense) {
       MenuItem: large,
       MenuSeparator: large,
       SpinBox: large,
+      DoubleSpinBox: large,
       TextArea: large,
       TextField: large,
     },

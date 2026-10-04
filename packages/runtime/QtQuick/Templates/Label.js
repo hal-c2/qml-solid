@@ -13,5 +13,7 @@ export const Label = defineType("Label", Text, {
     implicitBackgroundHeight: derived((self) => self.background?.implicitHeight ?? 0),
   },
   methods,
-  setup: backed,
+  // A type's setup is given its properties too, which are not what a
+  // background fills.
+  setup: (self) => backed(self),
 });

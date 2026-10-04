@@ -47,11 +47,12 @@ const SIGNAL =
 // What was noted is what Qt notes, but for one thing: properties that changed
 // together say so in whatever order here, where Qt's is the order it set them
 // in. So those next to each other are compared sorted; signals are in order.
-export function order(notes) {
+// `signal` is what a scene's signals are noted as, where not as `name.signal`.
+export function order(notes, signal = SIGNAL) {
   const sorted = [];
   for (let from = 0; from < notes.length; ) {
     let to = from;
-    while (to < notes.length && !SIGNAL.test(notes[to])) to++;
+    while (to < notes.length && !signal.test(notes[to])) to++;
     if (to === from) sorted.push(notes[from++]);
     else sorted.push(...notes.slice(from, to).sort());
     from = Math.max(from, to);
@@ -59,4 +60,5 @@ export function order(notes) {
   return sorted;
 }
 
-export const said = async (page, notes) => expect(order(await take(page))).toEqual(order(notes));
+export const said = async (page, notes, signal) =>
+  expect(order(await take(page), signal)).toEqual(order(notes, signal));
