@@ -33,6 +33,10 @@
       "pixels": 0.9,
       "content": 0.75
     },
+    "thermostat": {
+      "pixels": 0.9,
+      "content": 0.8
+    },
     "windowembedding": {}
   }
 }
