@@ -46,6 +46,14 @@ function style(importer) {
   return "Fusion";
 }
 
+// What an example's qtquickcontrols2.conf says besides the style: the theme
+// and the colours its style has.
+function controls(importer) {
+  const example = readManifest().find(({ directory }) => importer?.startsWith(directory + sep));
+  const conf = example?.qt.controlsConf && join(example.directory, example.qt.controlsConf);
+  return conf && existsSync(conf) ? conf : undefined;
+}
+
 // The QML that stands in for the C++ of the example a file is of, or is
 // itself one of the files that do.
 function standins(file) {
@@ -75,7 +83,7 @@ function tolerant(plugin) {
 
 export default defineConfig({
   base: "./",
-  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), style, standins }))],
+  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), style, controls, standins }))],
   resolve: {
     // Qt's examples have no app behind them: nothing to find here.
     alias: { "qml-solid/host": path("./host.js") },
