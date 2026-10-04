@@ -141,6 +141,40 @@ test("emitters and affectors work in the order Qt's do", async ({ page }) => {
   await follow(page, "particles3dorder");
 });
 
+// What Qt 6.11 answers for the same scene, in which the time goes by
+// itself and a fifth of a second is let pass before each answer: a system
+// that is running has emitted what its time gives; paused, its time stands
+// and comes on again from there; stopped, it stands and what there is
+// stays; set running again it begins again from nought with nothing in
+// it; and to stop it or start it is to have it not paused.
+test("a running system goes, pauses and begins again as Qt's does", async ({ page }) => {
+  await open(page, "particles3drunning&still");
+  const pass = () => page.evaluate(() => window.clock.advance(200));
+  const [first, ...steps] = qt.particles3drunning;
+  await pass();
+  expect(await read(page), "before any step").toEqual(first);
+  for (let step = 0; step < steps.length; step++) {
+    await act(page, step);
+    await pass();
+    expect(await read(page), `after step ${step}`).toEqual(steps[step]);
+  }
+});
+
+// Not Qt's answer, whose time is not a test's to move, but what follows
+// from the scene: what was emitted at the start going right at 100 a
+// second is drawn 100 to the right after a second, a model and a sprite,
+// and stays there while no time passes.
+test("a running system is drawn where its time has brought it", async ({ page }) => {
+  await page.setViewportSize({ width: 400, height: 300 });
+  await open(page, "particles3drunning&still");
+  const seen = () => pixels(page, [[200, 250], [300, 250], [200, 200], [300, 200]]);
+  await expect.poll(seen).toEqual(["255 255 255", "0 0 0", "255 0 0", "0 0 0"]);
+  await page.evaluate(() => window.clock.advance(1000));
+  await expect.poll(seen).toEqual(["0 0 0", "255 255 255", "0 0 0", "255 0 0"]);
+  await page.evaluate(() => window.clock.advance(0));
+  expect(await seen()).toEqual(["0 0 0", "255 255 255", "0 0 0", "255 0 0"]);
+});
+
 // What Qt 6.11 draws of the same scene: a sprite lies in the scene, turned
 // as its particle is, or faces the eye turned the other way round; is moved
 // aside by its offsets; is half there by its colour, over what is behind

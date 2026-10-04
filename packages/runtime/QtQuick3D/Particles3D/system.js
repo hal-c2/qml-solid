@@ -191,10 +191,18 @@ export const ParticleSystem3D = defineType("ParticleSystem3D", Node, {
       },
       idle: () => 0,
     };
+    // To stop a system or start it is to have it not paused, and one that
+    // is started again begins with nothing in it, as Qt's does.
+    let ran = null;
     effect(
       () => Boolean(self.running),
       (running) => {
+        if (running === ran) return;
+        const again = ran !== null;
+        ran = running;
+        if (again) slot(self, "paused").write(false);
         if (!running) return;
+        if (again) self.reset();
         gone = 0;
         slot(self, "time").write(0);
       },
