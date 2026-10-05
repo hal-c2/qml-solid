@@ -26,6 +26,11 @@ Item {
         property var source: ShaderEffectSource { sourceItem: tinted }
     }
     ShaderEffect {
+        id: halved
+        x: 120; y: 120; width: 100; height: 50
+        property var source: ShaderEffectSource { sourceItem: flag; sourceRect: Qt.rect(20, 0, 20, 20) }
+    }
+    ShaderEffect {
         id: squeezed
         y: 180; width: 100; height: 50
         property color tint: "#00ff00"
