@@ -192,3 +192,16 @@ test("Component.onCompleted is told of the object made last first, when all have
     "a1",
   ]);
 });
+
+test("what reads a property is not asked again for what else becomes of the object", async ({ page }) => {
+  await open(page, "followed");
+  const said = await page.evaluate(() => [window.scene.said(), ...[0, 1, 2, 3, 4].map((index) => window.scene.step(index))]);
+  expect(said).toEqual([
+    [["fixed", "name"], 3, "page", 0],
+    [[], 3, "page", 1],
+    [[], 3, "page", 1],
+    [["fixed"], 4, "page", 1],
+    [[], 4, "page", 1],
+    [["name"], 4, "leaf", 1],
+  ]);
+});

@@ -10,7 +10,8 @@ import {
   runWithOwner,
   untrack,
 } from "solid-js";
-import { defineType, QtObject, slot, whenComplete } from "../object.js";
+import { defineType, QtObject, slot, whenComplete, whenCompleted } from "../object.js";
+import { Component } from "../QtQml/Component.js";
 
 const SYNC = { sync: true };
 const DEFER = { defer: true };
@@ -62,6 +63,11 @@ export const Connections = defineType("Connections", QtObject, {
     // A handler is a function of the object too, which a program may call
     // itself: to do at the start what it does at each change.
     for (const handler of handlers) Object.defineProperty(self, handler, { value: (...args) => props[handler]?.(...args), configurable: true });
+    // `target: Component` is the Connections' own: what any object is told
+    // of itself, of its completion and its end, this one hears as signals.
+    const own = () => untrack(() => self.target) === Component;
+    if (props.onCompleted) whenCompleted(() => own() && self.enabled && props.onCompleted());
+    if (props.onDestruction) onCleanup(() => own() && untrack(() => self.enabled && props.onDestruction()));
     whenComplete(() => {
       let disconnect = null;
       createRenderEffect(
@@ -75,7 +81,7 @@ export const Connections = defineType("Connections", QtObject, {
         ([target]) => {
           disconnect?.();
           disconnect = null;
-          if (target == null) return;
+          if (target == null || target === Component) return;
           disconnect = runWithOwner(self.$owner, () =>
             createRoot((dispose) => {
               untrack(() => {

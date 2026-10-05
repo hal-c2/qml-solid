@@ -64,6 +64,8 @@ export function modelIndex(model, row, column = 0) {
 // was changed, and of a new `role(name)`. A ListModel is one, and so is
 // whatever else is made from this: a model read from a file, a proxy.
 export const AbstractListModel = defineType("AbstractListModel", QtObject, {
+  // A QAbstractItemModel's, for a program that follows a model itself.
+  signals: ["dataChanged", "rowsInserted", "rowsRemoved", "rowsMoved"],
   methods: {
     rowCount() {
       return this.$elements.length;
@@ -74,17 +76,37 @@ export const AbstractListModel = defineType("AbstractListModel", QtObject, {
     index(row, column = 0) {
       return modelIndex(this, row, column);
     },
+    // Views hear first, and the program after them.
     $observe(listener) {
-      this.$listeners.add(listener);
+      this.$listeners.delete(this.$aloud);
+      this.$listeners.add(listener).add(this.$aloud);
       return () => this.$listeners.delete(listener);
     },
   },
   setup(self) {
     self.$elements = [];
     self.$roles = [];
-    self.$listeners = new Set();
+    self.$aloud = {
+      inserted: (index, count) => self.rowsInserted(NOWHERE, index, index + count - 1),
+      removed: (index, count) => self.rowsRemoved(NOWHERE, index, index + count - 1),
+      // Where they went is the row they now stand before, counted as rows
+      // were before the move.
+      moved: (from, to, count) => self.rowsMoved(NOWHERE, from, from + count - 1, NOWHERE, to > from ? to + count : to),
+      role() {},
+    };
+    self.$listeners = new Set([self.$aloud]);
   },
 });
+
+// A row's values changed: `names` are the roles that did.
+function changed(model, row, names) {
+  const index = modelIndex(model, row);
+  model.dataChanged(
+    index,
+    index,
+    names.map((name) => model.$roles.indexOf(name)),
+  );
+}
 
 // Every row of such a model replaced: `elements` are the new ones and
 // `roles` the names they have.
@@ -125,7 +147,10 @@ function defineRole(model, name, value) {
     },
     // `model.get(0).name = "x"` changes the model.
     set(given) {
-      if (store(model, this, name, given)) settle();
+      if (!store(model, this, name, given)) return;
+      const row = model.$elements.indexOf(this);
+      if (row >= 0) changed(model, row, [name]);
+      settle();
     },
     enumerable: true,
     configurable: true,
@@ -222,7 +247,8 @@ export const ListModel = defineType("ListModel", AbstractListModel, {
         return;
       }
       const record = dict?.[RECORD] ?? dict ?? {};
-      for (const name of Object.keys(record)) store(this, elements[index], name, record[name]);
+      const names = Object.keys(record).filter((name) => store(this, elements[index], name, record[name]));
+      if (names.length) changed(this, index, names);
       settle();
     },
     setProperty(index, property, value) {
@@ -231,7 +257,9 @@ export const ListModel = defineType("ListModel", AbstractListModel, {
         console.warn(`ListModel: setProperty: index ${index} out of range`);
         return;
       }
-      if (store(this, elements[index], property, value)) settle();
+      if (!store(this, elements[index], property, value)) return;
+      changed(this, index, [property]);
+      settle();
     },
     clear() {
       const length = this.$elements.length;

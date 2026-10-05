@@ -25,6 +25,7 @@ export const shows = (item, model) =>
 export function reparent(item, parent) {
   if (item.$parent === parent) return;
   item.$parent = parent;
+  slot(item, "parent").changed();
   item.$touch(next);
 }
 

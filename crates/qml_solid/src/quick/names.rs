@@ -44,7 +44,7 @@ pub(crate) fn resolve<'a>(
     errors: &mut Vec<Error>,
 ) {
     let free = free_references(program, own);
-    let mut resolver = Resolver { b, tree, types, own, dynamic, free, uses, errors };
+    let mut resolver = Resolver { b, tree, types, own, dynamic, free, functions: 0, uses, errors };
     resolver.visit_program(program);
     Pruner { used: &resolver.uses.handles }.visit_program(program);
 }
@@ -91,6 +91,9 @@ struct Resolver<'a, 's, 'p> {
     /// [`Project::dynamic_names`]: crate::project::Project::dynamic_names
     dynamic: &'s HashSet<String>,
     free: HashSet<u32>,
+    /// How many functions what is being read is written in: `this` is the
+    /// function's own there.
+    functions: u32,
     uses: &'s mut Uses,
     errors: &'s mut Vec<Error>,
 }
@@ -564,6 +567,11 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
                     *expression = read;
                 }
             }
+            // In a binding or a handler `this` is the object it is written
+            // on, and what a state changes when it is written in one.
+            Expression::ThisExpression(this) if self.functions == 0 && !this.span.is_empty() => {
+                *expression = self.scope(this.span.start);
+            }
             _ => walk_mut::walk_expression(self, expression),
         }
     }
@@ -619,7 +627,11 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
     fn visit_function(&mut self, function: &mut Function<'a>, flags: ScopeFlags) {
         function.return_type = None;
         function.type_parameters = None;
+        // One that was written, and not the component's own.
+        let written = u32::from(!function.span.is_empty());
+        self.functions += written;
         walk_mut::walk_function(self, function, flags);
+        self.functions -= written;
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &mut ArrowFunctionExpression<'a>) {
@@ -691,6 +703,7 @@ pub(crate) const QML_GLOBALS: &[&str] = &[
     "QT_TRANSLATE_NOOP",
     "print",
     "gc",
+    "XMLHttpRequest",
 ];
 
 pub(crate) const JS_GLOBALS: &[&str] = &[
@@ -751,7 +764,6 @@ pub(crate) const JS_GLOBALS: &[&str] = &[
     "Intl",
     "URL",
     "URLSearchParams",
-    "XMLHttpRequest",
 ];
 
 /// What `import "lib.js" as Lib` or `import QtQuick.Controls as C` is to the

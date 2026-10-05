@@ -205,6 +205,23 @@ Item {
 }
 
 #[test]
+fn a_request_is_qmls_not_the_browsers() {
+    // QML's XMLHttpRequest says nothing of a header no program may set, and
+    // finds what a `qrc:` address names.
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    function ask(url) {
+        const request = new XMLHttpRequest()
+        request.open("GET", url)
+        request.send()
+    }
+}"#,
+    );
+    assert_contains(&code, r#"import { XMLHttpRequest } from "qml-solid/QtQml";"#);
+}
+
+#[test]
 fn what_a_type_attaches_is_read_of_another_object_too() {
     let code = lowered(
         r#"import QtQuick
@@ -1478,4 +1495,34 @@ Item {
     assert_contains(&code, r#"new URL("images/none", import.meta.url)"#);
     assert_contains(&code, r#"new URL("images/logo.v2", import.meta.url)"#);
     assert_contains(&code, r#"new URL("../logo", import.meta.url)"#);
+}
+
+#[test]
+fn this_is_the_object_a_binding_or_a_handler_is_written_on() {
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    id: root
+    function grown() { return this.width + 1 }
+    Rectangle {
+        id: box
+        width: this.height * 2
+        border.width: this.height
+        property var each: [1, 2].map(n => this.height + n)
+        property var own: [1, 2].map(function () { return this })
+        MouseArea { onClicked: console.log(this.width); Component.onCompleted: this.width = 3 }
+        states: State { PropertyChanges { target: box; color: this.height > 3 ? "red" : "blue" } }
+    }
+}"#,
+    );
+    assert_contains(&code, "width={box.height * 2}");
+    assert_contains(&code, "border$width={box.height}");
+    assert_contains(&code, "[1, 2].map((n) => box.height + n)");
+    assert_contains(&code, "onClicked={(mouse) => console.log($1.width)}");
+    assert_contains(&code, "Component$onCompleted={() => $1.width = 3}");
+    // What a state changes is a binding of its target's.
+    assert_contains(&code, r#"() => box.height > 3 ? "red" : "blue""#);
+    // A function has its own: the object it is called on, or none.
+    assert_contains(&code, "return this.width + 1;");
+    assert_contains(&code, "return this;");
 }

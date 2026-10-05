@@ -314,6 +314,23 @@ function shadow(style, color) {
 
 const ALIGNS = { 1: "left", 2: "right", 4: "center", 8: "justify" };
 
+// Plain text, with the letters at `marks` underlined: a label's mnemonics.
+function write(content, text, marks) {
+  if (!marks) {
+    content.textContent = text;
+    return;
+  }
+  const pieces = [];
+  let from = 0;
+  for (const at of marks.split(" ").map(Number)) {
+    const letter = document.createElement("u");
+    letter.textContent = text[at];
+    pieces.push(text.slice(from, at), letter);
+    from = at + 1;
+  }
+  content.replaceChildren(...pieces, text.slice(from));
+}
+
 // Justified lines, one element each: the room a wrapped line leaves is
 // shared out between its words.
 function justify(content, made, width) {
@@ -503,6 +520,8 @@ export const Text = defineType("Text", Item, {
           width,
           align: ALIGNS[align] ?? "left",
           justified: align === 8 && !made.kind && made.wrapped,
+          // Where a type of text underlines letters of what is written.
+          marks: made.kind || !state.marks ? "" : state.marks(made).join(" "),
           capitals: made.kind ? ["", "uppercase", "lowercase", "", "capitalize"][self.font.capitalization] : "",
           color: css(self.color),
           link: css(self.linkColor),
@@ -529,7 +548,7 @@ export const Text = defineType("Text", Item, {
             style.lineHeight = `${made.pitch}px`;
           }
           if (next.justified) justify(content, made, next.width);
-          else if (shown.text !== made.text || shown.justified) content.textContent = made.text;
+          else if (shown.text !== made.text || shown.justified || shown.marks !== next.marks) write(content, made.text, next.marks);
           style.width = `${next.width}px`;
         }
         style.left = `${next.left}px`;
@@ -537,7 +556,7 @@ export const Text = defineType("Text", Item, {
         style.textAlign = next.align;
         style.color = next.color;
         style.textShadow = next.shadow;
-        shown = { kind: made.kind, text: made.text, font: made.font, pitch: made.pitch, justified: next.justified };
+        shown = { kind: made.kind, text: made.text, font: made.font, pitch: made.pitch, justified: next.justified, marks: next.marks };
       },
     );
   },

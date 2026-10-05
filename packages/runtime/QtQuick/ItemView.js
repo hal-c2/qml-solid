@@ -477,7 +477,7 @@ export const ItemView = defineType("ItemView", Flickable, {
         if (item?.$node && item.$parent !== content) {
           // An ObjectModel's object: the view is where it is shown.
           item.$parent = content;
-          item.$touch(next);
+          slot(item, "parent").changed();
         }
         adopt(self, item, 1);
         const fresh = state.fresh;

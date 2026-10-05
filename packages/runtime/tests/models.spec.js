@@ -62,6 +62,27 @@ test("a ListModel is changed by its methods and through its elements", async ({ 
 });
 
 // As Qt has them: `a r0 r1 r2 repeater b`.
+// What Qt 6.11 says for the same QML.
+test("a ListModel says what happened to its rows", async ({ page }) => {
+  await open(page, "modelsignals");
+  expect(await page.evaluate(() => window.scene.run())).toEqual([
+    [["data", 1, 0, 1, 1]],
+    [],
+    [["data", 0, 0, 0, 2]],
+    [["data", 2, 0, 2, 1]],
+    [["inserted", false, 3, 3, 4]],
+    [["inserted", false, 4, 5, 6]],
+    [["inserted", false, 1, 1, 7]],
+    [["moved", 0, 1, 4]],
+    [["moved", 3, 3, 0]],
+    [["removed", 1, 2, 5]],
+    [["inserted", false, 5, 5, 6]],
+    [["data", 0, 0, 0, 1]],
+    [["removed", 0, 5, 0]],
+    [],
+  ]);
+});
+
 test("a Repeater's items are its parent's children, before it and in the order of the rows", async ({ page }) => {
   await open(page, "models");
   const read = await page.evaluate(() => {
