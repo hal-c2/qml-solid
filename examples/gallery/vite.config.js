@@ -79,7 +79,10 @@ function standins(file) {
 function assets() {
   const fetched = () => readManifest().flatMap((example) => example.fetched);
   const served = () => readManifest().flatMap((example) => example.served);
-  const kept = (directory, rest) => `/@fs${join(directory, decodeURIComponent(rest)).split(sep).map(encodeURIComponent).join("/")}`;
+  // Vite reads the address of a file as `decodeURI` does: a comma in a name
+  // (`DynaPuff-VariableFont_wdth,wght.ttf`) is to be left as it is.
+  const named = (part) => encodeURI(part).replace(/[?#]/g, encodeURIComponent);
+  const kept = (directory, rest) => `/@fs${join(directory, decodeURIComponent(rest)).split(sep).map(named).join("/")}`;
   return {
     name: "gallery-assets",
     config: () => ({ server: { fs: { allow: [...fetched(), ...served()].map(([, from]) => from) } } }),
