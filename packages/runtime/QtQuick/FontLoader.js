@@ -140,6 +140,8 @@ function load(url) {
       },
       () => {
         loads.delete(url);
+        // As Qt says it: text set in the family is in another font.
+        console.warn(`FontLoader: Cannot load font: "${url}"`);
         setStatus(ERROR);
         flush();
       },

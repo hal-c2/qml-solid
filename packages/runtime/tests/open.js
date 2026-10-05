@@ -9,14 +9,17 @@ import { expect, test as base } from "@playwright/test";
 const DRIVER = /GL Driver Message \(OpenGL, Performance/;
 
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  // What a scene is to say, as Qt says it of the same QML: a spec names it
+  // with `test.use({ told: [/…/] })`.
+  told: [[], { option: true }],
+  page: async ({ page, told }, use) => {
     const problems = [];
     page.on("pageerror", (error) => problems.push(error.message));
     page.on("console", (message) => {
       if ((message.type() === "error" || message.type() === "warning") && !DRIVER.test(message.text())) problems.push(message.text());
     });
     await use(page);
-    expect(problems).toEqual([]);
+    expect(problems.filter((problem) => !told.some((pattern) => pattern.test(problem)))).toEqual([]);
   },
 });
 

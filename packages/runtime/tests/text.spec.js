@@ -52,6 +52,9 @@ const inked = (page, name) =>
     return { x: ink.x - frame.x, y: ink.y - frame.y, width: ink.width, height: ink.height, text: text.$markup.textContent };
   }, name);
 
+// The scene has a font that cannot be loaded, which Qt tells of.
+test.use({ told: [/^FontLoader: Cannot load font: "data:font\/ttf;base64,AAAA"$/] });
+
 async function boxes(page, scene = "textboxes") {
   await open(page, scene);
   await page.waitForFunction(() => window.objects.boxes.status === 1 && (window.objects.bold?.status ?? 1) === 1);
