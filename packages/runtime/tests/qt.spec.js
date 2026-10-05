@@ -329,6 +329,104 @@ test("a locale says how its people write dates and numbers", async ({ page }) =>
   ]);
 });
 
+test("a locale writes money as its books do", async ({ page }) => {
+  await open(page, "qt");
+  expect(
+    await answers(page, () => {
+      const en = Qt.locale("en_US");
+      const de = Qt.locale("de_DE");
+      const ja = Qt.locale("ja_JP");
+      const ch = Qt.locale("de_CH");
+      const es = Qt.locale("es_ES");
+      const c = Qt.locale("C");
+      return [
+        // Without a locale no currency is written at all.
+        () => (1234.5).toLocaleCurrencyString(),
+        () => (1234567).toLocaleCurrencyString(),
+        () => (1234.5).toLocaleCurrencyString(en),
+        () => (-1234.567).toLocaleCurrencyString(en),
+        () => (1234.5).toLocaleCurrencyString(de),
+        () => (-1234.567).toLocaleCurrencyString(de),
+        () => (-1234.567).toLocaleCurrencyString(Qt.locale("fr_FR")),
+        () => (1234.5).toLocaleCurrencyString(ja),
+        () => (-2.5).toLocaleCurrencyString(ja),
+        () => (-0.4).toLocaleCurrencyString(ja),
+        // A debt that is not bracketed has its sign on the number.
+        () => (-1234.567).toLocaleCurrencyString(Qt.locale("hi_IN")),
+        () => (-1234.567).toLocaleCurrencyString(Qt.locale("pt_BR")),
+        () => (-1234.567).toLocaleCurrencyString(Qt.locale("sv_SE")),
+        () => (-1234.567).toLocaleCurrencyString(Qt.locale("nb_NO")),
+        () => (-1234.567).toLocaleCurrencyString(Qt.locale("ar_EG")),
+        () => (1234.567).toLocaleCurrencyString(Qt.locale("ar_BH")),
+        () => (-5).toLocaleCurrencyString(ch),
+        () => (-1234.567).toLocaleCurrencyString(c),
+        // Another sign for the currency's, and its code for none.
+        () => (0.5).toLocaleCurrencyString(en, "X$"),
+        () => (0.5).toLocaleCurrencyString(de, "X$"),
+        () => (0.5).toLocaleCurrencyString(ch, "X$"),
+        () => (0.5).toLocaleCurrencyString(Qt.locale("ar_EG"), "X$"),
+        () => (0.5).toLocaleCurrencyString(c, "X$"),
+        () => (-5).toLocaleCurrencyString(en, ""),
+        () => (-5).toLocaleCurrencyString(de, ""),
+        // Rounded as the number is, which is not as it is written.
+        () => [0.005, 0.015, 0.025, 1.005, -0.001, -0, NaN, -Infinity, 1e21].map((each) => each.toLocaleCurrencyString(en)).join(" "),
+        () => [NaN, -Infinity, -0.001].map((each) => each.toLocaleCurrencyString(de)).join(" "),
+        () => (1).toLocaleCurrencyString("en_US"),
+        () => (1).toLocaleCurrencyString(en, "kr", 2),
+        () => (1).toLocaleCurrencyString(en, 5),
+        () => [en, de, ch, ja, c].map((each) => each.currencySymbol()).join(),
+        () => [en, de, ch, ja, c].map((each) => each.currencySymbol(Locale.CurrencyIsoCode)).join(),
+        () => [en, de, ch, ja, c].map((each) => each.currencySymbol(Locale.CurrencyDisplayName)).join(),
+        () => en.currencySymbol(7),
+        () => Qt.locale("hu_HU").currencySymbol(Locale.CurrencyIsoCode) + (1234.5).toLocaleCurrencyString(Qt.locale("hu_HU")),
+        // Four digits stand together where the locale has them so.
+        () => (1234.5).toLocaleString(es) + " " + (12345.5).toLocaleString(es),
+        () => en.toString(1e21, "f", 2),
+        () => Qt.locale("ar_EG").negativeSign + Qt.locale("ar_EG").percent + Qt.locale("he_IL").positiveSign,
+      ];
+    }),
+  ).toEqual([
+    "1,234.5",
+    "1.23457e+06",
+    "$1,234.50",
+    "($1,234.57)",
+    "1.234,50\u00a0€",
+    "-1.234,57\u00a0€",
+    "(1\u202f234,57\u00a0€)",
+    "￥1,235",
+    "(￥3)",
+    "(￥0)",
+    "₹-1,234.57",
+    "R$\u00a0-1.234,57",
+    "\u22121\u00a0234,57\u00a0kr",
+    "(kr\u00a01\u00a0234,57)",
+    "\u200f\u061c-١٬٢٣٤٫٥٧\u00a0ج.م.\u200f",
+    "\u200f١٬٢٣٤٫٥٦٧\u00a0د.ب.\u200f",
+    "CHF-5.00",
+    "-1234.57",
+    "X$0.50",
+    "0,50\u00a0X$",
+    "X$\u00a00.50",
+    "\u200f٠٫٥٠\u00a0X$",
+    "0.50X$",
+    "(USD5.00)",
+    "-5,00\u00a0EUR",
+    "$0.01 $0.01 $0.03 $1.00 ($0.00) $0.00 ($nan) ($inf) $1,000,000,000,000,000,000,000.00",
+    "nan\u00a0€ -inf\u00a0€ -0,00\u00a0€",
+    "THROW Locale: Number.toLocaleCurrencyString(): Invalid arguments",
+    "THROW Locale: Number.toLocaleCurrencyString(): Invalid arguments",
+    "THROW Locale: Number.toLocaleString(): Invalid arguments",
+    "$,€,,￥,",
+    "USD,EUR,CHF,JPY,",
+    "US Dollar,Euro,Schweizer Franken,日本円,",
+    "",
+    "HUF1235\u00a0Ft",
+    "1234,50 12.345,50",
+    "1,000,000,000,000,000,000,000.00",
+    "\u061c-٪\u061c\u200e+",
+  ]);
+});
+
 test("the helpers on Qt answer as Qt's do", async ({ page }) => {
   await open(page, "qt");
   expect(

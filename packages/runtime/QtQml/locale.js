@@ -5,6 +5,7 @@
 // `locale.toString(1234.5, "f", 2)`. A locale's own formats are read off
 // what `Intl` makes of a known date and written as Qt would write them, so
 // they can be shown, edited and handed back.
+import { currencyOf, decimalsOf } from "./currency.js";
 import { general } from "./values.js";
 
 export const Locale = Object.freeze({
@@ -55,6 +56,38 @@ function literal(text) {
 
 const part = (parts, type) => parts.find((each) => each.type === type)?.value ?? "";
 
+// The marks that keep a sign on its side of a number written from the right.
+const MARKS = /^[\u061c\u200e\u200f]+$/;
+const marks = (each) => (each?.type === "literal" && MARKS.test(each.value) ? each.value : "");
+
+// A sign with its marks, which `Intl` hands over apart and Qt as one.
+function sign(parts, type) {
+  const at = parts.findIndex((each) => each.type === type);
+  return at < 0 ? "" : marks(parts[at - 1]) + parts[at].value + marks(parts[at + 1]);
+}
+
+// Where the number, the currency's sign and a minus sign go in an amount of
+// money.
+const AMOUNT = 0;
+const SIGN = 1;
+const MINUS = 2;
+
+// What stands around an amount, read off how `Intl` writes one. A minus
+// sign's marks are written with it, and so are not written twice.
+function around(parts, minus) {
+  const out = [];
+  for (const [index, { type, value }] of parts.entries()) {
+    if (type === "literal") {
+      const led = parts[index + 1]?.type === "minusSign" && minus.endsWith(parts[index + 1].value) ? minus.slice(0, -parts[index + 1].value.length) : "";
+      const text = led && value.endsWith(led) ? value.slice(0, -led.length) : value;
+      if (text) out.push(text);
+    } else if (type === "currency") out.push(SIGN);
+    else if (type === "minusSign") out.push(MINUS);
+    else if (out.at(-1) !== AMOUNT) out.push(AMOUNT);
+  }
+  return out;
+}
+
 class LocaleValue {
   constructor(name, tag, locale) {
     this.name = name;
@@ -82,9 +115,9 @@ class LocaleValue {
       return {
         decimal: part(parts, "decimal") || ".",
         group: this.name === "C" ? "," : part(parts, "group"),
-        minus: part(parts, "minusSign") || "-",
-        plus: part(new Intl.NumberFormat(tag, { signDisplay: "always" }).formatToParts(1), "plusSign") || "+",
-        percent: part(new Intl.NumberFormat(tag, { style: "percent" }).formatToParts(1), "percentSign") || "%",
+        minus: sign(parts, "minusSign") || "-",
+        plus: sign(new Intl.NumberFormat(tag, { signDisplay: "always" }).formatToParts(1), "plusSign") || "+",
+        percent: sign(new Intl.NumberFormat(tag, { style: "percent" }).formatToParts(1), "percentSign") || "%",
         exponent: part(new Intl.NumberFormat(tag, { notation: "scientific" }).formatToParts(1e9), "exponentSeparator"),
         zero: new Intl.NumberFormat(tag).format(0),
       };
@@ -127,6 +160,53 @@ class LocaleValue {
   }
   get exponential() {
     return this.name === "C" ? "e" : this.$numbers().exponent;
+  }
+
+  // The territory's money: its code and sign, and what is written around an
+  // amount that is owned and around one that is owed.
+  $money() {
+    return this.$once("money", () => {
+      const code = this.name === "C" ? "" : currencyOf(this.$locale.region);
+      // The "C" locale has none: a sign it is handed follows the number.
+      if (!code) return { code, sign: "", decimals: 2, owned: [AMOUNT, SIGN], owed: null };
+      const format = new Intl.NumberFormat(this.$tag, { style: "currency", currency: code, currencySign: "accounting" });
+      const parts = format.formatToParts(1);
+      const owned = around(parts, this.negativeSign);
+      let owed = around(format.formatToParts(-1), this.negativeSign);
+      // Marks after the currency's sign are its own, and stay behind when
+      // another is written for it.
+      const at = parts.findIndex((each) => each.type === "currency");
+      const own = marks(parts[at + 1]);
+      if (own) for (const each of [owned, owed]) each.splice(each.indexOf(SIGN) + 1, 1);
+      const said = parts[at].value + own;
+      // Where a debt is the same but for a minus sign before the number,
+      // Qt puts the sign on the number: "R$ -5,00" and not "-R$ 5,00".
+      const minus = owed.indexOf(MINUS);
+      const same = owed.filter((each) => each !== MINUS).join("\u0000") === owned.join("\u0000");
+      if (minus >= 0 && minus < owed.indexOf(AMOUNT) && same) owed = null;
+      // A sign that is only the code again is no sign, as in Qt.
+      return { code, sign: said === code ? "" : said, decimals: decimalsOf(code), owned, owed };
+    });
+  }
+
+  // `currencySymbol(Locale.CurrencyIsoCode)`: "USD", "$" or "US Dollar".
+  currencySymbol(format = Locale.CurrencySymbol) {
+    const { code, sign } = this.$money();
+    if (format === Locale.CurrencyIsoCode) return code;
+    if (format === Locale.CurrencySymbol) return sign;
+    if (format !== Locale.CurrencyDisplayName || !code) return "";
+    return this.$once("currency", () => new Intl.DisplayNames([this.$tag], { type: "currency" }).of(code));
+  }
+
+  // An amount of money as its books write it: "($1,234.57)" for a debt
+  // where they bracket one, and "-1.234,57 €" where they do not.
+  $amount(value, given) {
+    const money = this.$money();
+    const said = given || (given === undefined && money.sign) || money.code;
+    const debt = money.owed && (value < 0 || Number.isNaN(value));
+    const number = this.$number(debt ? -value : value, "f", money.decimals);
+    const write = (each) => (each === AMOUNT ? number : each === SIGN ? said : each === MINUS ? this.negativeSign : each);
+    return (debt ? money.owed : money.owned).map(write).join("");
   }
 
   $week() {
@@ -245,13 +325,16 @@ class LocaleValue {
     if (!Number.isFinite(value)) return general(value);
     const kind = format.toLowerCase();
     let text;
-    if (kind === "f") text = Math.abs(value) < 1e21 ? value.toFixed(precision) : general(value, 21);
+    // `toFixed` gives up at 1e21, where a number is whole anyway.
+    if (kind === "f") text = Math.abs(value) < 1e21 ? value.toFixed(precision) : BigInt(value) + (precision ? `.${"0".repeat(precision)}` : "");
     else if (kind === "e") text = value.toExponential(precision);
     else text = general(value, precision || 1);
     const [, sign, whole, fraction, power] = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/.exec(text);
     const grouped = this.$once(`group${this.numberOptions & Locale.OmitGroupSeparator}`, () => {
+      // Grouped as the locale does it: not "1.234" in Spain, where four
+      // digits stand together.
       const group = !(this.numberOptions & Locale.OmitGroupSeparator);
-      return new Intl.NumberFormat(this.$tag, { useGrouping: group, maximumFractionDigits: 0 });
+      return new Intl.NumberFormat(this.$tag, { useGrouping: group ? "auto" : false, maximumFractionDigits: 0 });
     });
     let out = (sign ? this.negativeSign : "") + grouped.format(BigInt(whole));
     if (fraction) out += this.decimalPoint + this.$digits(fraction);
@@ -601,3 +684,15 @@ extend(Date, "fromLocaleDateString", (_, where, text, format = Locale.LongFormat
 extend(Date, "fromLocaleTimeString", (_, where, text, format = Locale.LongFormat) => read(text, format, where, false, true), isLocale);
 extend(Number.prototype, "toLocaleString", (value, where, format = "f", precision = 2) => where.$number(Number(value), format, precision), isLocale);
 extend(Number, "fromLocaleString", (_, where, text) => number(where, text), () => true);
+
+// `amount.toLocaleCurrencyString(Qt.locale(), "kr")`. Given no locale Qt
+// writes no currency at all, only the number as the locale here writes one.
+function currency(value, ...given) {
+  if (given.length === 0) return locale().$number(Number(value), "g", 6);
+  if (given.length > 2 || !isLocale(given[0])) throw new Error("Locale: Number.toLocaleCurrencyString(): Invalid arguments");
+  // The message is Qt's, which names the wrong function.
+  if (given.length === 2 && typeof given[1] !== "string") throw new Error("Locale: Number.toLocaleString(): Invalid arguments");
+  return given[0].$amount(Number(value), given[1]);
+}
+
+extend(Number.prototype, "toLocaleCurrencyString", currency, () => true);
