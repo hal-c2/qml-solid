@@ -1197,10 +1197,17 @@ function defineAlias(self, name, [target, ...path]) {
 // `holder`, `key` the prop.
 function through(holder, props, key, name) {
   const at = name.indexOf("$");
-  const target = untrack(() => holder[name.slice(0, at)]);
+  const head = name.slice(0, at);
+  // An alias of a group (`property alias sourceSize: image.sourceSize`):
+  // what is said of it is said of the group, of the object that has it.
+  const [aliased, ...path] = holder.$props?.$aliases?.[head] ?? [];
+  if (path.length) return onto(aliased, props, key, [...path, name.slice(at + 1)].join("$"));
+  onto(untrack(() => holder[head]), props, key, name.slice(at + 1));
+}
+
+function onto(target, props, key, rest) {
   // A group is the object's own, and its type's to read.
   if (!target?.$type) return;
-  const rest = name.slice(at + 1);
   // What the object was made with, it has.
   const given = Object.getOwnPropertyDescriptor(props, key);
   const had = Object.getOwnPropertyDescriptor(target.$props, rest);
