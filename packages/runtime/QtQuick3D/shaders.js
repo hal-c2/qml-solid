@@ -19,11 +19,14 @@
 // own, with only what Qt hands an effect in it.
 //
 // Not here: what a piece is handed of a shape that bends by a skin
-// (`BONE_TRANSFORMS`) or that morphs, a picture of the light a scene was
-// baked with, of how its surfaces face or of how they move (`LIGHTMAP`,
-// `NORMAL_ROUGHNESS_TEXTURE`, `MOTION_VECTOR_TEXTURE`), more than one eye
-// (`VIEW_INDEX` is always the first), and what a piece's functions would
-// share of their own (`SHARED_VARS`), which Qt 6.11 does not compile either.
+// (`BONE_TRANSFORMS`) or that morphs, what is seen through a surface that
+// lets light through it (`TRANSMISSION_FACTOR` and what goes with it are
+// handed to a piece, and what it says of them is not drawn), a picture of
+// the light a scene was baked with, of how its surfaces face or of how they
+// move (`LIGHTMAP`, `NORMAL_ROUGHNESS_TEXTURE`, `MOTION_VECTOR_TEXTURE`),
+// more than one eye (`VIEW_INDEX` is always the first), and what a piece's
+// functions would share of their own (`SHARED_VARS`), which Qt 6.11 does
+// not compile either.
 import { conditioned, prefixed, Reader, words } from "./glsl.js";
 
 // What Qt's words are here.
@@ -90,7 +93,7 @@ const CORNER =
   "inout vec3 VERTEX, inout vec3 NORMAL, inout vec2 UV0, inout vec2 UV1, inout vec3 TANGENT, inout vec3 BINORMAL, inout ivec4 JOINTS, inout vec4 WEIGHTS, inout vec4 COLOR, inout mat4 INSTANCE_MODEL_MATRIX, inout mat4 INSTANCE_MODELVIEWPROJECTION_MATRIX";
 
 const HANDED = {
-  MAIN: "inout vec4 BASE_COLOR, inout vec3 EMISSIVE_COLOR, inout float METALNESS, inout float ROUGHNESS, inout float SPECULAR_AMOUNT, inout float FRESNEL_POWER, inout vec3 NORMAL, inout vec3 TANGENT, inout vec3 BINORMAL, in vec2 UV0, in vec2 UV1, in vec3 VIEW_VECTOR, inout float IOR, inout float OCCLUSION_AMOUNT",
+  MAIN: "inout vec4 BASE_COLOR, inout vec3 EMISSIVE_COLOR, inout float METALNESS, inout float ROUGHNESS, inout float SPECULAR_AMOUNT, inout float FRESNEL_POWER, inout vec3 NORMAL, inout vec3 TANGENT, inout vec3 BINORMAL, in vec2 UV0, in vec2 UV1, in vec3 VIEW_VECTOR, inout float IOR, inout float OCCLUSION_AMOUNT, inout float CLEARCOAT_AMOUNT, inout float CLEARCOAT_FRESNEL_POWER, inout float CLEARCOAT_ROUGHNESS, inout vec3 CLEARCOAT_NORMAL, inout float CLEARCOAT_FRESNEL_SCALE, inout float CLEARCOAT_FRESNEL_BIAS, inout float FRESNEL_SCALE, inout float FRESNEL_BIAS, inout float TRANSMISSION_FACTOR, inout float THICKNESS_FACTOR, inout vec3 ATTENUATION_COLOR, inout float ATTENUATION_DISTANCE",
   DIRECTIONAL_LIGHT: "inout vec3 DIFFUSE, in vec3 LIGHT_COLOR, in float SHADOW_CONTRIB, in vec3 TO_LIGHT_DIR, in vec3 NORMAL, in vec4 BASE_COLOR, in float METALNESS, in float ROUGHNESS, in vec3 VIEW_VECTOR",
   POINT_LIGHT: "inout vec3 DIFFUSE, in vec3 LIGHT_COLOR, in float LIGHT_ATTENUATION, in float SHADOW_CONTRIB, in vec3 TO_LIGHT_DIR, in vec3 NORMAL, in vec4 BASE_COLOR, in float METALNESS, in float ROUGHNESS, in vec3 VIEW_VECTOR",
   SPOT_LIGHT:
@@ -239,7 +242,12 @@ void main() {
 // is written as it is, and not times the colour as the renderer's own
 // shader writes it: nothing is seen through a CustomMaterial that does not
 // say how it is blended.
-const lit = (has) => `
+//
+// A clear coat is over what the piece says one is over: Qt has one only for
+// a piece that says \`CLEARCOAT_AMOUNT\`, and so it is here (\`coats\`). What
+// is round a reflection probe is in place of the surroundings, and of what
+// the piece would say of them itself.
+const lit = (has, coats) => `
 void main() {
     customGlobals();
     vec4 custom = vec4(1.0);
@@ -255,7 +263,18 @@ void main() {
     vec3 T = normalize(v_tangent) * side;
     vec3 B = normalize(v_binormal) * side;
     vec3 V = normalize(u_eye - v_position);
-    ${has.has("MAIN") ? "customMain(custom, given, metalness, roughness, specular, power, N, T, B, v_uv, v_uv1, V, ior, reached);" : ""}
+    float coat = 0.0;
+    float coatPower = 5.0;
+    float coatRoughness = 0.0;
+    vec3 coated = N;
+    vec2 coatEdge = vec2(1.0, 0.0);
+    vec2 edged = vec2(1.0, 0.0);
+    float through = 0.0;
+    float thick = 0.0;
+    vec3 dimming = vec3(1.0);
+    float dimmingBy = 0.0;
+    ${has.has("MAIN") ? "customMain(custom, given, metalness, roughness, specular, power, N, T, B, v_uv, v_uv1, V, ior, reached, coat, coatPower, coatRoughness, coated, coatEdge.x, coatEdge.y, edged.x, edged.y, through, thick, dimming, dimmingBy);" : ""}
+    vec3 coating = vec3(0.0);
     vec4 base = custom * (u_colors ? v_color : vec4(1.0));
     float alpha = base.a * u_opacity;
     vec3 diffuse = vec3(0.0);
@@ -267,7 +286,7 @@ void main() {
     float NdotV = clamp(dot(N, V), 0.0, 1.0);
     float edge = power == 0.0 ? 1.0 : pow(1.0 - NdotV, power);
     vec3 turning = f0 + (max(vec3(1.0 - roughness), f0) - f0) * edge;
-    vec3 amount = vec3(metalness + specular * (1.0 - metalness)) * clamp(turning, 0.0, 1.0);
+    vec3 amount = vec3(metalness + specular * (1.0 - metalness)) * clamp(edged.y + edged.x * turning, 0.0, 1.0);
     for (int index = 0; index < u_count; index++) {
         vec3 L = -u_lightWay[index];
         float fade = 1.0;
@@ -295,9 +314,14 @@ void main() {
             }
         }
         ${has.has("SPECULAR_LIGHT") ? "specularLightProcessor(shine, u_lightColor[index], fade, 1.0, amount, L, N, custom, metalness, roughness, specular, V);" : "shine += u_lightColor[index] * fade * ggx(N, L, V, f0, roughness);"}
+        ${coats ? "coating += u_lightColor[index] * fade * ggx(coated, L, V, vec3(bent), coatRoughness);" : ""}
     }
     diffuse *= reached;
-    if (u_probing.x > 0.5 && u_probing.w >= 0.005) {
+    if (u_mirroring.x > 0.5) {
+        diffuse += base.rgb * (1.0 - amount) * aroundHere(N);
+        shine += mirroredHere(N, V, amount, roughness);
+        ${coats ? "coating += mirroredHere(coated, V, vec3(bent), coatRoughness);" : ""}
+    } else if (u_probing.x > 0.5 && u_probing.w >= 0.005) {
         vec3 about = vec3(0.0);
         vec3 back = vec3(0.0);
         ${
@@ -308,10 +332,19 @@ void main() {
         }
         diffuse += about * reached;
         shine += back * reached;
+        ${coats && !has.has("IBL_PROBE") ? "coating += mirrored(coated, V, vec3(bent), coatRoughness) * reached;" : ""}
     }
     diffuse *= 1.0 - metalness;
     if (u_fogDepth.w + u_fogHeight.w > 0.5) fogged(given, shine, diffuse);
     vec4 sum = vec4(diffuse + shine + given, alpha);
+    ${
+      coats
+        ? `float turn = clamp(pow(clamp(dot(coated, V), 0.0, 1.0), coatPower), 0.0, 1.0);
+    vec3 over = vec3(bent) + (vec3(1.0) - vec3(bent)) * (1.0 - turn);
+    over = clamp(vec3(coatEdge.y) + coatEdge.x * over, 0.0, 1.0);
+    sum.rgb = sum.rgb * (1.0 - coat * over) + coating * coat;`
+        : ""
+    }
     ${has.has("POST_PROCESS") ? "customPostProcessor(sum, vec4(diffuse, alpha), shine, given, v_uv, v_uv1);" : ""}
     fragColor = vec4(tonemap(sum.rgb), sum.a);
 }
@@ -351,7 +384,7 @@ export function customised(own, { vertex, fragment, shaded, declared }) {
   const missing = pixels.handed.filter((read) => !corners.handed.some((written) => written.name === read.name)).map((read) => `out ${read.said};`);
   return {
     vertex: whole(head(own.vertex, CORNERS), declared, missing.join("\n"), corners.text, corner(corners.has, mentioned(vertex).has("POSITION"))),
-    fragment: whole(head(own.fragment, PIXELS), declared, "", pixels.text, shaded ? lit(pixels.has) : unlit(pixels.has)),
+    fragment: whole(head(own.fragment, PIXELS), declared, "", pixels.text, shaded ? lit(pixels.has, mentioned(fragment).has("CLEARCOAT_AMOUNT")) : unlit(pixels.has)),
   };
 }
 

@@ -1896,6 +1896,82 @@ test("a CustomMaterial is drawn by its own shaders, handed what Qt hands them", 
   near(await painted(page, later), later.map(([, colour]) => colour), "", 3);
 });
 
+// Every number here is what Qt 6.11 paints of the same scene.
+test("a CustomMaterial says of a clear coat and of what it mirrors what Qt hears of them", async ({ page }) => {
+  await open(page, "customcoat3d");
+  // Of each ball: its middle, and three places off it. A ball here is of
+  // other triangles than Qt's, so these are within four of Qt's.
+  const balls = [
+    // A whole coat, as a PrincipledMaterial has one.
+    [[40, 50], [167, 34, 34]],
+    [[30, 40], [73, 0, 0]],
+    [[52, 58], [160, 5, 5]],
+    [[22, 62], [22, 0, 0]],
+    // As much of one as a property of the material says.
+    [[120, 50], [189, 54, 54]],
+    [[110, 40], [145, 2, 2]],
+    [[132, 58], [162, 3, 3]],
+    [[102, 62], [120, 0, 0]],
+    // One that gives back more sooner as it turns, by a whole number less
+    // a property, which Qt's shaders may write.
+    [[200, 50], [206, 105, 105]],
+    [[190, 40], [149, 3, 3]],
+    [[212, 58], [152, 3, 3]],
+    [[182, 62], [112, 0, 0]],
+    // One that gives back half of that, and a fifth more.
+    [[280, 50], [170, 53, 53]],
+    [[270, 40], [137, 2, 2]],
+    [[292, 58], [121, 0, 0]],
+    [[262, 62], [110, 0, 0]],
+    // One that faces another way than the ball does.
+    [[360, 50], [78, 0, 0]],
+    [[350, 40], [99, 0, 0]],
+    [[372, 58], [13, 0, 0]],
+    [[342, 62], [116, 0, 0]],
+    // One over what bends light more.
+    [[40, 150], [164, 54, 54]],
+    [[30, 140], [88, 4, 4]],
+    [[52, 158], [133, 10, 10]],
+    [[22, 162], [10, 0, 0]],
+    // One over a ball the piece turns: the coat is not turned with it.
+    [[120, 150], [177, 60, 60]],
+    [[110, 140], [106, 0, 0]],
+    [[132, 158], [126, 0, 0]],
+    [[102, 162], [28, 0, 0]],
+    // No coat, and none where how much is given back is said, with what is
+    // let through, which is nothing: a light's shine heeds neither.
+    [[200, 150], [199, 77, 77]],
+    [[190, 140], [178, 0, 0]],
+    [[212, 158], [175, 0, 0]],
+    [[182, 162], [158, 0, 0]],
+    [[280, 150], [191, 44, 44]],
+    [[270, 140], [178, 0, 0]],
+    [[292, 158], [175, 0, 0]],
+    [[262, 162], [158, 0, 0]],
+    // A coat over the half of a ball that the other piece says, by what it
+    // hands this one.
+    [[360, 150], [159, 22, 22]],
+    [[350, 140], [178, 4, 4]],
+    [[372, 158], [57, 0, 0]],
+    [[342, 162], [159, 3, 3]],
+  ];
+  near(await painted(page, balls, 4), balls.map(([, colour]) => colour), "", 4);
+  // Under them, what mirrors by a ReflectionProbe, looked at where a
+  // PrincipledMaterial that does is.
+  const mirrors = spotted([
+    // Metal mirrors each wall where it faces it.
+    [BROWN, RED, GREEN, BLUE, YELLOW, BLACK, BLACK, BEHIND],
+    // What is no metal takes its light from all round the probe.
+    [[83, 73, 49], [124, 42, 34], [53, 120, 34], [53, 45, 112], [124, 120, 0], [98, 12, 96], [57, 53, 128], BEHIND],
+    // What is black and gives nothing back mirrors by its coat alone.
+    [[25, 7, 0], [69, 0, 0], [0, 67, 0], [0, 0, 67], [69, 69, 0], BLACK, BLACK, BEHIND],
+    // And metal that gives back half and a fifth of what it would mirrors
+    // that much.
+    [[109, 53, 24], [219, 0, 0], [0, 218, 0], [0, 0, 218], [219, 219, 0], BLACK, BLACK, BEHIND],
+  ]).map(([[x, y], colour]) => [[x, y + 200], colour]);
+  near(await painted(page, mirrors), mirrors.map(([, colour]) => colour), "", 3);
+});
+
 // The views of the scenes of effects are 100 by 75, four to a row, and
 // these the places looked at in each: the surroundings, the nearer shape
 // and the further one first. A place not looked at is null.
