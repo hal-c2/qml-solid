@@ -1493,11 +1493,17 @@ export function $component(make) {
   make.errorString = () => "";
   make.statusChanged = make.progressChanged = silent;
   make.createObject = (item, properties) => {
-    const { object, dispose } = instantiate(make, properties ?? {}, item);
+    // What it is given it has before it is complete: a Behavior on one of
+    // them starts from there, and animates nothing to get there.
+    const given = (data) => {
+      const object = make(data);
+      for (const [name, value] of Object.entries(properties ?? {})) {
+        if (name in object) object[name] = value;
+      }
+      return object;
+    };
+    const { object, dispose } = instantiate(given, properties ?? {}, item);
     hidden(object, "$dispose", dispose);
-    for (const [name, value] of Object.entries(properties ?? {})) {
-      if (name in object) object[name] = value;
-    }
     item?.$add?.(object);
     return object;
   };

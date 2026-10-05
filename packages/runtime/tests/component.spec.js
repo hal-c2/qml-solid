@@ -225,3 +225,11 @@ plain("a type a module has not is a component in error", async ({ page }) => {
   ]);
   expect(warnings).toEqual(['QQmlComponent: Component is not ready: <Unknown File>: Module "QtQuick" contains no type named "Nothing"']);
 });
+
+test("what createObject gives an object, it has before it is complete", async ({ page }) => {
+  await open(page, "given");
+  // Qt 6.11: the Behavior starts from where the object was put, and what
+  // the object does on completion finds what it was given.
+  expect(await page.evaluate(() => window.scene.make())).toEqual([-40, -40, 3, 40]);
+  await expect.poll(() => page.evaluate(() => window.scene.where())).toBe(80);
+});
