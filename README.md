@@ -91,6 +91,10 @@ import Main from "./Main.qml";
 mount(Main, document.getElementById("app"));
 ```
 
+A root that is a `Window` is the size of the element it is mounted in. One that
+is an `Item` keeps its own, and its `parent` is an item of the element's size,
+as the root of a `QQuickView` is in the view: `anchors.fill: parent` fills it.
+
 Much of Qt is QML itself: a style of Qt Quick Controls is a directory of QML
 files over the types of `QtQuick.Templates`. Those are not rewritten here. The
 plugin puts a module of Qt's together from what the runtime has of it (the

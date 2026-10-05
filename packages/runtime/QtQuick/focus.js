@@ -45,6 +45,16 @@ export function windowOf(item) {
   return window;
 }
 
+// The tree `top` was the top of is the same window once `above` is over it,
+// as the view is over what is mounted: the keys go where they went.
+export function under(top, above) {
+  const window = top.$focusWindow;
+  if (!window) return;
+  top.$focusWindow = undefined;
+  above.$focusWindow = window;
+  window.top = above;
+}
+
 // The scope an item's `focus` is in: the nearest FocusScope around it, else
 // its window.
 function scopeOf(item, window) {

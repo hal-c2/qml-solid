@@ -341,3 +341,23 @@ test("an item hears of the screen turning", async ({ page }) => {
   await page.waitForFunction(() => window.objects.Screen.primaryOrientation === 1);
   expect(await page.evaluate(() => window.objects.log)).toEqual(["turned 1"]);
 });
+
+test("an item that is mounted is in a view as big as what it is mounted in", async ({ page }) => {
+  await open(page, "viewed");
+  const answers = () => page.evaluate(() => window.scene.answers());
+  expect(await answers()).toEqual([400, 300, true, 400, 300, 380, 280]);
+  const box = () =>
+    page.evaluate(() => {
+      const { width, height } = window.scene.$node.getBoundingClientRect();
+      return [width, height];
+    });
+  expect(await box()).toEqual([400, 300]);
+  // The view is another size when the element is.
+  await page.evaluate(() => {
+    const stage = document.getElementById("scene");
+    stage.style.width = "320px";
+    stage.style.height = "200px";
+  });
+  await expect.poll(answers).toEqual([320, 200, true, 320, 200, 300, 180]);
+  expect(await box()).toEqual([320, 200]);
+});
