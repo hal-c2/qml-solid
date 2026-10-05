@@ -177,11 +177,25 @@ function columns(matrix) {
 }
 
 // What an item is as a texture: a picture, or a canvas something draws on.
-// A picture is loaded for it, apart from the one the page shows.
+// A picture is loaded for it, apart from the one the page shows. A source
+// that is of a part of its item (`sourceRect`) is that part, cut out when
+// it is drawn with: the item may be painted again until then.
 const pictures = new Map();
 function drawable(item) {
-  for (let seen = 0; item?.sourceItem !== undefined && seen < 8; seen++) item = item.sourceItem;
-  if (!item) return null;
+  let part = null;
+  for (let seen = 0; item?.sourceItem !== undefined && seen < 8; seen++) {
+    const { sourceRect: rect, sourceItem: of } = item;
+    if (!part && of && rect?.width > 0 && rect?.height > 0) {
+      const { width, height } = of;
+      if (width > 0 && height > 0) part = { source: item, x: rect.x / width, y: rect.y / height, width: rect.width / width, height: rect.height / height };
+    }
+    item = of;
+  }
+  const whole = item ? taken(item) : null;
+  return whole && part && !whole.keep ? { ...part, whole } : whole;
+}
+
+function taken(item) {
   // Another effect, as it was last drawn: it keeps that as a texture once
   // it is asked to.
   if (item.$shader) return item.$shader.drawn() >= 0 ? item.$shader : null;
@@ -202,6 +216,21 @@ function drawable(item) {
     element.src = url;
   }
   return record.ready() ? record.element : null;
+}
+
+// The part of a canvas or a picture a source is of, on a canvas of its own.
+const parts = new WeakMap();
+function cut({ source, whole, x, y, width, height }) {
+  const wide = whole.naturalWidth ?? whole.width;
+  const tall = whole.naturalHeight ?? whole.height;
+  let canvas = parts.get(source);
+  if (!canvas) parts.set(source, (canvas = document.createElement("canvas")));
+  canvas.width = Math.max(Math.round(width * wide), 0);
+  canvas.height = Math.max(Math.round(height * tall), 0);
+  if (canvas.width > 0 && canvas.height > 0 && wide > 0 && tall > 0) {
+    canvas.getContext("2d").drawImage(whole, x * wide, y * tall, width * wide, height * tall, 0, 0, canvas.width, canvas.height);
+  }
+  return canvas;
 }
 
 const textures = new WeakMap();
@@ -403,7 +432,8 @@ export const ShaderEffect = defineType("ShaderEffect", Item, {
         gl.useProgram(made.program);
         made.uniforms.forEach((uniform, index) => {
           if (uniform.unit < 0) return set(uniform, values[index]);
-          const [element, wrapMode] = values[index];
+          const [given, wrapMode] = values[index];
+          const element = given?.whole ? cut(given) : given;
           if (element?.keep || (element && element.width > 0 && element.height > 0)) texture(element, uniform.unit, wrapMode);
           else nothing(uniform.unit);
           gl.uniform1i(uniform.location, uniform.unit);

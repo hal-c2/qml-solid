@@ -569,7 +569,8 @@ function number(where, text) {
 // QML adds a locale to JavaScript's own `toLocaleString` and its kin:
 // `date.toLocaleDateString(Qt.locale(), Locale.ShortFormat)`. Given a locale
 // of ours they answer as Qt does, and given `Locale.ShortFormat` alone (which
-// no browser takes) with the short format, as Qt does too. Anything else is
+// no browser takes) with the short format, as Qt does too. A date given
+// nothing at all is written out in full, as Qt writes it. Anything else is
 // the browser's business as before.
 const PATCHED = Symbol.for("qml-solid.locale");
 
@@ -577,18 +578,20 @@ function extend(target, name, ours, takes) {
   const original = target[name];
   if (original?.[PATCHED]) return;
   const method = function (...args) {
-    if (takes(args[0]) || !original) return ours(this, ...args);
+    if (takes(args[0], args.length) || !original) return ours(this, ...args);
     return original.apply(this, args);
   };
   method[PATCHED] = true;
   Object.defineProperty(target, name, { value: method, writable: true, configurable: true, enumerable: false });
 }
 
-const ourDate = (first) => isLocale(first) || typeof first === "number";
-const dateMethod = (dates, times) => (date, where, format) =>
-  isLocale(where)
-    ? formatDateTime(date, format ?? Locale.LongFormat, where, dates, times)
-    : formatDateTime(date, Locale.ShortFormat, locale(), dates, times);
+const ourDate = (first, given) => given === 0 || isLocale(first) || typeof first === "number";
+const dateMethod =
+  (dates, times) =>
+  (date, ...given) =>
+    isLocale(given[0])
+      ? formatDateTime(date, given[1] ?? Locale.LongFormat, given[0], dates, times)
+      : formatDateTime(date, given.length === 0 ? Locale.LongFormat : Locale.ShortFormat, locale(), dates, times);
 
 extend(Date.prototype, "toLocaleString", dateMethod(true, true), ourDate);
 extend(Date.prototype, "toLocaleDateString", dateMethod(true, false), ourDate);

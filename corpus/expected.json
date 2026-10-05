@@ -64,7 +64,10 @@
       "pixels": 0.9,
       "content": 0.75
     },
-    "stocqt": {},
+    "stocqt": {
+      "pixels": 0.99,
+      "content": 0.96
+    },
     "thermostat": {
       "pixels": 0.99,
       "content": 0.98

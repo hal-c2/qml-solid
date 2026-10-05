@@ -785,9 +785,14 @@
       "cpp": [
         "StocQt: StockEngine (singleton; quotes from the network or from data/), TimeFormatter (a QtGraphs axis formatter)"
       ],
+      "volatile": "time",
       "qt": {
-        "runnable": false,
-        "reason": "QtGraphs is not installed. The data comes from the C++ singleton StockEngine, which corpus/standins/stocqt stands in for. The Imagine style, from qtquickcontrols2.conf."
+        "runnable": true,
+        "controlsConf": "qtquickcontrols2.conf",
+        "offline": true,
+        "env": {
+          "QML_XHR_ALLOW_FILE_READ": "1"
+        }
       }
     },
     {

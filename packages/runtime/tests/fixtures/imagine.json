@@ -1,0 +1,80 @@
+[
+ [
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  [":/custom", "qrc:/custom/"],
+  [":/custom", "qrc:/custom/"],
+  ["qrc:/other/pictures/", "qrc:/other/pictures/"],
+  [":/custom", "qrc:/custom/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["/somewhere/pictures", "/somewhere/pictures/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  [0, 0]
+ ],
+ [
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  [":/changed/", "qrc:/changed/"],
+  [":/changed/", "qrc:/changed/"],
+  ["qrc:/other/pictures/", "qrc:/other/pictures/"],
+  [":/changed/", "qrc:/changed/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["/somewhere/pictures", "/somewhere/pictures/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  [1, 1]
+ ],
+ [
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  [":/changed/", "qrc:/changed/"],
+  [":/changed/", "qrc:/changed/"],
+  [":/changed/", "qrc:/changed/"],
+  [":/changed/", "qrc:/changed/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["/somewhere/pictures", "/somewhere/pictures/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  [1, 1]
+ ],
+ [
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  [":/changed/", "qrc:/changed/"],
+  [":/changed/", "qrc:/changed/"],
+  [":/changed/", "qrc:/changed/"],
+  [":/changed/", "qrc:/changed/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["/somewhere/pictures", "/somewhere/pictures/"],
+  [":/changed/", "qrc:/changed/"],
+  [1, 1]
+ ],
+ [
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["/somewhere/pictures", "/somewhere/pictures/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  [2, 2]
+ ],
+ [
+  ["", "/"],
+  ["", "/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["pictures", "pictures/"],
+  ["pictures", "pictures/"],
+  ["pictures", "pictures/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/", "qrc:/qt-project.org/imports/QtQuick/Controls/Imagine/images/"],
+  ["/somewhere/pictures", "/somewhere/pictures/"],
+  ["pictures", "pictures/"],
+  [3, 2]
+ ]
+]

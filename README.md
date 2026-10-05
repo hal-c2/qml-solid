@@ -98,7 +98,7 @@ types Qt has in C++) and the QML files of the Qt that is installed, which it
 compiles as it does the project's. `qt` is where that Qt keeps its QML modules,
 when not where `qtpaths6 --query QT_INSTALL_QML` says: a directory, or several,
 as `QML_IMPORT_PATH` names more of them when `qt` is not given; `style` is what
-`import QtQuick.Controls` is (`"Material"`, `"Fusion"`), or a function of the
+`import QtQuick.Controls` is (`"Material"`, `"Fusion"`, `"Imagine"`), or a function of the
 importing file that says. The pictures a style names by `qrc:/` are inside
 its plugin; Qt's own `qml` tool reads them out, once, into Vite's cache. Qt's
 QML and pictures are read from the installation and are not part of this
@@ -194,6 +194,15 @@ Repeater, ListView, GridView, Flickable, Loader), QtQuick.Layouts,
 QtQuick.Window, QtQml (the `Qt` object, locales, `Component`), QtCore and
 Qt.labs.settings. `mise run gallery` says, for each of Qt's examples, which
 modules it still lacks.
+
+Of the styles of Qt Quick Controls, Imagine too: its controls are pictures,
+which `NinePatchImage` stretches as their marks say and the image selectors
+of `QtQuick.Controls.impl` choose by a control's states, both as Qt does. The
+style's own pictures are read out of its plugin. Pictures of the project's own,
+named with `Imagine.path` or the `[Imagine]` group of `qtquickcontrols2.conf`,
+are found once the page says which files there are (the kernel's `resources`,
+an address for each), since a page cannot look into a folder. The `@2x`
+pictures are not used, and the font is Qt's own, not Open Sans.
 
 The `import OpenTUI` dialect (`crates/qml_solid/src/dialects`) is the other
 way a module can be given: a table that says what its types and properties
