@@ -105,14 +105,21 @@ async function drawing(url) {
 function fetched(url) {
   const record = picture(url);
   const element = document.createElement("img");
+  let size = null;
   element.onload = () => {
     record.width = element.naturalWidth;
     record.height = element.naturalHeight;
-    const ready = () => record.settle(READY);
-    // A drawing is as big as Qt makes it, where the file can be read; one
-    // from somewhere that does not let a page read it, as the browser does.
-    if (record.scalable) drawing(element.src).then((size) => size && Object.assign(record, size), () => {}).then(ready);
-    else ready();
+    if (record.scalable && size) Object.assign(record, size);
+    record.settle(READY);
+  };
+  // A drawing is as big as Qt makes it, where the file can be read; one
+  // from somewhere that does not let a page read it, as the browser does.
+  // It is read before the browser is given it: what shows the picture is
+  // told of it as the browser has it, and paints it without waiting again.
+  const show = (address) => {
+    const shown = () => (element.src = address);
+    if (record.scalable) drawing(address).then((found) => (size = found), () => {}).then(shown);
+    else shown();
   };
   const failed = () => record.settle(ERROR);
   element.onerror = failed;
@@ -124,9 +131,9 @@ function fetched(url) {
       unnamed(url).then((address) => (element.src = record.url = address), failed);
     };
   }
-  if (!PACKED.test(url)) element.src = url;
+  if (!PACKED.test(url)) show(url);
   // What is shown is what was opened.
-  else opened(url).then((address) => (element.src = record.url = address), failed);
+  else opened(url).then((address) => show((record.url = address)), failed);
   return record;
 }
 
