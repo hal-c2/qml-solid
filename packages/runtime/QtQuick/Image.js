@@ -6,6 +6,7 @@
 import { createSignal } from "solid-js";
 import { defineType, derived, effect, flush, group, located } from "../object.js";
 import { given, lazy, rules, sized } from "./compute.js";
+import { Rect } from "../QtQml/values.js";
 import { Item } from "./Item.js";
 
 rules(`
@@ -199,6 +200,25 @@ function loaded(self) {
   return ratio > 0 ? { width: Math.round(width * ratio), height: Math.round(height * ratio) } : record;
 }
 
+// The part of the picture `sourceClipRect` says is to be loaded, in the
+// picture as big as it is loaded; nothing for a rectangle with nothing in
+// it, which Qt takes no notice of.
+function cut(self) {
+  const rect = self.sourceClipRect;
+  const [x, y, width, height] = [rect.x, rect.y, rect.width, rect.height].map((side) => Math.round(Number(side)) || 0);
+  return width > 0 && height > 0 ? { x, y, width, height } : null;
+}
+
+// What the item has of the picture: all of it as it is loaded, or the part
+// it is cut to, which is as big as it is said to be even where the picture
+// ends before it does.
+function held(self) {
+  const whole = self.$image.whole();
+  return (whole.width && whole.height && cut(self)) || whole;
+}
+
+const UNCUT = Object.freeze(new Rect(0, 0, 0, 0));
+
 // What Image, BorderImage and AnimatedImage share: a source and its loading.
 export const ImageBase = defineType("ImageBase", Item, {
   properties: {
@@ -211,14 +231,17 @@ export const ImageBase = defineType("ImageBase", Item, {
     mirrorVertically: false,
     // Reads as the picture's own size until one is asked for.
     sourceSize: group({
-      width: derived((self) => (given(self, "sourceSize", "height") ? 0 : arrived(self).width)),
-      height: derived((self) => (given(self, "sourceSize", "width") ? 0 : arrived(self).height)),
+      width: derived((self) => (given(self, "sourceSize", "height") ? 0 : self.$image.size().width)),
+      height: derived((self) => (given(self, "sourceSize", "width") ? 0 : self.$image.size().height)),
     }),
+    sourceClipRect: UNCUT,
     status: derived((self) => self.$image.record()?.status() ?? NULL),
     progress: derived((self) => (self.status === READY ? 1 : 0)),
     implicitWidth: derived((self) => self.$image.size().width),
     implicitHeight: derived((self) => self.$image.size().height),
   },
+  // `sourceClipRect = undefined` is all of the picture again.
+  resolve: { sourceClipRect: (self, own) => own() ?? UNCUT },
   enums: { Null: NULL, Ready: READY, Loading: LOADING, Error: ERROR },
   methods: {
     // Whether the picture is loaded for a fill mode that keeps its shape.
@@ -236,7 +259,8 @@ export const ImageBase = defineType("ImageBase", Item, {
         // `cache: false`: a load of its own, whatever the others have.
         return self.cache ? shared(self.$pictures, url, self.$load) : self.$load(url);
       }),
-      size: lazy(self, () => loaded(self), NONE),
+      whole: lazy(self, () => loaded(self), NONE),
+      size: lazy(self, () => held(self), NONE),
     };
   },
 });
@@ -383,7 +407,20 @@ export const Image = defineType("Image", ImageBase, {
         const record = self.$image.record();
         if (!record || record.status() !== READY) return null;
         // An animation paints its frames itself, in the same place.
-        return { ...geometry(self), url: record.frames ? "" : drawn(record), flip: flipped(self), rendering: rendering(self) };
+        const placed = { ...geometry(self), url: record.frames ? "" : drawn(record), flip: flipped(self), rendering: rendering(self) };
+        // A picture cut to a part is all of it, drawn so much bigger and
+        // further up and left that the part is where a picture would be:
+        // what an element shows of its background ends where it does. (A
+        // part cannot be repeated so: tiled, more of the picture shows.)
+        const part = cut(self);
+        const whole = self.$image.whole();
+        if (part && whole.width && whole.height) {
+          const [x, y, wide, tall] = placed.inner;
+          const across = wide / part.width;
+          const down = tall / part.height;
+          placed.inner = [x - part.x * across, y - part.y * down, whole.width * across, whole.height * down];
+        }
+        return placed;
       },
       (next) => {
         style.display = next ? "" : "none";
