@@ -24,6 +24,7 @@ export {
   TapHandler,
   WheelHandler,
 } from "./handlers.js";
+export { GraphicsInfo } from "./GraphicsInfo.js";
 export { BorderImage, Image } from "./Image.js";
 export { Instantiator } from "./Instantiator.js";
 export { Item } from "./Item.js";

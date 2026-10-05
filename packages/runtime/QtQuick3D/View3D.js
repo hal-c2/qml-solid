@@ -13,9 +13,10 @@
 // nearest a place, and the items in a scene, of which none is picked; the
 // picture is drawn in the item whatever `renderMode` says, and of the ways
 // of smoothing edges there is one.
-import { untrack } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import { defineType, effect, inside as within, QtObject, settle, slot } from "../object.js";
 import { Vector2d, Vector3d } from "../QtQml/values.js";
+import { lazy } from "../QtQuick/compute.js";
 import { Item } from "../QtQuick/Item.js";
 import * as math from "./math.js";
 import { inside, Node } from "./Node.js";
@@ -27,6 +28,52 @@ const sheet = new CSSStyleSheet();
 sheet.replaceSync(`.qq-view3d { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }`);
 document.adoptedStyleSheets.push(sheet);
 
+// What a node gives the view that draws it, and what each node inside it
+// gives: nothing where it is not shown. The node keeps it, and it is worked
+// out again only when something of the node changed or of one inside it, so
+// a view follows the few nodes at the top of its scene and not each property
+// of every node in it. How much is seen through what the node is inside of
+// is not in it: a node inside one that fades is what it was.
+function given(node) {
+  node.$given ??= lazy(node, () => {
+    if (!node.visible) return null;
+    let model = null;
+    let light = null;
+    let probe = null;
+    let camera = false;
+    if (node.$model) {
+      const shape = node.$shape();
+      if (shape) {
+        model = {
+          node,
+          shape,
+          world: node.$world(),
+          bones: node.$bones(),
+          weights: node.$weights(),
+          bias: Number(node.depthBias) || 0,
+          instances: node.$instances(),
+          materials: node.$materials().map(drawnWith),
+          mirrors: Boolean(node.receivesReflections),
+          mirrored: Boolean(node.castsReflections),
+        };
+      }
+    } else if (node.$light) light = node.$light();
+    else if (node.$mirror) probe = node.$mirror();
+    else if (node.$camera) camera = true;
+    return { node, opacity: node.opacity, model, light, probe, camera, inside: inside(node).map(given) };
+  });
+  return node.$given() ?? null;
+}
+
+// What a material has a shape drawn with, which the material keeps: many
+// shapes are drawn with one, and each of them is told when it changes and
+// not of each thing the material was worked out from.
+function drawnWith(material) {
+  if (!material?.$material) return null;
+  material.$drawn ??= lazy(material, () => material.$material());
+  return material.$drawn() ?? null;
+}
+
 // What a view draws: the shapes and lights among the nodes that are shown,
 // the places some of the shapes mirror the others from, and the first
 // camera there is.
@@ -36,45 +83,39 @@ function found(self) {
   const paints = [];
   const probes = [];
   let camera = null;
-  const walk = (node, above) => {
-    if (!node.visible) return;
-    const opacity = above * node.opacity;
-    if (node.$model) {
-      const shape = node.$shape();
-      if (shape) {
-        models.push({
-          node,
-          shape,
-          world: node.$world(),
-          bones: node.$bones(),
-          instances: node.$instances(),
-          materials: node.$materials().map((material) => material?.$material?.() ?? null),
-          opacity,
-          mirrors: Boolean(node.receivesReflections),
-          mirrored: Boolean(node.castsReflections),
-        });
-      }
-    } else if (node.$light) lights.push(node.$light());
-    else if (node.$mirror) probes.push(node.$mirror());
-    else if (node.$camera) camera ??= node;
+  const walk = (part, above) => {
+    if (!part) return;
+    const { node } = part;
+    const opacity = above * part.opacity;
+    if (part.model) models.push({ ...part.model, opacity });
+    else if (part.light) lights.push(part.light);
+    else if (part.probe) probes.push(part.probe);
+    else if (part.camera) camera ??= node;
     // What a node draws by itself.
     const paint = node.$paint?.(opacity);
     if (paint) paints.push(paint);
-    for (const child of inside(node)) walk(child, opacity);
+    for (const child of part.inside) walk(child, opacity);
   };
-  for (const node of inside(self.$scene)) walk(node, 1);
-  if (self.importScene?.$spatial) walk(self.importScene, 1);
+  const tops = inside(self.$scene).map(given);
+  if (self.importScene?.$spatial) tops.push(given(self.importScene));
+  for (const top of tops) walk(top, 1);
   // A light that is for a node lights what is that node or inside it: a
   // model has the lights that are for everything and those that are for it.
   if (lights.some((light) => light.scope)) {
-    for (const model of models) model.lights = lights.filter((light) => !light.scope || under(model.node, light.scope));
+    const scopes = new Set(lights.map((light) => light.scope));
+    const under = [];
+    let index = 0;
+    const lit = (part) => {
+      if (!part) return;
+      const scope = scopes.has(part.node);
+      if (scope) under.push(part.node);
+      if (part.model) models[index++].lights = lights.filter((light) => !light.scope || under.includes(light.scope));
+      for (const child of part.inside) lit(child);
+      if (scope) under.pop();
+    };
+    for (const top of tops) lit(top);
   }
   return { models, lights, paints, probes, camera };
-}
-
-function under(node, scope) {
-  for (let at = node; at; at = at.parent) if (at === scope) return true;
-  return false;
 }
 
 // The models a ray is tried against: those for picking, shown or not, of
@@ -227,36 +268,69 @@ export const View3D = defineType("View3D", Item, {
     // The picture is drawn once for all that changed together, as Qt draws
     // one for a frame: when what changed it is done, and not for each thing
     // of several that a frame's animations and timers set.
+    //
+    // Drawing holds the page up, where Qt draws on a thread of its own: so
+    // where pictures take long, one is not drawn again until as long has
+    // gone by as the last took, and the page has half its time for
+    // everything else, what it fetches and what is pressed among it. What
+    // changes meanwhile is in the picture that is drawn then.
+    //
+    // One slow picture is not pictures taking long: the first of a scene
+    // is slow for the programs that are made for it, and the next is
+    // drawn as soon as something changes, as every picture is of a scene
+    // that is quick to draw.
     let due = null;
+    let rested = 0;
+    let slow = false;
     const stats = (self.$stats = within(null, () => RenderStats({})));
     const frame = counted(stats);
     const drawn = () => {
+      const from = performance.now();
+      // A timer may ring a little early.
+      if (rested - from > 1) return void setTimeout(drawn, rested - from);
       const scene = due;
       due = null;
-      const began = performance.now();
-      draw(scene, canvas, paper);
-      frame(began, performance.now());
+      draw(scene, canvas, paper, ways);
+      last = scene;
+      if (ways) setTimes((times) => times + 1);
+      const ended = performance.now();
+      frame(from, ended);
+      const took = ended - from;
+      rested = slow && took > SLOW ? ended + Math.min(took, REST) : 0;
+      slow = took > SLOW;
+    };
+
+    // The view is a picture to what takes it for one (a Texture's item),
+    // the right way up or upside down, and that is drawn again when the
+    // view is: but a view that reads its own picture, as one does that lays
+    // each picture over its last, is not drawn again for having been
+    // drawn. A picture first asked for after the view was drawn is drawn
+    // again to be kept.
+    const [times, setTimes] = createSignal(0);
+    let own = false;
+    let ways = 0;
+    let last = null;
+    self.$canvas = { element: canvas };
+    self.$view = (down) => {
+      const way = down ? 2 : 1;
+      if (!(ways & way)) {
+        ways |= way;
+        if (!due && last) {
+          queueMicrotask(drawn);
+          due = last;
+        }
+      }
+      return own ? 0 : times();
     };
 
     effect(
       () => {
-        const { width, height } = self;
-        const { models, lights, paints, probes, camera: any } = found(self);
-        const camera = self.camera ?? any;
-        return {
-          width,
-          height,
-          camera,
-          models,
-          lights,
-          paints,
-          probes,
-          eye: camera?.$world() ?? null,
-          projection: camera?.$projection(width, height) ?? null,
-          far: camera?.clipFar ?? 0,
-          near: camera?.clipNear ?? 0,
-          environment: (self.environment ?? SceneEnvironment).$environment?.() ?? PLAIN,
-        };
+        own = true;
+        try {
+          return sight();
+        } finally {
+          own = false;
+        }
       },
       (seen) => {
         // A camera maps to the view it was last seen through.
@@ -266,8 +340,33 @@ export const View3D = defineType("View3D", Item, {
         due = { ...seen, camera: seen.eye };
       },
     );
+
+    function sight() {
+      const { width, height } = self;
+      const { models, lights, paints, probes, camera: any } = found(self);
+      const camera = self.camera ?? any;
+      return {
+        width,
+        height,
+        camera,
+        models,
+        lights,
+        paints,
+        probes,
+        eye: camera?.$world() ?? null,
+        projection: camera?.$projection(width, height) ?? null,
+        far: camera?.clipFar ?? 0,
+        near: camera?.clipNear ?? 0,
+        environment: (self.environment ?? SceneEnvironment).$environment?.() ?? PLAIN,
+      };
+    }
   },
 });
+
+// A picture is slow that takes longer than this to draw, in milliseconds,
+// and the longest the page is left to itself after one.
+const SLOW = 50;
+const REST = 1000;
 
 // What a view says of how fast it draws. The times are of the frame drawn
 // last and are told five times a second; how many frames a second had and

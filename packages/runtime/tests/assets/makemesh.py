@@ -87,6 +87,36 @@ def bar(path):
         order += [a, a + 1, a + 3, a, a + 3, a + 2]
     mesh(path, [("attr_pos", FLOAT, 3), ("attr_norm", FLOAT, 3), ("attr_uv0", FLOAT, 2), ("attr_joints", INT, 4), ("attr_weights", FLOAT, 4)], rows, order)
 
+def sheet(path):
+    # A square 30 across of nine corners, facing +z, with two other shapes of
+    # itself: the first twice as wide and facing a little to the right, the
+    # second twice as tall and facing a little upwards. What the targets have
+    # is kept as Qt keeps it: four numbers to a corner, in layers as wide as
+    # high, the two of where the corners are and then the two of how they
+    # face.
+    rows, order = [], []
+    for r in range(3):
+        for c in range(3):
+            rows.append(((c - 1) * 15.0, (r - 1) * 15.0, 0.0, 0.0, 0.0, 1.0))
+    for r in range(2):
+        for c in range(2):
+            a = r * 3 + c
+            order += [a, a + 1, a + 4, a, a + 4, a + 3]
+    width = 3
+    layers = [
+        [(x * 2, y, z, 0.0) for x, y, z, *rest in rows],
+        [(x, y * 2, z, 0.0) for x, y, z, *rest in rows],
+        [(0.6, 0.0, 0.8, 0.0) for row in rows],
+        [(0.0, 0.6, 0.8, 0.0) for row in rows],
+    ]
+    data = bytearray()
+    for layer in layers:
+        for texel in layer + [(0.0, 0.0, 0.0, 0.0)] * (width * width - len(layer)):
+            data += struct.pack("<4f", *texel)
+    targets = ([("attr_pos", FLOAT, 3, 0), ("attr_norm", FLOAT, 3, 0)], bytes(data), 2)
+    mesh(path, [("attr_pos", FLOAT, 3), ("attr_norm", FLOAT, 3)], rows, order, targets)
+
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
     bar(os.path.join(here, "bar.mesh"))
+    sheet(os.path.join(here, "sheet.mesh"))

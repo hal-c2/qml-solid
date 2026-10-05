@@ -7,7 +7,8 @@
 // colour by how far the surface faces it, the shine of it by Qt's own sums,
 // and the whole brought from linear light to the screen's by Qt's tone
 // mapping. What nothing is seen through is drawn first, nearest first; what
-// something is, after, farthest first.
+// something is, after, farthest first; and between them what reads the
+// picture of what is behind it.
 //
 // A scene may be lit by its surroundings besides its lights: a picture of
 // everything round it (a light probe), which is folded into a cube and that
@@ -47,11 +48,13 @@
 // into a picture of fractions they are not run.
 //
 // Not here: a probe that is a canvas is folded once, as it is when first
-// drawn, and a material's own probe is not looked at. What a CustomMaterial
-// draws mirrors nothing by a reflection probe, and what nodes draw by
-// themselves is not in what one sees. Of what an effect may read besides
-// the picture, only how far each place of it is: which is how far what
-// nothing is seen through is.
+// drawn, and a material's own probe is not looked at. What nodes draw by
+// themselves is not in what a reflection probe sees. Of what an effect may
+// read besides the picture, only how far each place of it is: which is how
+// far what nothing is seen through is. Nothing says how far it is before
+// all else is drawn: a material that is to (`OpaquePrePassDepthDraw`) says
+// it as one that is not, and an environment's `depthPrePassEnabled` does
+// nothing.
 import * as math from "./math.js";
 import { Triangles } from "./mesh.js";
 import { customised, effected } from "./shaders.js";
@@ -114,6 +117,10 @@ uniform mat4 u_above;
 uniform float u_point;
 uniform bool u_skinned;
 uniform highp sampler2D u_bones;
+uniform int u_morphs;
+uniform ivec4 u_morphAt;
+uniform float u_morphBy[8];
+uniform highp sampler2DArray u_morphed;
 out vec3 v_position;
 out vec3 v_normal;
 out vec2 v_uv;
@@ -135,11 +142,37 @@ mat4 bone(int index) {
     return m;
 }
 
+// What a layer of the targets has for this corner: the layers are as wide
+// as high, a corner after a corner along the rows.
+vec3 target(int layer) {
+    int width = textureSize(u_morphed, 0).x;
+    int x = gl_VertexID % width;
+    return texelFetch(u_morphed, ivec3(x, (gl_VertexID - x) / width, layer), 0).xyz;
+}
+
+// Something of a corner, gone towards what each target has for it by as
+// much as the target weighs: a target is the whole of what it has, not how
+// far that is from the mesh's own, and each is gone towards from the mesh's
+// own. The layer is that of the first target, and none below zero.
+vec3 morphed(vec3 from, int first) {
+    if (first < 0) return from;
+    vec3 to = from;
+    for (int index = 0; index < u_morphs; index++) to += u_morphBy[index] * (target(first + index) - from);
+    return to;
+}
+
 void main() {
     vec4 position = vec4(attr_pos, 1.0);
     vec3 facing = attr_norm;
     vec3 tangent = attr_textan;
     vec3 binormal = attr_binormal;
+    // A shape goes towards its targets before its joints bend it.
+    if (u_morphs > 0) {
+        position.xyz = morphed(position.xyz, u_morphAt.x);
+        facing = morphed(facing, u_morphAt.y);
+        tangent = morphed(tangent, u_morphAt.z);
+        binormal = morphed(binormal, u_morphAt.w);
+    }
     // A corner no joint has a hold of stays where the mesh has it.
     if (u_skinned && attr_weights != vec4(0.0)) {
         ivec4 joints = ivec4(attr_joints);
@@ -613,6 +646,10 @@ const UNIFORMS = [
   "u_point",
   "u_skinned",
   "u_bones",
+  "u_morphs",
+  "u_morphAt",
+  "u_morphBy",
+  "u_morphed",
   "u_instanced",
   "u_above",
   "u_color",
@@ -1028,6 +1065,7 @@ function context() {
   at = shaded.at;
   gl.uniform1i(at.u_map, 0);
   gl.uniform1i(at.u_bones, 1);
+  gl.uniform1i(at.u_morphed, MORPHS);
   gl.uniform1i(at.u_probe, PROBE);
   gl.uniform1i(at.u_mirror, MIRROR);
   SAMPLERS.forEach((name, index) => name && gl.uniform1i(at[name], UNITS[index]));
@@ -1072,9 +1110,35 @@ const UNITS = [0, 2, 3, 4, 5, 6, 7, 2, 8, 9, 10];
 // from is while it is made.
 const PROBE = 11;
 const MAKING = 12;
+// Where the targets of a shape are read: where no program that draws a
+// shape reads anything else, and they are layers, which nothing else there
+// is.
+const MORPHS = 12;
 // And where the cube of a reflection probe is read.
 const MIRROR = 16;
 let nothing;
+
+// The targets of a shape as OpenGL holds them, layer on layer, and at which
+// layer those of where a corner is begin, of which way it faces, and of the
+// two ways along it: -1 where the mesh has none. No more than eight targets
+// are gone towards, as in Qt.
+const MOST = 8;
+function targeted(targets) {
+  if (!targets) return null;
+  const { count, width, names, data } = targets;
+  const texture = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + MORPHS);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA32F, width, width, names.length * count, 0, gl.RGBA, gl.FLOAT, data);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+  gl.activeTexture(gl.TEXTURE0);
+  const first = (name) => (names.includes(name) ? names.indexOf(name) * count : -1);
+  return { texture, count: Math.min(MOST, count), at: [first("attr_pos"), first("attr_norm"), first("attr_textan"), first("attr_binormal")] };
+}
 
 // A shape as OpenGL holds it: its corners as the mesh file has them, each
 // part of a corner said where it is in the row.
@@ -1105,7 +1169,7 @@ function held(shape) {
   gl.bindVertexArray(null);
   const jointed = Boolean(shape.entries.attr_joints && shape.entries.attr_weights);
   const framed = Boolean(shape.entries.attr_textan && shape.entries.attr_binormal);
-  shapes.set(shape, (made = { array, kind, size, mode: MODES[shape.drawMode] ?? gl.TRIANGLES, colors: Boolean(shape.entries.attr_color), jointed, framed }));
+  shapes.set(shape, (made = { array, kind, size, mode: MODES[shape.drawMode] ?? gl.TRIANGLES, colors: Boolean(shape.entries.attr_color), jointed, framed, morphs: targeted(shape.targets) }));
   return made;
 }
 
@@ -1123,16 +1187,22 @@ const forms = () => ({
 });
 
 // A picture as a texture, sampled as its Texture says: an element of the
-// page, or numbers, whose first row is the bottom one already.
+// page, or numbers, whose first row is the bottom one already, or what a
+// view last drew.
 const textures = new WeakMap();
+// Which picture is being drawn: what something draws on is read once for
+// one, however many read it.
+let turn = 0;
 function bound(map, unit = 0) {
   const from = map.element ?? map.data;
-  let made = textures.get(from);
+  let made = map.view ? viewed(map) : textures.get(from);
   const fresh = !made;
-  if (fresh) textures.set(from, (made = { texture: gl.createTexture(), mipped: false }));
+  if (fresh) textures.set(from, (made = { texture: gl.createTexture(), mipped: false, turn: 0 }));
   gl.activeTexture(gl.TEXTURE0 + unit);
   gl.bindTexture(gl.TEXTURE_2D, made.texture);
-  if (fresh && map.data) {
+  if (map.view) {
+    // Nothing is read: it is here already.
+  } else if (fresh && map.data) {
     const { pixels, width, height, format } = map.data;
     const [inner, outer, kind] = forms()[format];
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -1140,9 +1210,10 @@ function bound(map, unit = 0) {
     gl.texImage2D(gl.TEXTURE_2D, 0, inner, width, height, 0, outer, kind, pixels);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-  } else if (!map.data && (fresh || map.live)) {
+  } else if (!map.data && (fresh || (map.live && made.turn !== turn))) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, map.element);
     made.mipped = false;
+    made.turn = turn;
   }
   if (map.mip && !made.mipped) {
     gl.generateMipmap(gl.TEXTURE_2D);
@@ -1157,12 +1228,57 @@ function bound(map, unit = 0) {
   if (unit) gl.activeTexture(gl.TEXTURE0);
 }
 
+// What a view last drew, for what takes the view as a texture: the right
+// way up and upside down, as it is asked for. The picture leaves the
+// surface for the page once drawn, so it is copied before it does, and a
+// view that reads itself reads the picture before the one being drawn.
+const views = new WeakMap();
+let undrawn = null;
+function viewed(map) {
+  const record = views.get(map.element);
+  const side = record && (map.down ? record.down : record.up);
+  if (side) return side;
+  if (!undrawn) {
+    undrawn = { texture: gl.createTexture(), mipped: false };
+    gl.activeTexture(gl.TEXTURE0 + MAKING);
+    gl.bindTexture(gl.TEXTURE_2D, undrawn.texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  }
+  return undrawn;
+}
+
+// The surface as it stands is kept as a view's picture: `ways` says which
+// way up it is wanted, the right way (1), upside down (2) or both.
+function retained(canvas, width, height, ways) {
+  let record = views.get(canvas);
+  if (!record) views.set(canvas, (record = { width: 0, height: 0, up: null, down: null }));
+  const sized = record.width !== width || record.height !== height;
+  Object.assign(record, { width, height });
+  gl.activeTexture(gl.TEXTURE0 + MAKING);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+  for (const [way, name] of [[1, "up"], [2, "down"]]) {
+    if (!(ways & way)) continue;
+    let side = record[name];
+    const fresh = !side;
+    if (fresh) side = record[name] = { texture: gl.createTexture(), frame: gl.createFramebuffer(), mipped: false };
+    gl.bindTexture(gl.TEXTURE_2D, side.texture);
+    if (fresh || sized) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, side.frame);
+    if (fresh) gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, side.texture, 0);
+    // A texture's first row is its bottom one, as the surface's is.
+    if (way === 1) gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    else gl.blitFramebuffer(0, 0, width, height, 0, height, width, 0, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    side.mipped = false;
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
 // A cube of so many levels, each side of the first `size` across.
-function cube(size, levels) {
+function cube(size, levels, format = fractions ? gl.RGBA16F : gl.RGBA8) {
   const made = gl.createTexture();
   gl.activeTexture(gl.TEXTURE0 + MAKING);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, made);
-  gl.texStorage2D(gl.TEXTURE_CUBE_MAP, levels, fractions ? gl.RGBA16F : gl.RGBA8, size, size);
+  gl.texStorage2D(gl.TEXTURE_CUBE_MAP, levels, format, size, size);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -1275,6 +1391,24 @@ function glossed(from, into, size, levels) {
   gl.bindSampler(MAKING, null);
 }
 
+// Surroundings Qt baked into a file are that cube already, every level of
+// it: handed over as they are, each side's first row first, and the file
+// let go of. Qt reads as many levels as the file has, whatever they hold.
+function baked(data) {
+  const { width, levels } = data;
+  if (!levels || width > gl.getParameter(gl.MAX_CUBE_MAP_TEXTURE_SIZE)) return null;
+  const made = cube(width, levels.length, gl.RGBA16F);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  levels.forEach((sides, level) => {
+    const across = Math.max(1, width >> level);
+    sides.forEach((side, index) => gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + index, level, 0, 0, across, across, gl.RGBA, gl.HALF_FLOAT, side));
+  });
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.activeTexture(gl.TEXTURE0);
+  data.spent();
+  return { cube: made, levels: levels.length };
+}
+
 // The picture of a light probe as the cube that is read when a scene is lit
 // by it, made as Qt makes it: each side at least 512 across, half the
 // picture's height where that is more, and six levels. The first is the
@@ -1287,6 +1421,10 @@ function probed(map) {
   const from = map.element ?? map.data;
   let made = probes.get(from);
   if (made !== undefined) return made;
+  if (map.data?.baked && map.data.sides === 6) {
+    probes.set(from, (made = baked(map.data)));
+    return made;
+  }
   fold ??= program(COVER, FOLD, ["u_from", "u_screen", "u_side"]);
   blur ??= program(COVER, BLUR, BLURRING);
   if (!fold || !blur) {
@@ -1611,6 +1749,7 @@ function tailor(source) {
     gl.useProgram(made.program);
     gl.uniform1i(made.at.u_map, 0);
     gl.uniform1i(made.at.u_bones, 1);
+    gl.uniform1i(made.at.u_morphed, MORPHS);
     gl.uniform1i(made.at.u_probe, PROBE);
     gl.uniform1i(made.at.u_mirror, MIRROR);
     SAMPLERS.forEach((name, index) => name && gl.uniform1i(made.at[name], UNITS[index]));
@@ -1648,12 +1787,13 @@ function handed(own, uniforms) {
   }
 }
 
-// One part of a shape, with the material it is drawn with. A
+// One part of a shape, with the material it is drawn with, saying how far
+// it is where it hides what is drawn behind it afterwards. A
 // CustomMaterial's is drawn by its own program: put over what is there as
-// the material says and no other way, and saying how far it is where what
-// nothing is seen through says it, unless the material has it otherwise.
+// the material says and no other way.
 function part(piece) {
   const { custom } = piece.material;
+  gl.depthMask(piece.hides);
   if (!custom) return drawn(piece);
   const own = tailor(custom.source);
   if (!own) return;
@@ -1671,16 +1811,14 @@ function part(piece) {
     gl.enable(gl.BLEND);
     gl.blendFuncSeparate(...custom.blend.map((factor) => FACTORS[factor]));
   } else gl.disable(gl.BLEND);
-  gl.depthMask(piece.sheer ? custom.depth === 1 : custom.depth !== 2);
   drawn(piece);
-  if (piece.sheer) gl.enable(gl.BLEND);
-  gl.depthMask(!piece.sheer);
   own.shining = shining;
   shining = lit;
   at = shaded.at;
   gl.useProgram(shaded.program);
 }
 
+let morphing = null;
 function drawn(piece) {
   const { shape, subset, world, material, opacity } = piece;
   const made = held(shape);
@@ -1692,6 +1830,22 @@ function drawn(piece) {
   const skinned = Boolean(piece.bones) && made.jointed;
   gl.uniform1i(at.u_skinned, skinned ? 1 : 0);
   if (skinned) jointed(piece.bones);
+  // What it goes towards, and by how much: a target the model has no
+  // weight for is not gone towards at all.
+  const { morphs } = made;
+  gl.uniform1i(at.u_morphs, morphs ? morphs.count : 0);
+  if (morphs !== morphing) {
+    morphing = morphs;
+    gl.activeTexture(gl.TEXTURE0 + MORPHS);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, morphs?.texture ?? null);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  if (morphs) {
+    const by = new Float32Array(MOST);
+    (piece.weights ?? []).slice(0, morphs.count).forEach((weight, index) => (by[index] = weight));
+    gl.uniform4iv(at.u_morphAt, morphs.at);
+    gl.uniform1fv(at.u_morphBy, by);
+  }
   gl.uniform1f(at.u_point, material.point);
   gl.uniform4fv(at.u_color, material.color);
   gl.uniform1f(at.u_opacity, opacity * material.opacity);
@@ -2003,15 +2157,27 @@ function near(probes, placed, { min, max }) {
 // with a material is a thing to draw. A shape with fewer materials than
 // parts has the last for the rest; one with none is not drawn. What nothing
 // is seen through is `solid`, the nearest first; what something is,
-// `clear`, the farthest first. What a reflection probe sees (`mirrored`) is
-// the shapes that are for mirroring, and none of them mirrors anything.
+// `clear`, the farthest first; and what reads the picture of what is behind
+// it is `reading`, the farthest first, whether anything is seen through it
+// or not. Each is as far as the middle of it is in front of the eye, and a
+// model's `depthBias` times itself farther, or nearer where it is below
+// nothing, as in Qt.
+//
+// A thing hides what is drawn behind it afterwards (`hides`) unless its
+// material is never to (`depthDrawMode` 2); one that something is seen
+// through, only where its material is always to (1).
+//
+// What a reflection probe sees (`mirrored`) is the shapes that are for
+// mirroring, and none of them mirrors anything.
 function listed(scene, { view, seen, looking }, mirrored) {
   const solid = [];
+  const reading = [];
   const clear = [];
   const probes = mirrored ? [] : (scene.probes ?? []);
   for (const model of scene.models) {
     if (mirrored && !model.mirrored) continue;
-    const { shape, materials, opacity, bones } = model;
+    const { shape, materials, opacity, bones, weights } = model;
+    const bias = model.bias ?? 0;
     const lights = model.lights ?? scene.lights;
     let { instances } = model;
     if (instances && !instances.count) continue;
@@ -2030,33 +2196,39 @@ function listed(scene, { view, seen, looking }, mirrored) {
       if (!material || material.waiting) return;
       const middle = math.point(placed, ...subset.min.map((least, axis) => (least + subset.max[axis]) / 2));
       // How far in front of the eye it is: the eye looks down its own z.
-      const distance = -math.point(view, ...middle)[2];
+      const distance = -math.point(view, ...middle)[2] + Math.sign(bias) * bias * bias;
       const through = sheer(material, opacity) || Boolean(instances?.sheer);
+      const reads = Boolean(material.custom?.source.screen);
+      const depth = material.custom ? material.custom.depth : material.depth;
+      const hides = through && !reads ? depth === 1 : depth !== 2;
       const mirror = model.mirrors && probes.length ? near(probes, placed, subset) : null;
-      (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, lights, instances, placed, sheer: through, mirror });
+      (reads ? reading : through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, weights, lights, instances, placed, sheer: through, hides, mirror });
     });
   }
   // What nodes draw by themselves (`paints`), each with a program of its
   // own, is among what is seen through: as far away as the node is.
   if (!mirrored) for (const paint of scene.paints ?? []) clear.push({ paint, distance: -math.point(view, ...paint.at)[2] });
   solid.sort((a, b) => a.distance - b.distance);
+  reading.sort((a, b) => b.distance - a.distance);
   clear.sort((a, b) => b.distance - a.distance);
-  return { solid, clear };
+  return { solid, reading, clear };
 }
 
-// Draws what was listed, into what is drawn into, as `told` has it seen.
-function pieces(solid, clear, environment, told) {
+// Draws what was listed, into what is drawn into, as `told` has it seen:
+// what nothing is seen through, then what reads the picture of what is
+// behind it, then what something is seen through, as Qt does.
+function pieces({ solid, reading, clear }, environment, told) {
   if (environment.depth) gl.enable(gl.DEPTH_TEST);
   else gl.disable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
-  // What is behind the scene was drawn without saying how far it is.
-  gl.depthMask(true);
   gl.disable(gl.BLEND);
   for (const piece of solid) part(piece);
+  for (const piece of reading) part(piece);
   gl.enable(gl.BLEND);
-  gl.depthMask(false);
   for (const piece of clear) {
     if (piece.paint) {
+      // What a node draws by itself hides nothing.
+      gl.depthMask(false);
       const own = gl.getParameter(gl.CURRENT_PROGRAM);
       piece.paint({ gl, view: told.view, projection: told.projection, tonemap: told.tonemap, bound });
       gl.useProgram(own);
@@ -2068,6 +2240,7 @@ function pieces(solid, clear, environment, told) {
     else if (blend === 2) gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ONE, gl.ONE);
     else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     part(piece);
+    gl.enable(gl.BLEND);
   }
   gl.depthMask(true);
   gl.bindVertexArray(null);
@@ -2117,7 +2290,7 @@ function reflected(probe, scene, environment, surroundings) {
     const told = said(environment, surroundings, eye, projection, 0, 1, 10000);
     return { told, eye, ...listed(scene, told, true) };
   });
-  const there = `${probe.turn} ${surroundings && environment.sky ? 1 : 0} ${through[0].solid.length + through[0].clear.length}`;
+  const there = `${probe.turn} ${surroundings && environment.sky ? 1 : 0} ${through[0].solid.length + through[0].reading.length + through[0].clear.length}`;
   if (held && probe.once && held.there === there) return;
   if (!held) {
     held = { across, raw: cube(across, Math.floor(Math.log2(across)) + 1), cube: cube(across, LEVELS), depth: gl.createRenderbuffer(), frame: gl.createFramebuffer(), blurring: gl.createFramebuffer() };
@@ -2131,7 +2304,7 @@ function reflected(probe, scene, environment, surroundings) {
   // Nothing is behind what reads what is behind it, in what a probe sees.
   pictured(SCREEN, flat(0, 0, 0, 255));
   pictured(DEPTH, flat(0, 0, 0, 255));
-  through.forEach(({ told, eye, solid, clear }, side) => {
+  through.forEach(({ told, eye, ...all }, side) => {
     gl.bindFramebuffer(gl.FRAMEBUFFER, held.frame);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + side, held.raw, 0);
     gl.viewport(0, 0, across, across);
@@ -2142,7 +2315,7 @@ function reflected(probe, scene, environment, surroundings) {
     telling = told;
     tell();
     shining = null;
-    pieces(solid, clear, environment, told);
+    pieces(all, environment, told);
   });
   covering();
   gl.activeTexture(gl.TEXTURE0 + MAKING);
@@ -2158,7 +2331,7 @@ function reflected(probe, scene, environment, surroundings) {
 // Draws `scene` (`{ width, height, environment, projection, camera, models,
 // lights, probes }`) and hands the picture to `paper`, the context of
 // `canvas`.
-export function draw(scene, canvas, paper) {
+export function draw(scene, canvas, paper, ways = 0) {
   const ratio = window.devicePixelRatio || 1;
   const width = Math.round(scene.width * ratio);
   const height = Math.round(scene.height * ratio);
@@ -2168,6 +2341,7 @@ export function draw(scene, canvas, paper) {
   }
   if (surface.width !== width) surface.width = width;
   if (surface.height !== height) surface.height = height;
+  turn++;
   const { environment } = scene;
   const probe = environment.probe ? probed(environment.probe.map) : null;
   // What an effect brings to the screen afterwards is drawn in linear
@@ -2199,11 +2373,13 @@ export function draw(scene, canvas, paper) {
     const eye = math.unscaled(scene.camera);
     if (probe && environment.sky) backdrop(probe, environment, scene.projection, eye, tonemap);
     const told = said(environment, probe, eye, scene.projection, tonemap, scene.near ?? 0, scene.far ?? 0);
-    const { solid, clear } = listed(scene, told, false);
+    const all = listed(scene, told, false);
+    const { solid } = all;
+    const each = [...solid, ...all.reading, ...all.clear];
 
     // What is round each reflection probe that something mirrors by is
     // drawn for it first.
-    const mirrors = new Set([...solid, ...clear].map(({ mirror }) => mirror).filter(Boolean));
+    const mirrors = new Set(each.map(({ mirror }) => mirror).filter(Boolean));
     if (mirrors.size) {
       for (const mirror of mirrors) reflected(mirror, scene, environment, probe);
       gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (late ? linear.frame : null));
@@ -2217,7 +2393,7 @@ export function draw(scene, canvas, paper) {
     // linear light: what nothing is seen through, over what is behind the
     // scene. Something that reads only how far that is, and is not seen
     // through, is itself of it, as in Qt.
-    const reading = [...solid, ...clear].filter(({ material }) => material?.custom?.source.screen || material?.custom?.source.depth);
+    const reading = each.filter(({ material }) => material?.custom?.source.screen || material?.custom?.source.depth);
     const back = reading.length ? behind(width, height) : null;
     if (back) {
       // Read while it is being drawn, there is nothing behind anything.
@@ -2234,9 +2410,9 @@ export function draw(scene, canvas, paper) {
       if (environment.depth) gl.enable(gl.DEPTH_TEST);
       else gl.disable(gl.DEPTH_TEST);
       gl.depthFunc(gl.LEQUAL);
-      gl.depthMask(true);
       gl.disable(gl.BLEND);
       for (const piece of solid) part(piece);
+      gl.depthMask(true);
       gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (late ? linear.frame : null));
       const mipped = reading.some(({ material }) => material.custom.source.mips);
       gl.activeTexture(gl.TEXTURE0 + DEPTH);
@@ -2251,7 +2427,7 @@ export function draw(scene, canvas, paper) {
       shining = null;
     }
 
-    pieces(solid, clear, environment, told);
+    pieces(all, environment, told);
   }
 
   if (frame) {
@@ -2264,6 +2440,7 @@ export function draw(scene, canvas, paper) {
   const picture = effects ? affected(effects, linear.color, width, height, scene, canvas) : late ? linear.color : null;
   if (grade) finished(grade, picture);
   else if (effects) shown(picture, environment.tonemap);
+  if (ways) retained(canvas, width, height, ways);
   // The picture leaves the surface for the canvas: nothing is copied.
   paper.transferFromImageBitmap(surface.transferToImageBitmap());
 }

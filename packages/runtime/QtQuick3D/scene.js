@@ -5,7 +5,7 @@
 // These say what there is; `render.js` draws it.
 //
 // Not here: shadows, a sky box that is a cube of six
-// pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, a material's
+// pictures (`skyBoxCubeMap`), a material's
 // own probe, and the distances a model draws the entries of its table
 // between (`instancingLodMin` and `instancingLodMax`). Of
 // a material's pictures: a height map moves nothing, nothing is let through
@@ -17,6 +17,7 @@ import { createSignal, untrack } from "solid-js";
 import { awaited, defineType, derived, effect, flush, group, located } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";
 import { color } from "../QtQuick/color.js";
+import { ktx } from "./ktx.js";
 import * as math from "./math.js";
 import { read } from "./mesh.js";
 import { Node, Object3D } from "./Node.js";
@@ -102,9 +103,11 @@ function picture(url) {
 }
 
 // A picture whose numbers are not held to what a screen can show, which a
-// browser does not read: the numbers themselves, once they are here.
+// browser does not read: the numbers themselves, once they are here. A
+// Radiance picture is one, and what Qt baked of one into a KTX file.
+const BRIGHT = /\.(hdr|ktx)$/i;
 function bright(url) {
-  const read = file(url, "hdr", radiance).state();
+  const read = /\.ktx$/i.test(url) ? file(url, "ktx", ktx).state() : file(url, "hdr", radiance).state();
   if (read?.error) {
     if (!warned.has(url)) console.warn(`Texture: ${url}: ${read.error}`);
     warned.add(url);
@@ -169,6 +172,8 @@ export const Model = defineType("Model", Node, {
     // What bends it: a skin's joints, else a skeleton's with the poses the
     // model has for them.
     self.$bones = () => (self.skin ? (self.skin.$bones?.() ?? null) : (self.skeleton?.$bones?.(list(self.inverseBindPoses)) ?? null));
+    // How much it goes towards each target its mesh has, in their order.
+    self.$weights = () => list(self.morphTargets).map((target) => Number(target?.weight) || 0);
     // The table it is drawn by, once for each entry, and where the entries
     // are: `above` is what the whole table is moved by and `local` what
     // each entry is, in its own place. Null where it is drawn once.
@@ -215,6 +220,8 @@ const MirroredRepeat = 2;
 const Repeat = 3;
 const Nearest = 1;
 const Linear = 2;
+// ShaderEffectSource's.
+const MirrorVertically = 2;
 
 export const Texture = defineType("Texture", Object3D, {
   properties: {
@@ -249,13 +256,27 @@ export const Texture = defineType("Texture", Object3D, {
     // them: flipped, moved, then turned and scaled about the pivot. The
     // picture is an item's where it has one, else the numbers it is given,
     // else the file it names, which is the order Qt looks in.
+    //
+    // An item that stands for another (a ShaderEffectSource) is that one. A
+    // View3D is a picture upside down, as it is in Qt where Qt draws with
+    // OpenGL, unless what stands for it mirrors it back, which one does
+    // that is not told otherwise; and what reads a view is drawn again when
+    // the view is.
     self.$texture = () => {
       const source = String(self.source ?? "");
-      const item = self.sourceItem;
+      let item = self.sourceItem;
+      let mirrored = false;
+      for (let seen = 0; item?.sourceItem !== undefined && seen < 8; seen++) {
+        mirrored = Boolean(item.textureMirroring & MirrorVertically);
+        item = item.sourceItem;
+      }
+      const view = Boolean(item?.$view);
+      const down = view && !mirrored;
+      if (view) item.$view(down);
       const given = item ? null : self.textureData;
       const url = item || given || !source ? null : located(source);
-      const data = given ? (given.$picture?.() ?? null) : url && /\.hdr$/i.test(url) ? bright(url) : null;
-      const loaded = url && !/\.hdr$/i.test(url) ? picture(url) : null;
+      const data = given ? (given.$picture?.() ?? null) : url && BRIGHT.test(url) ? bright(url) : null;
+      const loaded = url && !BRIGHT.test(url) ? picture(url) : null;
       const element = item ? (item.$canvas?.element ?? item.$shader?.canvas ?? null) : (loaded?.element ?? null);
       if (!element && !data) return null;
       let transform = [...math.IDENTITY];
@@ -273,6 +294,8 @@ export const Texture = defineType("Texture", Object3D, {
         data,
         // A canvas may have been drawn on since, and may be seen through.
         live: Boolean(item),
+        view,
+        down,
         sheer: data ? data.sheer : loaded ? loaded.sheer : true,
         horizontal: self.tilingModeHorizontal,
         vertical: self.tilingModeVertical,
@@ -390,6 +413,7 @@ export const DefaultMaterial = defineType("DefaultMaterial", Material, {
       opacity: self.opacity,
       colors: self.vertexColorsEnabled,
       cull: self.cullMode,
+      depth: self.depthDrawMode,
       blend: self.blendMode,
       cutoff: -1,
       point: self.pointSize,
@@ -518,6 +542,7 @@ export const PrincipledMaterial = defineType("PrincipledMaterial", Material, {
         opacity: self.opacity,
         colors: self.vertexColorsEnabled,
         cull: self.cullMode,
+        depth: self.depthDrawMode,
         blend: self.blendMode,
         solid: mode === Opaque || mode === Mask,
         blended: mode === Blend,

@@ -82,3 +82,23 @@ plain("an item is painted by its shaders, with its properties as their uniforms"
   expect(warnings.length).toBe(2);
   for (const warning of warnings) expect(warning).toMatch(/^ShaderEffect: /);
 });
+
+// Qt 6.11 says all of this where it draws with OpenGL, but for the version
+// and what comes with it, which are a desktop's there (4.6, a compatibility
+// profile, 2, of OpenGL, 1) and WebGL 2's here: OpenGL ES 3.0.
+plain("an item says what it is drawn with, in Qt's names for it", async ({ page }) => {
+  await open(page, "graphicsinfo");
+  expect(await page.evaluate(() => window.scene.read())).toEqual({
+    api: 3,
+    same: true,
+    upright: false,
+    shader: [3, 2, 2],
+    version: [3, 0, 0, 2],
+    apis: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    shaders: [0, 1, 2, 3],
+    compilations: [1, 2],
+    sources: [1, 2, 4],
+    profiles: [0, 1, 2],
+    renderables: [0, 1, 2],
+  });
+});

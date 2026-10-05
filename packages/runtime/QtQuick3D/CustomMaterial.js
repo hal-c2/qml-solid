@@ -1,8 +1,11 @@
 // CustomMaterial: a material drawn by shaders of the scene's own.
 //
 // It names two files, each a piece of a shader as Qt has them written
-// (`shaders.js` says how), and whether what they draw is lit as a
-// PrincipledMaterial is (`Shaded`) or is the colour they say (`Unshaded`).
+// (`shaders.js` says how), or is given the text of one where it names no
+// file (`__vertexShaderCode`, `__fragmentShaderCode`: what a material
+// written in QML puts its shaders together in), and whether what they draw
+// is lit as a PrincipledMaterial is (`Shaded`) or is the colour they say
+// (`Unshaded`).
 // What the shaders are handed besides is the material's own properties,
 // those its QML declares: each is a uniform of its name, of the type Qt
 // makes of the property's (a `real` a `float`, a `color` a `vec4` in linear
@@ -74,6 +77,8 @@ export const CustomMaterial = defineType("CustomMaterial", Material, {
     shadingMode: Shaded,
     fragmentShader: "",
     vertexShader: "",
+    __fragmentShaderCode: "",
+    __vertexShaderCode: "",
     sourceBlend: 0,
     destinationBlend: 0,
     sourceAlphaBlend: 0,
@@ -84,8 +89,9 @@ export const CustomMaterial = defineType("CustomMaterial", Material, {
   enums: { Unshaded, Shaded, ...BLENDS },
   setup(self) {
     self.$material = () => {
-      const vertex = text(self.vertexShader, self);
-      const fragment = text(self.fragmentShader, self);
+      // A piece is the file named, else the text given.
+      const vertex = String(self.vertexShader ?? "") ? text(self.vertexShader, self) : String(self.__vertexShaderCode ?? "");
+      const fragment = String(self.fragmentShader ?? "") ? text(self.fragmentShader, self) : String(self.__fragmentShaderCode ?? "");
       const { uniforms, waiting } = handed(self, CustomMaterial);
       if (vertex === null || fragment === null) return { waiting: true };
       const shaded = self.shadingMode !== Unshaded;

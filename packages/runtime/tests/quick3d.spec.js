@@ -907,6 +907,57 @@ test("a Radiance picture lights a scene and is drawn as Qt has it", async ({ pag
   near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
 });
 
+test("surroundings Qt baked into a KTX file light a scene as they are", async ({ page }) => {
+  await open(page, "baked3d");
+  const points = [
+    // Behind, three sides of the cube and the quarters of each: the left
+    // one, the one ahead, and the one below.
+    [[60, 60], [62, 168, 168]],
+    [[300, 60], [129, 129, 43]],
+    [[350, 250], [155, 154, 61]],
+    [[370, 150], [135, 135, 46]],
+    [[100, 250], [168, 62, 168]],
+    [[200, 270], [168, 62, 168]],
+    [[20, 290], [211, 94, 212]],
+    // A rough ball, lit by the last level, where each side is the other
+    // colours than its own.
+    [[78, 150], [136, 158, 161]],
+    [[60, 140], [163, 143, 151]],
+    [[95, 165], [91, 171, 165]],
+    // A mirror: the three sides behind the eye, of the first level.
+    [[200, 150], [87, 87, 208]],
+    [[190, 135], [62, 168, 62]],
+    [[212, 138], [87, 208, 87]],
+    [[200, 128], [118, 239, 118]],
+    [[188, 162], [59, 59, 161]],
+    [[212, 165], [157, 56, 56]],
+    // A ball half as smooth: the same sides, of a level between, which is
+    // dimmer.
+    [[320, 150], [45, 45, 134]],
+    [[310, 140], [45, 130, 77]],
+    [[335, 160], [134, 45, 45]],
+    [[320, 172], [134, 45, 134]],
+  ];
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
+test("a KTX file is a material's picture by its first side", async ({ page }) => {
+  await open(page, "bakedmap3d");
+  const points = [
+    // In linear light: twice as bright as white, and a fifth of it.
+    [[100, 130], [255, 123, 123]],
+    [[140, 130], [255, 89, 89]],
+    [[100, 170], [187, 63, 63]],
+    [[140, 170], [137, 44, 44]],
+    // As a screen shows it.
+    [[260, 130], [255, 50, 50]],
+    [[300, 130], [255, 22, 22]],
+    [[260, 170], [128, 7, 7]],
+    [[300, 170], [64, 0, 0]],
+  ];
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
 test("the shapes QtQuick3D.Helpers works out are the ones Qt works out", async ({ page }) => {
   await open(page, "geometry3d");
   // The box each fits in. A grid's is not the one it fills, and a shape
@@ -1168,17 +1219,37 @@ test("a node told to face another keeps facing it, as Qt turns it", async ({ pag
   near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
 });
 
+// The clear colour twice, the sphere, two sides of the cube, the blue
+// rectangle alone and under the white one that is seen through, and that
+// one over the rectangle that Qt draws black.
+const EXTENDED = [[20, 20], [70, 110], [150, 100], [140, 80], [262, 40], [230, 40], [230, 120], [10, 100]];
+
+// The scene is opened anew for each thing asked of it, and is Qt's colours
+// at those places.
+async function extended(page, states) {
+  for (const [call, colours] of states) {
+    await open(page, "extended3d");
+    if (call) await page.evaluate(`window.scene.${call}`);
+    near(await painted(page, EXTENDED.map((point, index) => [point, colours[index]])), colours, call, 3);
+  }
+}
+
 test("an ExtendedSceneEnvironment brings a scene to the screen as Qt's does", async ({ page }) => {
-  // The clear colour twice, the sphere, two sides of the cube, the blue
-  // rectangle alone and under the white one that is seen through, and that
-  // one over the rectangle that Qt draws black.
-  const at = [[20, 20], [70, 110], [150, 100], [140, 80], [262, 40], [230, 40], [230, 120], [10, 100]];
-  const states = [
+  await extended(page, [
     // Things are laid over one another in linear light: the white one shows
     // 170 over black, where a SceneEnvironment (the last row) shows 102.
     ["", [[64, 80, 96], [183, 122, 61], [30, 101, 48], [73, 216, 109], [128, 144, 255], [192, 198, 255], [170, 170, 170], [64, 80, 96]]],
     // The exposure is taken before the tone mapping, of the clear colour too.
     ["brighter()", [[100, 124, 148], [255, 186, 96], [50, 155, 77], [113, 255, 166], [194, 218, 255], [255, 255, 255], [255, 255, 255], [100, 124, 148]]],
+    ["adjusted()", [[38, 45, 52], [114, 89, 63], [11, 41, 19], [75, 134, 90], [125, 131, 177], [176, 179, 202], [138, 138, 138], [38, 45, 52]]],
+    // The colour of a vignette is one of linear light.
+    ["vignetted()", [[16, 19, 29], [123, 82, 47], [24, 80, 43], [57, 167, 90], [55, 61, 114], [104, 106, 144], [111, 111, 117], [19, 23, 34]]],
+    ["plain()", [[64, 80, 96], [183, 122, 61], [29, 101, 48], [73, 215, 109], [128, 144, 255], [179, 188, 255], [102, 102, 102], [64, 80, 96]]],
+  ]);
+});
+
+test("an ExtendedSceneEnvironment maps the tones of a scene as Qt's does", async ({ page }) => {
+  await extended(page, [
     // With no tone mapping the numbers of linear light are shown as they are.
     ["toned(0, 1)", [[13, 21, 30], [121, 50, 12], [3, 34, 8], [17, 174, 39], [55, 71, 255], [135, 145, 255], [102, 102, 102], [13, 21, 30]]],
     ["toned(2, 1)", [[61, 86, 113], [219, 153, 56], [17, 121, 38], [74, 239, 133], [161, 181, 255], [226, 229, 255], [208, 208, 208], [61, 86, 113]]],
@@ -1187,16 +1258,10 @@ test("an ExtendedSceneEnvironment brings a scene to the screen as Qt's does", as
     ["toned(3, 2)", [[76, 94, 111], [185, 136, 73], [37, 116, 58], [86, 205, 123], [141, 155, 224], [191, 194, 224], [175, 175, 175], [76, 94, 111]]],
     ["toned(4, 1)", [[79, 102, 123], [214, 156, 76], [35, 130, 58], [92, 235, 140], [162, 179, 255], [220, 224, 255], [203, 203, 203], [79, 102, 123]]],
     ["toned(4, 2)", [[71, 91, 111], [193, 140, 67], [30, 117, 51], [82, 212, 126], [146, 162, 230], [199, 203, 230], [183, 183, 183], [71, 91, 111]]],
-    ["adjusted()", [[38, 45, 52], [114, 89, 63], [11, 41, 19], [75, 134, 90], [125, 131, 177], [176, 179, 202], [138, 138, 138], [38, 45, 52]]],
-    // The colour of a vignette is one of linear light.
-    ["vignetted()", [[16, 19, 29], [123, 82, 47], [24, 80, 43], [57, 167, 90], [55, 61, 114], [104, 106, 144], [111, 111, 117], [19, 23, 34]]],
-    ["plain()", [[64, 80, 96], [183, 122, 61], [29, 101, 48], [73, 215, 109], [128, 144, 255], [179, 188, 255], [102, 102, 102], [64, 80, 96]]],
-  ];
-  for (const [call, colours] of states) {
-    await open(page, "extended3d");
-    if (call) await page.evaluate(`window.scene.${call}`);
-    near(await painted(page, at.map((point, index) => [point, colours[index]])), colours, call, 3);
-  }
+  ]);
+});
+
+test("an ExtendedSceneEnvironment sharpens, smooths and dithers a scene as Qt's does", async ({ page }) => {
   // What is done to an edge: the top of the blue rectangle made sharper,
   // and the cube's side smoothed after it is drawn, or as it is drawn.
   const edges = [
@@ -1207,7 +1272,7 @@ test("an ExtendedSceneEnvironment brings a scene to the screen as Qt's does", as
   for (const [call, points] of edges) {
     await open(page, "extended3d");
     await page.evaluate(`window.scene.${call}`);
-    near(await painted(page, points), points.map(([, colour]) => colour), call, 6);
+    near(await painted(page, points, 6), points.map(([, colour]) => colour), call, 6);
   }
   // Dithering moves each number a little, and each by its own amount: the
   // side of the cube is 30, 101, 48 without it.
@@ -1845,6 +1910,268 @@ test("a CustomMaterial is drawn by its own shaders, handed what Qt hands them", 
   near(await painted(page, later), later.map(([, colour]) => colour), "", 3);
 });
 
+// Every number here is what Qt 6.11 paints of the same scene.
+test("a CustomMaterial says of a clear coat and of what it mirrors what Qt hears of them", async ({ page }) => {
+  await open(page, "customcoat3d");
+  // Of each ball: its middle, and three places off it. A ball here is of
+  // other triangles than Qt's, so these are within four of Qt's.
+  const balls = [
+    // A whole coat, as a PrincipledMaterial has one.
+    [[40, 50], [167, 34, 34]],
+    [[30, 40], [73, 0, 0]],
+    [[52, 58], [160, 5, 5]],
+    [[22, 62], [22, 0, 0]],
+    // As much of one as a property of the material says.
+    [[120, 50], [189, 54, 54]],
+    [[110, 40], [145, 2, 2]],
+    [[132, 58], [162, 3, 3]],
+    [[102, 62], [120, 0, 0]],
+    // One that gives back more sooner as it turns, by a whole number less
+    // a property, which Qt's shaders may write.
+    [[200, 50], [206, 105, 105]],
+    [[190, 40], [149, 3, 3]],
+    [[212, 58], [152, 3, 3]],
+    [[182, 62], [112, 0, 0]],
+    // One that gives back half of that, and a fifth more.
+    [[280, 50], [170, 53, 53]],
+    [[270, 40], [137, 2, 2]],
+    [[292, 58], [121, 0, 0]],
+    [[262, 62], [110, 0, 0]],
+    // One that faces another way than the ball does.
+    [[360, 50], [78, 0, 0]],
+    [[350, 40], [99, 0, 0]],
+    [[372, 58], [13, 0, 0]],
+    [[342, 62], [116, 0, 0]],
+    // One over what bends light more.
+    [[40, 150], [164, 54, 54]],
+    [[30, 140], [88, 4, 4]],
+    [[52, 158], [133, 10, 10]],
+    [[22, 162], [10, 0, 0]],
+    // One over a ball the piece turns: the coat is not turned with it.
+    [[120, 150], [177, 60, 60]],
+    [[110, 140], [106, 0, 0]],
+    [[132, 158], [126, 0, 0]],
+    [[102, 162], [28, 0, 0]],
+    // No coat, and none where how much is given back is said, with what is
+    // let through, which is nothing: a light's shine heeds neither.
+    [[200, 150], [199, 77, 77]],
+    [[190, 140], [178, 0, 0]],
+    [[212, 158], [175, 0, 0]],
+    [[182, 162], [158, 0, 0]],
+    [[280, 150], [191, 44, 44]],
+    [[270, 140], [178, 0, 0]],
+    [[292, 158], [175, 0, 0]],
+    [[262, 162], [158, 0, 0]],
+    // A coat over the half of a ball that the other piece says, by what it
+    // hands this one.
+    [[360, 150], [159, 22, 22]],
+    [[350, 140], [178, 4, 4]],
+    [[372, 158], [57, 0, 0]],
+    [[342, 162], [159, 3, 3]],
+  ];
+  near(await painted(page, balls, 4), balls.map(([, colour]) => colour), "", 4);
+  // Under them, what mirrors by a ReflectionProbe, looked at where a
+  // PrincipledMaterial that does is.
+  const mirrors = spotted([
+    // Metal mirrors each wall where it faces it.
+    [BROWN, RED, GREEN, BLUE, YELLOW, BLACK, BLACK, BEHIND],
+    // What is no metal takes its light from all round the probe.
+    [[83, 73, 49], [124, 42, 34], [53, 120, 34], [53, 45, 112], [124, 120, 0], [98, 12, 96], [57, 53, 128], BEHIND],
+    // What is black and gives nothing back mirrors by its coat alone.
+    [[25, 7, 0], [69, 0, 0], [0, 67, 0], [0, 0, 67], [69, 69, 0], BLACK, BLACK, BEHIND],
+    // And metal that gives back half and a fifth of what it would mirrors
+    // that much.
+    [[109, 53, 24], [219, 0, 0], [0, 218, 0], [0, 0, 218], [219, 219, 0], BLACK, BLACK, BEHIND],
+  ]).map(([[x, y], colour]) => [[x, y + 200], colour]);
+  near(await painted(page, mirrors), mirrors.map(([, colour]) => colour), "", 3);
+});
+
+test("a shape goes towards the targets of its mesh as Qt's does", async ({ page }) => {
+  await open(page, "morph3d");
+  const none = [32, 32, 32];
+  const lit = grey(188);
+  const turned = grey(170);
+  const points = [
+    // As the mesh has it: its middle, and beside and under it.
+    [[50, 50], lit],
+    [[68, 50], none],
+    [[50, 68], none],
+    // All the way to the first target: twice as wide and no taller, and
+    // darker, as it faces away to the right.
+    [[150, 50], turned],
+    [[175, 50], turned],
+    [[150, 68], none],
+    // Half way to it.
+    [[250, 50], grey(183)],
+    [[270, 50], grey(183)],
+    [[275, 50], none],
+    [[250, 68], none],
+    // Half way to the first and all the way to the second: each is gone
+    // towards from the mesh's own.
+    [[350, 50], grey(166)],
+    [[370, 50], grey(167)],
+    [[375, 50], none],
+    [[350, 25], grey(168)],
+    [[350, 78], grey(165)],
+    [[350, 83], none],
+    // A third target, which the mesh has not, is nothing: only the second
+    // is gone towards.
+    [[50, 150], turned],
+    [[68, 150], none],
+    [[50, 125], turned],
+    [[50, 178], turned],
+    // A target said to be of how the corners face moves them as well.
+    [[150, 150], turned],
+    [[175, 150], turned],
+    [[150, 168], none],
+    // A CustomMaterial with nothing to say of the corners is no different.
+    [[250, 150], turned],
+    [[275, 150], turned],
+    [[250, 168], none],
+    // One with something to say of them is where the mesh has it, and
+    // faces as the target does.
+    [[350, 150], grey(171)],
+    [[368, 150], none],
+    [[350, 168], none],
+    // One that names what a target has is where it says and faces as the
+    // mesh does: half way to the second target, however much either
+    // weighs.
+    [[50, 250], lit],
+    [[68, 250], none],
+    [[50, 230], lit],
+    [[50, 225], none],
+    [[50, 270], lit],
+    // How the first target faces, as a colour, on a shape gone as far as
+    // each target weighs.
+    [[150, 250], [153, 0, 204]],
+    [[175, 250], [153, 0, 204]],
+    [[150, 230], [153, 0, 204]],
+    [[150, 270], [153, 0, 204]],
+    [[150, 275], none],
+    // As far as each of as many as there are weighs.
+    [[250, 250], lit],
+    [[270, 250], lit],
+    [[275, 250], none],
+    [[250, 225], lit],
+    [[250, 278], lit],
+    // And a shape with no targets has nothing for one: it is where it was.
+    [[350, 250], lit],
+    [[362, 250], lit],
+    [[368, 250], none],
+    [[350, 268], none],
+  ];
+  near(await painted(page, points), points.map(([, colour]) => colour), "points", 3);
+  // A target that comes to weigh more is gone towards further.
+  await page.evaluate(() => window.scene.step(0));
+  const after = [
+    [[250, 50], turned],
+    [[270, 50], turned],
+    [[275, 50], turned],
+    [[250, 68], none],
+  ];
+  near(await painted(page, after), after.map(([, colour]) => colour), "after", 3);
+});
+
+test("what is said to be farther or to hide is drawn over as Qt's is", async ({ page }) => {
+  await open(page, "depthdrawn3d");
+  // Half of each over what is behind it: the blue square and the red alone,
+  // the red over the blue and the blue over the red.
+  const blue = [16, 16, 144];
+  const red = [144, 16, 16];
+  const redOver = [136, 8, 72];
+  const blueOver = [72, 8, 136];
+  // Of each pair: where the blue square alone is, where both are, and
+  // where the red alone is.
+  const pairs = [
+    // As they are, the red is drawn after the blue, which is farther.
+    [blue, redOver, red],
+    // Said to be 5 farther it is 25 farther, which is less than the 50
+    // between them; said to be 8 it is 64, and drawn first.
+    [blue, redOver, red],
+    [blue, blueOver, red],
+    // As the blue is drawn last when it is said to be 8 nearer.
+    [blue, blueOver, red],
+    // Drawn first and hiding what is behind it, the red leaves nothing of
+    // the blue where both are.
+    [blue, red, red],
+    // And hiding what is behind it where it is, it is drawn last and hides
+    // nothing.
+    [blue, redOver, red],
+    // Neither seen through, the nearer is drawn first: and is drawn over
+    // by the farther where it does not hide,
+    [[0, 0, 255], [0, 0, 255], [255, 0, 0]],
+    // as where neither hides,
+    [[0, 0, 255], [0, 0, 255], [255, 0, 0]],
+    // unless it is said to be farther than the other.
+    [[0, 0, 255], [255, 0, 0], [255, 0, 0]],
+    // What is seen through and hides is still seen through.
+    [blue, blueOver, red],
+  ];
+  const points = pairs.flatMap((colours, index) => {
+    const x = 40 + 80 * (index % 5);
+    const y = index < 5 ? 90 : 210;
+    return colours.map((colour, at) => [[x + 25 * (at - 1), y + 25 * (at - 1)], colour]);
+  });
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
+test("what reads the picture of what is behind it is drawn before all that is seen through", async ({ page }) => {
+  await open(page, "screenread3d");
+  // The wall as what reads it draws it, and half as bright; the blue square
+  // and the red, each half over the wall.
+  const read = [13, 3, 55];
+  const dim = [6, 1, 27];
+  const blue = [64, 32, 142];
+  const red = [191, 32, 15];
+  // What reads and is half there, over the wall.
+  const half = [78, 41, 50];
+  // Of each pair: where the farther square alone is, where both are, and
+  // where the nearer alone is.
+  const pairs = [
+    // Drawn first, it hides the blue behind it, which is drawn afterwards,
+    [blue, read, read],
+    // and the red before it is drawn over it.
+    [read, [134, 1, 28], red],
+    // Hiding nothing, it is drawn over by the blue.
+    [blue, [6, 1, 155], read],
+    // Of two that read the nearer is drawn last, and neither reads what
+    // the other drew.
+    [read, dim, dim],
+    // What nothing is seen through is in the picture it reads.
+    [[0, 255, 0], [255, 0, 0], read],
+    // Put over what is there by halves it hides as much,
+    [blue, half, half],
+    // and is drawn before a red one that is said to be farther and hides.
+    [half, [167, 20, 25], red],
+    // Among those that read, one said to be nearer is drawn later.
+    [read, read, dim],
+  ];
+  const points = pairs.flatMap((colours, index) => {
+    const x = 80 + 80 * (index % 4);
+    const y = index < 4 ? 90 : 210;
+    return colours.map((colour, at) => [[x + 25 * (at - 1), y + 25 * (at - 1)], colour]);
+  });
+  points.push([[5, 5], [128, 64, 30]]);
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
+// Every number here is what Qt 6.11 paints of the same scene. Solid warns of
+// what follows two thousand things or more, and a warning fails a test: a
+// view that followed each property of every node and of every material
+// would follow thirteen thousand here.
+test("a view of many nodes follows the few at the top, and draws what changes far inside", async ({ page }) => {
+  await open(page, "manynodes3d");
+  const none = [32, 32, 32];
+  const places = [[155, 80], [29, 120], [47, 120], [29, 160], [371, 260], [29, 40], [20, 20]];
+  const first = [[255, 0, 0], [255, 255, 255], [0, 0, 255], [255, 255, 255], [0, 0, 255], [255, 255, 255], none];
+  near(await painted(page, places.map((place, index) => [place, first[index]])), first, "", 3);
+  // One square of another colour, a row seen through by half and a row not
+  // shown: the rest as they were.
+  await page.evaluate(() => window.scene.step(0));
+  const after = [[0, 255, 0], [144, 144, 144], [16, 16, 144], none, [0, 0, 255], [255, 255, 255], none];
+  near(await painted(page, places.map((place, index) => [place, after[index]])), after, "", 3);
+});
+
 // The views of the scenes of effects are 100 by 75, four to a row, and
 // these the places looked at in each: the surroundings, the nearer shape
 // and the further one first. A place not looked at is null.
@@ -1974,6 +2301,64 @@ test("Quaternion makes the turns Qt's makes", async ({ page }) => {
     same: [0.707, 0, 0.707, 0],
     square: [0.92, -0.081, -0.381, -0.033],
   });
+});
+
+test("an object in space has states, and goes between them by its transitions", async ({ page }) => {
+  await open(page, "states3d");
+  const read = () => page.evaluate(() => window.scene.read());
+  const step = (index) => page.evaluate((index) => window.scene.step(index), index);
+  const closed = { door: ["closed", 0, 0, 0], lid: ["", 0, 0] };
+  near(await read(), { ...closed, body: ["", "#a6a6a6", 0, 1, true] });
+  // A door swings open over the better part of a second, and is not there at once;
+  // what a Node's state changes of other things is changed with no
+  // transition.
+  await step(0);
+  await expect.poll(async () => (await read()).door[0]).toBe("open");
+  expect(Math.abs((await read()).door[1])).toBeLessThan(41);
+  await expect.poll(async () => (await read()).door[1]).toBe(41);
+  near(await read(), { door: ["open", 41, -18, 51], lid: ["", 0, 0], body: ["red", "#a21010", 0.5, 2, true] });
+  // Everything a state changed is as it was once another is entered.
+  await step(1);
+  await expect.poll(async () => (await read()).door.join()).toBe("closed,0,0,0");
+  near(await read(), { ...closed, body: ["dark", "#a6a6a6", 0, 1, false] });
+  // A state that is named is entered when it is.
+  near(await step(2), { lid: ["raised", -50, 40] });
+  near(await step(3), { lid: ["", 0, 0] });
+});
+
+// A view is a picture upside down where Qt draws with OpenGL, which is
+// how it is here: a ShaderEffectSource of it stands it up, unless it is
+// told to mirror nothing. Each of the three is 100 across from 30, 150 and
+// 270, and from 100 down: of a sheet in each quarter but one, where a small
+// one is, before a grey.
+test("a View3D is a picture in another's scene, the way up Qt has it", async ({ page }) => {
+  await open(page, "viewmap3d");
+  const GREY = grey(128);
+  const PINK = [255, 0, 255];
+  const quarters = (left, first, second, third, fourth, small) => [
+    [[left + 25, 125], first],
+    [[left + 75, 125], second],
+    [[left + 25, 175], third],
+    [[left + 75, 175], fourth],
+    small,
+  ];
+  const seen = (first, other) => [
+    // The view itself: its top row is the picture's bottom one.
+    ...quarters(30, BLUE, GREY, first, GREEN, [[92, 137], YELLOW]),
+    // Through a ShaderEffectSource it is as the view shows it,
+    ...quarters(150, other, GREEN, BLUE, GREY, [[212, 162], YELLOW]),
+    // and through one that mirrors nothing it is as the view itself is.
+    ...quarters(270, BLUE, GREY, other, GREEN, [[332, 137], YELLOW]),
+    [[80, 112], GREY],
+    [[200, 187], GREY],
+    [[10, 10], BLACK],
+  ];
+  const before = seen(RED, PINK);
+  expect(await painted(page, before)).toEqual(before.map(([, colour]) => colour));
+  // What is drawn with a view is drawn again when the view is.
+  await page.evaluate(() => window.scene.step());
+  const after = seen([0, 255, 255], [255, 255, 255]);
+  expect(await painted(page, after)).toEqual(after.map(([, colour]) => colour));
 });
 
 // Qt 6.11 says nothing of the frames a second has until the second is over,

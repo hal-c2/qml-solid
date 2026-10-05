@@ -10,6 +10,7 @@
 import { createMemo, runWithOwner } from "solid-js";
 import { contents, defineType, derived, group, parental, parented, QtObject, settle, slot } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";
+import { stateful } from "../QtQuick/states.js";
 import * as math from "./math.js";
 
 const LocalSpace = 0;
@@ -34,6 +35,9 @@ const DECLARED = (self) => self.$parent?.$scene ?? self.$parent ?? null;
 export const Object3D = defineType("Object3D", QtObject, {
   properties: {
     parent: derived(DECLARED),
+    // An object in space has states and the ways between them as an item
+    // has: a door of a car is open in one, and swings there.
+    ...stateful.properties,
   },
   methods: {
     get children() {
@@ -54,6 +58,7 @@ export const Object3D = defineType("Object3D", QtObject, {
     },
   },
   setup(self, props) {
+    stateful.setup(self, props);
     parented(self, props, DECLARED);
   },
   adopt(self, props) {
@@ -62,6 +67,9 @@ export const Object3D = defineType("Object3D", QtObject, {
 });
 
 parental(Object3D);
+
+// `state` reads as the state the object is in, and assigning it enters one.
+Object.defineProperties(Object3D.proto, Object.getOwnPropertyDescriptors(stateful.methods));
 
 // The nodes inside one, in order. A child may stand for others that come
 // before it (`$siblings`), as a repeater's do.

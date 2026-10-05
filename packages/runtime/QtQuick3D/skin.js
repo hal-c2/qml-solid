@@ -8,7 +8,11 @@
 // A shape that is bent is placed by its joints alone: where its own Model is
 // does not come into it, as it does not in Qt.
 //
-// Not here: a MorphTarget is named and weighed, and moves nothing.
+// A MorphTarget is how much a Model goes towards one of the other shapes its
+// mesh has of itself: the first of a Model's is for the mesh's first, and so
+// on. What it says it is of (`attributes`) is kept and changes nothing
+// drawn, as it changes nothing in Qt 6.11: a shape goes towards all its mesh
+// has for a target.
 import { defineType } from "../object.js";
 import * as math from "./math.js";
 import { kept, Node, Object3D } from "./Node.js";
