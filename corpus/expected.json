@@ -73,7 +73,10 @@
       "pixels": 0.99,
       "content": 0.95
     },
-    "toycustomizer": {},
+    "toycustomizer": {
+      "pixels": 0.95,
+      "content": 0.9
+    },
     "windowembedding": {}
   }
 }

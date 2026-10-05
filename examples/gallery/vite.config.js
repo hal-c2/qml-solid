@@ -71,6 +71,31 @@ function standins(file) {
   return example ? [example.standins] : [];
 }
 
+// What an example's build downloads and puts among its files is not among
+// them in the corpus: a file asked for there that is not there is served from
+// where it has been fetched to.
+function assets() {
+  const fetched = () => readManifest().flatMap((example) => example.fetched);
+  return {
+    name: "gallery-assets",
+    config: () => ({ server: { fs: { allow: fetched().map(([, from]) => from) } } }),
+    configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        const [asked, query = ""] = request.url.split("?");
+        if (asked.startsWith("/@fs/")) {
+          const file = decodeURIComponent(asked.slice("/@fs".length));
+          const place = fetched().find(([to]) => file.startsWith(to + sep));
+          if (place && !existsSync(file)) {
+            const kept = join(place[1], file.slice(place[0].length + 1));
+            request.url = `/@fs${kept.split(sep).map(encodeURIComponent).join("/")}${query && "?" + query}`;
+          }
+        }
+        next();
+      });
+    },
+  };
+}
+
 // The plugin stops the build at a file `qmlc` does not take. Here that is the
 // usual case and must not stop anything: the file becomes a module that
 // throws the compiler's message when it is imported, so the example that
@@ -91,7 +116,7 @@ function tolerant(plugin) {
 
 export default defineConfig({
   base: "./",
-  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), args, style, controls, standins }))],
+  plugins: [examples(), assets(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), args, style, controls, standins }))],
   resolve: {
     // Qt's examples have no app behind them: nothing to find here.
     alias: { "qml-solid/host": path("./host.js") },

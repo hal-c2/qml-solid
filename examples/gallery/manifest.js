@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assetsOf } from "../../corpus/assets.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const manifestFile = resolve(process.env.GALLERY_MANIFEST ?? join(here, "../../corpus/examples.json"));
@@ -33,6 +34,10 @@ export function readManifest() {
       standins: existsSync(standins) ? standins : null,
       main: existsSync(join(standins, "main.js")) ? join(standins, "main.js") : null,
       capturedAt: index[example.id]?.capturedAt ?? null,
+      // What the example's build downloads, where that has been fetched
+      // (`mise run assets`): each directory of it, where the build puts it
+      // and where it is.
+      fetched: (assetsOf(example)?.places ?? []).map(([to, from]) => [join(directory, to), from]),
     };
   });
 }

@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { assetsOf } from "./assets.mjs";
 
 const corpus = dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(readFileSync(join(corpus, "examples.json"), "utf8"));
@@ -207,6 +208,9 @@ function capture(example, display) {
       const built = spawnSync(qsb, ["--qt6", ...(shader.endsWith(".vert") ? ["-b"] : []), "-o", `${place(directory, copy, shader)}.qsb`, join(directory, shader)], { encoding: "utf8" });
       if (built.status !== 0) return { ok: false, why: `qsb: ${built.error?.message ?? built.stderr}`, warnings: [] };
     }
+    // What its build downloads is where the build puts it, once it has
+    // been fetched (`mise run assets`).
+    for (const [to, from] of assetsOf(example)?.places ?? []) symlinkSync(from, place(directory, copy, to));
     const entry = join(copy, example.entry);
     const importPaths = (example.importPaths ?? []).map((path) => resolve(copy, path));
     if (example.qt.module) importPaths.push(join(scratch, "modules"));

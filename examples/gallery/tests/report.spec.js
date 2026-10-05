@@ -160,10 +160,14 @@ for (const example of readManifest()) {
     const uninstalled = result.error?.match(/Qt's (\S+) is not installed here/)?.[1];
     if (uninstalled) testInfo.annotations.push({ type: "uninstalled", description: `Qt's ${uninstalled} is not installed here` });
     const floor = uninstalled ? null : expected[example.id];
+    // And one whose build downloads its pictures is like Qt's picture only
+    // where they have been fetched: `mise run assets`.
+    const unfetched = Boolean(example.assets) && example.fetched.length === 0;
+    if (unfetched) testInfo.annotations.push({ type: "unfetched", description: `mise run assets ${example.id} fetches what it shows` });
     if (floor) {
       expect(renders, `${example.id} must keep rendering: ${result.error}`).toBe(true);
       for (const score of ["pixels", "content"]) {
-        if (typeof floor[score] !== "number") continue;
+        if (typeof floor[score] !== "number" || unfetched) continue;
         expect(result[score], `${example.id} must stay as like its reference picture: ${score}`).toBeGreaterThanOrEqual(floor[score]);
       }
     }
