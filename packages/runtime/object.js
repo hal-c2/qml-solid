@@ -1062,6 +1062,14 @@ export function whenComplete(work) {
   waiting.push(() => runWithOwner(owner, work));
 }
 
+// Runs `work` when the objects being created are told that they are
+// complete, and before any `Component.onCompleted` of theirs: so Qt tells
+// one that listens to its own completion as to a signal.
+export function whenCompleted(work) {
+  if (!completions) return untrack(work);
+  (completions.first ??= []).push(() => untrack(work));
+}
+
 // Runs `work` once they exist and before anything that waits for that: what
 // an object makes of itself as it is completed (a Loader its item) is there
 // for whatever looks at it then, the layout it is in for one.
@@ -1101,7 +1109,8 @@ function complete(make) {
     // What the objects make of each other once they are made, as a row of
     // where its items are and how wide that makes it, they have made before
     // any is told that it is complete.
-    if (handlers.length > 0) settle();
+    if (handlers.length > 0 || handlers.first) settle();
+    for (const handler of handlers.first ?? []) soon(handler);
     // `Component.onCompleted`, as Qt tells of it: of the object made last
     // first, so of one before those in it, and of those the last first.
     for (let index = handlers.length - 1; index >= 0; index--) soon(handlers[index]);

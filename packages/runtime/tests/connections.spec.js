@@ -60,3 +60,8 @@ test("a Connections' handler is a function it may call itself", async ({ page })
   await page.evaluate(() => (window.scene.count = 2));
   expect(await page.evaluate(() => window.scene.heard)).toEqual([0, 2]);
 });
+
+test("a Connections whose target is Component hears of its own completion", async ({ page }) => {
+  await open(page, "connectionown");
+  expect(await page.evaluate(() => window.scene.said)).toEqual(["own", "root"]);
+});
