@@ -1,0 +1,4 @@
+void MAIN()
+{
+    FRAGCOLOR = vec4(texture(DEPTH_TEXTURE, INPUT_UV).r, CAMERA_PROPERTIES / 1000.0, 1.0);
+}

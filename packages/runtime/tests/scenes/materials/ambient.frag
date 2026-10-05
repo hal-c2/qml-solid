@@ -1,0 +1,19 @@
+void MAIN()
+{
+    BASE_COLOR = vec4(0.5, 0.5, 0.5, 1.0);
+}
+
+void AMBIENT_LIGHT()
+{
+    DIFFUSE += TOTAL_AMBIENT_COLOR * 4;
+}
+
+void DIRECTIONAL_LIGHT()
+{
+    DIFFUSE += LIGHT_COLOR * vec3(0.25, 0.0, 0.0) * max(0.0, dot(NORMAL, TO_LIGHT_DIR)) * SHADOW_CONTRIB;
+}
+
+void POINT_LIGHT()
+{
+    DIFFUSE += LIGHT_COLOR * vec3(0.0, 0.0, 0.5) * LIGHT_ATTENUATION;
+}

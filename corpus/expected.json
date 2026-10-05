@@ -83,6 +83,7 @@
       "pixels": 0.95,
       "content": 0.9
     },
-    "windowembedding": {}
+    "windowembedding": {},
+    "xr_physicsbase_teleportation": {}
   }
 }

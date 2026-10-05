@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<InstanceTable>
+  <Instance position="0 200 0" scale="0.75 0.75 0.75" custom="20 20" color="#ffcf7f"/>
+  <Other position="5 5 5"/>
+  <Instance position="0 -100" scale="0.5 2 0.5" color="red"/>
+  <Instance position="10 -200 30" eulerRotation="0 0 60" color="darkred" custom="10 40 0 5" unknown="1"/>
+  <Instance position="1 2 3" quaternion="0 0 0.3826834 0.9238795" color="#80ffffff"/>
+</InstanceTable>

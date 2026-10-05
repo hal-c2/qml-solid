@@ -10,7 +10,7 @@
 // control, and a program that uses three of them needs those three.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, delimiter, dirname, isAbsolute, join, sep } from "node:path";
 import { searchForWorkspaceRoot } from "vite";
 
@@ -75,6 +75,10 @@ function installed() {
 // that is the module. They are read out of it by Qt's own `qml` tool, into
 // `directory`, once.
 const KEPT = "qrc:/qt-project.org/imports";
+// `qrc:/qtquick3deffects/shaders/blur.frag`: what else the QML of a module
+// names that its plugin keeps, under a name of the plugin's own: the shaders
+// of an effect of QtQuick3D.Effects, and the pictures they read.
+const LODGED = /qrc:\/((?!qt-project\.org\/)[\w-]+(?:\/[\w-]+)*)\/[\w.-]+/g;
 
 const EXTRACT = (uri, folder) => `import QtQml
 import Qt.labs.folderlistmodel
@@ -279,6 +283,28 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
       .filter((name) => !name.startsWith(".") && !name.includes("@"))
       .map((name) => [`${folder}/${name}`, join(directory, name)]);
   };
+  // And what else its QML names that is in the plugin, a folder at a time:
+  // read out of it likewise. A shader is no picture to Vite, which is asked
+  // for where each file is and not for what is in it.
+  const lodged = (module, about) => {
+    const texts = [...about.types.values()].map((file) => readFileSync(join(home(module), file), "utf8"));
+    const folders = new Set(texts.flatMap((text) => [...text.matchAll(LODGED)].map(([, folder]) => folder)));
+    const { bins, version } = found();
+    return [...folders].sort().flatMap((folder) => {
+      const directory = join(cache, version || "qt", module, ...folder.split("/"));
+      if (!existsSync(directory)) {
+        const failed = extract(join(bins || "", "qml"), module.replaceAll("/", "."), `qrc:/${folder}`, directory);
+        if (failed) console.warn(`qml-solid: ${folder} of ${module} could not be read out of Qt: ${failed}`);
+      }
+      const names = readdirSync(directory).filter((name) => !name.startsWith(".") && !name.includes("@"));
+      // Nothing read is not kept: the next build asks Qt again.
+      if (names.length === 0) {
+        console.warn(`qml-solid: nothing of ${folder} could be read out of Qt's ${module.replaceAll("/", ".")}`);
+        rmSync(directory, { recursive: true, force: true });
+      }
+      return names.map((name) => [`qrc:/${folder}/${name}`, `${join(directory, name)}?url`]);
+    });
+  };
   // The types Qt has of a module in C++, as the compiler's table has them:
   // what the runtime is to have of it. None for a module the table lacks.
   const tables = new Map();
@@ -438,7 +464,7 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
           for (const [name, file] of about.types) {
             lines.push(`export { default as ${name} } from ${JSON.stringify(join(home(module), file) + carry)};`);
           }
-          const pictures = [...kept(module, about, "images"), ...kept(module, about, "shaders").filter(([, file]) => file.endsWith(BAKED))];
+          const pictures = [...kept(module, about, "images"), ...kept(module, about, "shaders").filter(([, file]) => file.endsWith(BAKED)), ...lodged(module, about)];
           if (pictures.length > 0) {
             lines.push(`import { resources as $resources } from ${kernel};`);
             pictures.forEach(([url, file], index) => {
