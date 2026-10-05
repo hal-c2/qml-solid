@@ -1631,26 +1631,33 @@ function passed(source) {
 // What a Buffer is drawn into as: Qt's numbers for the kind of picture it
 // is, for how it is read between its places and for how past its edges.
 // Fractions are kept as halves, and one number to a place as a fraction.
+// A view keeps each by its name, from one picture to the next: one that
+// nothing drew into yet is black, and all of it seen through.
 const kinds = () => ({ 1: gl.RGBA8, 2: gl.RGBA16F, 3: gl.RGBA16F, 4: gl.R8, 5: gl.R16F, 6: gl.R16F, 7: gl.R16F });
 const kept = new WeakMap();
-function buffered({ of, format, filter, wrap, scale }, width, height) {
+function buffered(view, { name, format, filter, wrap, scale }, width, height) {
+  if (!kept.has(view)) kept.set(view, new Map());
+  const held = kept.get(view);
   // Qt rounds the size: half of 75 rows is 38.
-  const made = sheet(kept.get(of), Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)), kinds()[format] ?? gl.RGBA16F, filter === 1 ? gl.NEAREST : gl.LINEAR, WRAPS[wrap] ?? gl.CLAMP_TO_EDGE);
-  kept.set(of, made);
+  const made = sheet(held.get(name), Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)), kinds()[format] ?? gl.RGBA16F, filter === 1 ? gl.NEAREST : gl.LINEAR, WRAPS[wrap] ?? gl.CLAMP_TO_EDGE);
+  held.set(name, made);
   return made;
 }
 
 // The effects of an environment, run over the picture `from` one after
 // another: what the last leaves, as a texture. Each pass draws a rectangle
 // over the whole of what it draws into, which is black before it: the
-// picture the next effect reads, or a Buffer of the effect's own. What it
+// picture the next effect reads, or a Buffer of the `view`'s. What it
 // reads is the picture the effect was given, unless it says a Buffer in its
 // place; and a Buffer, or that picture, by the name of one of the effect's
-// own pictures where it says so.
+// own pictures where it says so. The picture an effect leaves is of the kind
+// the last pass to draw into it says, and of the kind the effect was given
+// where that says none: whole numbers, once an effect says them, to every
+// effect after it.
 let quad = null;
 let frames = 0;
-const turns = [null, null];
-function affected(effects, from, width, height, scene) {
+const turns = new Map();
+function affected(effects, from, width, height, scene, view) {
   if (!quad) {
     quad = gl.createVertexArray();
     gl.bindVertexArray(quad);
@@ -1669,25 +1676,28 @@ function affected(effects, from, width, height, scene) {
   const projection = scene.projection ?? math.IDENTITY;
   const unprojected = math.inverse(projection) ?? math.IDENTITY;
   pictured(DEPTH, effects.some(({ passes }) => passes.some(({ source }) => source.depth)) ? linear.depth : flat(0, 0, 0, 255));
-  let given = { texture: from, width, height };
+  let given = { texture: from, width, height, format: gl.RGBA16F };
   let turn = 0;
   let most = 0;
   for (const { uniforms, passes } of effects) {
-    const out = (turns[turn] = sheet(turns[turn], width, height, gl.RGBA16F, gl.LINEAR, gl.CLAMP_TO_EDGE));
+    const kind = kinds()[passes.findLast(({ output }) => !output)?.format] ?? given.format;
+    const key = `${turn} ${kind}`;
+    const out = sheet(turns.get(key), width, height, kind, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    turns.set(key, out);
     let wrote = false;
     for (const { source, reads, set, output } of passes) {
       const own = passed(source);
       if (!own) continue;
-      const into = output ? buffered(output, width, height) : out;
+      const into = output ? buffered(view, output, width, height) : out;
       gl.useProgram(own.program);
       handed(own, uniforms);
       handed(own, set);
       most = Math.max(most, source.samplers.length);
       let read = given;
       for (const { buffer, sampler } of reads) {
-        const held = buffer ? kept.get(buffer.of) : given;
+        const held = buffer ? buffered(view, buffer, width, height) : given;
         const unit = source.samplers.indexOf(sampler);
-        if (!held || held === into) continue;
+        if (held === into) continue;
         if (!sampler) read = held;
         else if (unit >= 0) pictured(OWN + unit, held.texture);
       }
@@ -1929,7 +1939,7 @@ export function draw(scene, canvas, paper) {
     gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT | (effects ? gl.DEPTH_BUFFER_BIT : 0), gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
-  const picture = effects ? affected(effects, linear.color, width, height, scene) : late ? linear.color : null;
+  const picture = effects ? affected(effects, linear.color, width, height, scene, canvas) : late ? linear.color : null;
   if (grade) finished(grade, picture);
   else if (effects) shown(picture, environment.tonemap);
   // The picture leaves the surface for the canvas: nothing is copied.

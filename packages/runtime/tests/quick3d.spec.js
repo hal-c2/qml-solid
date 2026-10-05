@@ -1820,6 +1820,42 @@ test("the passes of an Effect read and draw into what Qt has them", async ({ pag
   near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
 });
 
+// And here.
+test("a Buffer of an Effect is what its name says, as Qt has one", async ({ page }) => {
+  await open(page, "buffers3d");
+  const views = [
+    // No more than all of a colour is kept in a picture of whole numbers,
+    // which a Buffer without a name says the effect leaves; more otherwise.
+    [[128, 32, 12], [128, 32, 12]],
+    [[255, 32, 13], [255, 32, 13]],
+    // What is drawn into one without a name is what the effect leaves, and
+    // what is read of it what the effect was given.
+    [[0, 128, 0], [0, 128, 0]],
+    [[3, 13, 30], [255, 55, 13]],
+    // Two of one name are one; one nothing drew into is seen through; and
+    // one of a name is the same to two effects.
+    [[0, 128, 0], [0, 128, 0]],
+    [[32, 96, 32], [32, 96, 32]],
+    [[0, 128, 0], [0, 128, 0]],
+    // One without a name is as big as the view.
+    [[128, 96, 128], [128, 96, 128]],
+    // Whole numbers go on to the effects after; the last pass to draw into
+    // what the effect leaves says its kind, and what is read does not.
+    [[128, 32, 12], [128, 32, 12]],
+    [[255, 32, 13], [255, 32, 13]],
+    [[128, 32, 12], [128, 32, 12]],
+    [[255, 32, 13], [255, 32, 13]],
+  ];
+  const points = views.flatMap(([corner, middle], view) => {
+    const [x, y] = [(view % 4) * 100, Math.floor(view / 4) * 75];
+    return [
+      [[x + 5, y + 5], corner],
+      [[x + 50, y + 37], middle],
+    ];
+  });
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
 test("Quaternion makes the turns Qt's makes", async ({ page }) => {
   await open(page, "quaternion3d");
   near(await page.evaluate(() => window.scene.read()), {

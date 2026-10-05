@@ -8,8 +8,10 @@
 // how), and are handed the effect's own properties, those its QML declares,
 // as a CustomMaterial's are handed its. Each pass draws the picture the
 // effect was given (`INPUT`) into the one the next effect is given, or into
-// a Buffer of the effect's own, which a later pass reads in its place or by
-// the name of one of the effect's pictures.
+// a Buffer, which a later pass reads in its place or by the name of one of
+// the effect's pictures. A Buffer is what its `name` says: two of one name
+// are one, in whichever effects of a view they are, and one without a name
+// is none, but says what kind of picture the effect leaves.
 //
 // The effects of QtQuick3D.Effects are such effects, written in QML: they
 // are Qt's own files, and their shaders Qt's own, where Qt is installed.
@@ -129,9 +131,9 @@ export const Buffer = defineType("Buffer", Object3D, {
   // `Unknown` is the first of each of the three it is an answer to.
   enums: { ...FORMATS, Nearest, Linear, ClampToEdge, MirroredRepeat: 2, Repeat: 3, None: 0, SceneLifetime: 1 },
   setup(self) {
-    // What the renderer draws into for it, which it keeps by the Buffer.
+    // What the renderer draws into for it, which it keeps by the name.
     self.$buffer = () => ({
-      of: self,
+      name: String(self.name ?? ""),
       format: self.format,
       filter: self.textureFilterOperation,
       wrap: self.textureCoordOperation,
@@ -216,8 +218,15 @@ export const Effect = defineType("Effect", Object3D, {
           }
           const reads = [];
           const set = [];
+          // A Buffer without a name is the picture the effect was given,
+          // to a pass that reads it, and the one it leaves, to one that
+          // draws into it.
+          const named = (buffer) => {
+            const told = buffer?.$buffer?.();
+            return told?.name ? told : null;
+          };
           for (const command of list(pass.commands)) {
-            if (is(command, BufferInput)) reads.push({ buffer: command.buffer?.$buffer?.() ?? null, sampler: String(command.sampler ?? "") });
+            if (is(command, BufferInput)) reads.push({ buffer: named(command.buffer), sampler: String(command.sampler ?? "") });
             else if (is(command, SetUniformValue)) {
               // A property is what its type says, whatever it is set to.
               const name = String(command.target ?? "");
@@ -226,7 +235,10 @@ export const Effect = defineType("Effect", Object3D, {
               if (given && given.type === kind.type && given.type !== "sampler2D") set.push({ name, ...given });
             }
           }
-          return { source: source(told, samplers, ...pieces), reads, set, output: pass.output?.$buffer?.() ?? null };
+          // `format` is the kind of picture the effect leaves, where the
+          // pass says one: nothing for the kind it was given.
+          const output = named(pass.output);
+          return { source: source(told, samplers, ...pieces), reads, set, output, format: output ? 0 : (pass.output?.$buffer?.().format ?? 0) };
         });
       return { uniforms, passes, waiting: late };
     };
