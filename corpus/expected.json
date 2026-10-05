@@ -25,7 +25,10 @@
       "pixels": 0.96,
       "content": 0.9
     },
-    "documentviewer": {},
+    "documentviewer": {
+      "pixels": 0.99,
+      "content": 0.99
+    },
     "graphs_csv": {},
     "hangman": {
       "pixels": 0.95,

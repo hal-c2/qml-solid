@@ -29,6 +29,11 @@
     "width": 800,
     "height": 600
   },
+  "documentviewer": {
+    "capturedAt": 1791161786670,
+    "width": 800,
+    "height": 600
+  },
   "hangman": {
     "capturedAt": 1791129965172,
     "width": 320,

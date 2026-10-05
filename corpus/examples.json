@@ -322,9 +322,9 @@
         "the application itself: Qt Widgets, with viewers as plugins"
       ],
       "qt": {
-        "runnable": false,
-        "reason": "A Qt Widgets application; its only QML is the 3D model viewer plugin, which needs QtQuick3D (not installed)."
-      }
+        "runnable": true
+      },
+      "notes": "A Qt Widgets application; its only QML is the 3D model viewer plugin, and the picture is that with no file open: the empty view."
     },
     {
       "id": "FX_Material_Showroom",
