@@ -265,23 +265,31 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
   // one is for a screen that is not asked about yet. Its shaders likewise:
   // those are baked, and inside the plugin.
   const kept = (module, about, kind) => {
-    const folder = `${KEPT}/${module}/${kind}`;
-    let directory = join(home(module), kind);
-    if (!existsSync(directory)) {
-      const native = natives()[`./${module}`];
-      const texts = [...about.types.values()].map((file) => join(home(module), file));
-      const named = [...texts, ...(native ? [join(runtime, native)] : [])].some((file) => readFileSync(file, "utf8").includes(folder));
-      if (!named) return [];
-      const { bins, version } = found();
-      directory = join(cache, version || "qt", module, kind);
-      if (!existsSync(directory)) {
-        const failed = extract(join(bins || "", "qml"), module.replaceAll("/", "."), folder, directory);
-        if (failed) console.warn(`qml-solid: the ${kind} of ${module} could not be read out of Qt: ${failed}`);
+    const native = natives()[`./${module}`];
+    const files = [...[...about.types.values()].map((file) => join(home(module), file)), ...(native ? [join(runtime, native)] : [])];
+    const texts = files.map((file) => readFileSync(file, "utf8"));
+    const stored = (owner, named) => {
+      const folder = `${KEPT}/${owner}/${kind}`;
+      let directory = join(home(owner) ?? "", kind);
+      if (!home(owner) || !existsSync(directory)) {
+        if (!named(folder)) return [];
+        const { bins, version } = found();
+        directory = join(cache, version || "qt", owner, kind);
+        if (!existsSync(directory)) {
+          const failed = extract(join(bins || "", "qml"), owner.replaceAll("/", "."), folder, directory);
+          if (failed) console.warn(`qml-solid: the ${kind} of ${owner} could not be read out of Qt: ${failed}`);
+        }
       }
-    }
-    return readdirSync(directory)
-      .filter((name) => !name.startsWith(".") && !name.includes("@"))
-      .map((name) => [`${folder}/${name}`, join(directory, name)]);
+      return readdirSync(directory)
+        .filter((name) => !name.startsWith(".") && !name.includes("@"))
+        .map((name) => [`${folder}/${name}`, join(directory, name)]);
+    };
+    // And those of another module that its QML names: what a style draws
+    // with is the style's, and named by the module beside it that draws.
+    const theirs = new RegExp(`${KEPT}/([\\w/]+)/${kind}/`, "g");
+    const others = new Set(texts.flatMap((text) => [...text.matchAll(theirs)].map(([, owner]) => owner)));
+    others.delete(module);
+    return [...stored(module, (folder) => texts.some((text) => text.includes(folder))), ...[...others].sort().flatMap((owner) => stored(owner, () => true))];
   };
   // And what else its QML names that is in the plugin, a folder at a time:
   // read out of it likewise. A shader is no picture to Vite, which is asked

@@ -108,6 +108,17 @@ test("QML of Qt's own is of the style of the program that came to it", async ({ 
   expect(read).toEqual([60, 20]);
 });
 
+test("a picture Qt keeps inside a module is there for another module that names it", async ({ page }) => {
+  // Its own module is of a style the program is not of, and is not asked for.
+  await open(page, "modules-oak-cabinet");
+  await page.waitForFunction(() => window.objects.cabinet.knot.status !== 2);
+  const read = await page.evaluate(() => {
+    const { knot } = window.objects.cabinet;
+    return [knot.status, knot.implicitWidth, knot.implicitHeight];
+  });
+  expect(read).toEqual([1, 40, 20]);
+});
+
 test("a file beside the program as it runs is where the program says", async ({ page }) => {
   await open(page, "beside");
   await page.waitForFunction(() => window.scene.sizes().every(([status]) => status === 1));
