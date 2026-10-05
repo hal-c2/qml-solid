@@ -270,17 +270,24 @@ export const View3D = defineType("View3D", Item, {
     // of several that a frame's animations and timers set.
     //
     // Drawing holds the page up, where Qt draws on a thread of its own: so
-    // a picture that took long is not drawn again until as long has gone
-    // by, and the page has half its time for everything else, what it
-    // fetches and what is pressed among it. What changes meanwhile is in
-    // the picture that is drawn then.
+    // where pictures take long, one is not drawn again until as long has
+    // gone by as the last took, and the page has half its time for
+    // everything else, what it fetches and what is pressed among it. What
+    // changes meanwhile is in the picture that is drawn then.
+    //
+    // One slow picture is not pictures taking long: the first of a scene
+    // is slow for the programs that are made for it, and the next is
+    // drawn as soon as something changes, as every picture is of a scene
+    // that is quick to draw.
     let due = null;
     let rested = 0;
+    let slow = false;
     const stats = (self.$stats = within(null, () => RenderStats({})));
     const frame = counted(stats);
     const drawn = () => {
       const from = performance.now();
-      if (from < rested) return void setTimeout(drawn, rested - from);
+      // A timer may ring a little early.
+      if (rested - from > 1) return void setTimeout(drawn, rested - from);
       const scene = due;
       due = null;
       draw(scene, canvas, paper, ways);
@@ -289,7 +296,8 @@ export const View3D = defineType("View3D", Item, {
       const ended = performance.now();
       frame(from, ended);
       const took = ended - from;
-      rested = took > SLOW ? ended + Math.min(took, REST) : 0;
+      rested = slow && took > SLOW ? ended + Math.min(took, REST) : 0;
+      slow = took > SLOW;
     };
 
     // The view is a picture to what takes it for one (a Texture's item),
