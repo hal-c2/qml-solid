@@ -1,6 +1,7 @@
 // The `Qt` object every QML file can see, and the functions that are there
 // beside it: `qsTr`, `print`, `"%1".arg()`.
 import { createSignal } from "solid-js";
+import { failed } from "../object.js";
 import { color, equal, hsla, hsva, rgba } from "../QtQuick/color.js";
 import { application, font, inputMethod, styleHints } from "./application.js";
 import { formatDate, formatDateTimeOf, formatTime, locale } from "./locale.js";
@@ -192,7 +193,10 @@ const methods = {
 
   // QML is compiled ahead of time here: there is nothing to compile a file
   // or a string with once the program runs.
-  createComponent(url) {
+  createComponent(url, name) {
+    // A type of a module, by their names: the compiler made the component
+    // of one there is, so this is one there is not.
+    if (typeof name === "string") return failed(`<Unknown File>: Module "${url}" contains no type named "${name}"\n`);
     console.warn(`Qt.createComponent(${JSON.stringify(url)}): QML is compiled ahead of time; declare a Component instead`);
     return null;
   },

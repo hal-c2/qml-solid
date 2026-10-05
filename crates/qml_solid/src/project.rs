@@ -10,13 +10,14 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, IdentifierReference};
-use oxc_ast_visit::Visit;
+use oxc_ast::ast::{CallExpression, Expression, IdentifierReference};
+use oxc_ast_visit::{Visit, walk};
 use oxc_parser::{Parser, qml::ast::*};
 use oxc_span::SourceType;
 
 use crate::{
     Error, parse_errors, qt,
+    quick::texts,
     registry::{Element, Prop, Types},
     scope::{Own, alias_target, classify, object_id},
 };
@@ -93,6 +94,10 @@ pub(crate) struct Shape {
     /// The names its scripts use that nothing in it declares: members of
     /// Qt's types, mostly.
     pub mentions: HashSet<String>,
+    /// The names the QML it gives `Qt.createQmlObject` as a text uses and
+    /// does not declare: what is in sight where the text is written, which
+    /// is where its object looks for them.
+    pub sought: HashSet<String>,
 }
 
 /// A `property` declaration, as far as an instance cares.
@@ -270,12 +275,27 @@ impl Project {
                 shape.properties.keys().chain(shape.signals.keys()).chain(&shape.functions).map(String::as_str);
             has.extend(declared.filter(|name| !qt::is_member_name(name)));
         }
+        // What a text is to find where it is written is whatever is there
+        // by that name.
+        let mut there: HashSet<&str> = HashSet::new();
+        for shape in self.files.values().flat_map(|summary| &summary.shapes) {
+            there.extend(shape.ids.iter().map(String::as_str));
+            there.extend(shape.properties.keys().chain(shape.signals.keys()).chain(&shape.functions).map(String::as_str));
+        }
         self.files
             .values()
             .flat_map(|summary| &summary.shapes)
-            .flat_map(|shape| shape.mentions.iter().filter(|name| has.contains(name.as_str())))
+            .flat_map(|shape| {
+                let mentioned = shape.mentions.iter().filter(|name| has.contains(name.as_str()));
+                mentioned.chain(shape.sought.iter().filter(|name| there.contains(name.as_str())))
+            })
             .cloned()
             .collect()
+    }
+
+    /// The names the scripts of `file` use that nothing in it declares.
+    pub(crate) fn mentions(&self, file: &str) -> impl Iterator<Item = &String> {
+        self.files.get(file).into_iter().flat_map(|summary| &summary.shapes).flat_map(|shape| &shape.mentions)
     }
 
     /// The file the type `name` of the project's module `uri` is.
@@ -427,10 +447,17 @@ fn shape(summary: &mut Summary, inline: Option<&str>, root: &QmlObject<'_>) {
         enums: HashMap::new(),
         ids: HashSet::new(),
         mentions: HashSet::new(),
+        sought: HashSet::new(),
     };
-    let mut names =
-        Names { ids: HashSet::new(), typed: HashMap::new(), declared: HashSet::new(), mentions: HashSet::new() };
+    let mut names = Names {
+        ids: HashSet::new(),
+        typed: HashMap::new(),
+        declared: HashSet::new(),
+        mentions: HashSet::new(),
+        sought: HashSet::new(),
+    };
     names.object(root);
+    shape.sought = std::mem::take(&mut names.sought);
     shape.mentions =
         names.mentions.into_iter().filter(|name| !names.ids.contains(name) && !names.declared.contains(name)).collect();
     shape.ids = names.ids;
@@ -505,6 +532,8 @@ struct Names {
     /// What any of its objects declares.
     declared: HashSet<String>,
     mentions: HashSet<String>,
+    /// See [`Shape::sought`].
+    sought: HashSet<String>,
 }
 
 impl Names {
@@ -560,6 +589,20 @@ impl<'a> Visit<'a> for Names {
         if identifier.name.starts_with(|c: char| c.is_ascii_lowercase() || c == '_') {
             self.mentions.insert(identifier.name.to_string());
         }
+    }
+
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if let Some(text) = texts::given(call).and_then(texts::written) {
+            let allocator = Allocator::default();
+            let parsed = Parser::new(&allocator, &text.0, SourceType::ts()).parse_qml();
+            if parsed.diagnostics.is_empty() {
+                for shape in summarize(&parsed.document).shapes {
+                    self.sought.extend(shape.mentions);
+                    self.sought.extend(shape.sought);
+                }
+            }
+        }
+        walk::walk_call_expression(self, call);
     }
 }
 

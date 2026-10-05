@@ -41,7 +41,9 @@ pub(crate) struct Paths {
     pub known: Option<Vec<String>>,
     /// The other files there, likewise.
     pub pictures: Option<Vec<String>>,
-    /// The files imported: `$file1` is the first.
+    /// The files imported: `$file1` is the first, after `first` of them
+    /// that a module this one is taken into has already.
+    pub first: usize,
     named: Vec<String>,
     /// The paths each table has: `$files1` is the first.
     tables: Vec<Vec<String>>,
@@ -81,7 +83,12 @@ impl Paths {
             self.named.push(path.to_string());
             self.named.len() - 1
         });
-        format!("$file{}", index + 1)
+        format!("$file{}", self.first + index + 1)
+    }
+
+    /// How many files are imported.
+    pub(crate) fn count(&self) -> usize {
+        self.named.len()
     }
 
     /// `$file($file1)`: the file at `path` as a component, made in `scope`.
@@ -267,7 +274,7 @@ impl Paths {
             .map(|(index, path)| {
                 let stem = path.strip_suffix(".qml").unwrap_or(path);
                 let source = if stem.starts_with("../") { stem.to_string() } else { format!("./{stem}") };
-                b.import_default(&format!("$file{}", index + 1), &format!("{source}{extension}"))
+                b.import_default(&format!("$file{}", self.first + index + 1), &format!("{source}{extension}"))
             })
             .collect();
         (imports, tables)
@@ -280,7 +287,7 @@ pub(crate) fn is_resolved(expression: &Expression<'_>) -> bool {
 }
 
 /// `Qt.name(...)`: the name.
-fn qt_method<'a>(call: &CallExpression<'a>) -> Option<&'a str> {
+pub(crate) fn qt_method<'a>(call: &CallExpression<'a>) -> Option<&'a str> {
     let Expression::StaticMemberExpression(member) = &call.callee else { return None };
     let Expression::Identifier(object) = &member.object else { return None };
     // Written, and not something of the script's own called `Qt`: the

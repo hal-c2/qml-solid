@@ -169,3 +169,38 @@ test("an enum's keys are on a type of the project and on a type of a namespace",
     true, true,
   ]);
 });
+
+test("a type of a module, by their names, is a component of it", async ({ page }) => {
+  await open(page, "created");
+  // Qt 6.11.
+  expect(await page.evaluate(() => window.scene.ofType())).toEqual([true, 30, true, "#ff0000"]);
+});
+
+test("a text of QML is the object it writes, a child of the one it is given", async ({ page }) => {
+  await open(page, "created");
+  // Qt 6.11: the second text was put together of what `shade` was.
+  expect(await page.evaluate(() => window.scene.ofText())).toEqual([30, 60, true, "#ff0000", "it is blue", "#0000ff", true]);
+});
+
+test("a text of QML sees the ids, the properties and the types the file giving it sees", async ({ page }) => {
+  await open(page, "created");
+  // Qt 6.11: what the text names follows it, what it was put together of
+  // does not.
+  expect(await page.evaluate(() => window.scene.ofContext())).toEqual(["#008000", 7, 5, "it is blue", "tile", true]);
+});
+
+// This warns, as Qt does, which the scenes' `test` takes for a failure.
+plain("a type a module has not is a component in error", async ({ page }) => {
+  const warnings = [];
+  page.on("console", (message) => {
+    if (message.type() === "warning") warnings.push(message.text());
+  });
+  await open(page, "created");
+  // Qt 6.11.
+  expect(await page.evaluate(() => window.scene.unknown())).toEqual([
+    true,
+    '<Unknown File>: Module "QtQuick" contains no type named "Nothing"\n',
+    null,
+  ]);
+  expect(warnings).toEqual(['QQmlComponent: Component is not ready: <Unknown File>: Module "QtQuick" contains no type named "Nothing"']);
+});

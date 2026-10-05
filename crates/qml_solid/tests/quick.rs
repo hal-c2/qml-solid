@@ -496,6 +496,79 @@ Item {
     assert_contains(&code, "<Loader source={$file($file1)}>");
 }
 
+#[test]
+fn a_text_of_qml_is_a_component_declared_by_the_file() {
+    let code = lowered_in(
+        &[
+            (
+                "Sample",
+                r#"import QtQuick
+Item {
+    id: root
+    property string shade: "blue"
+    function make(name) {
+        const a = Qt.createQmlObject('import QtQuick; Rectangle { width: 30; height: width * 2 }', root)
+        const b = Qt.createQmlObject('import QtQuick; Text { text: "it is ' + name + '"; color: root.shade }', a)
+        const c = Qt.createQmlObject(`import QtQuick.Controls
+            Tile { Button { } Sample { } }`, b)
+        return Qt.createQmlObject(name, root)
+    }
+}"#,
+            ),
+            ("Tile", "import QtQuick\nItem { }"),
+        ],
+        "Sample",
+    )
+    .unwrap();
+    // What the text imports is imported with what the file does, once.
+    assert_contains(&code, r#"import { Item, Rectangle, Text } from "qml-solid/QtQuick";"#);
+    assert_contains(&code, r#"import { Button } from "qml-solid/QtQuick/Controls";"#);
+    assert_contains(&code, r#"import Tile from "./Tile.qml";"#);
+    assert_lacks(&code, r#"from "./Sample.qml""#);
+    assert_contains(
+        &code,
+        "const $text1 = (() => {
+	function Sample$text1($props) {
+		const $1 = $props.$self ?? $object();
+		return <Rectangle $self={$1} $given={$props} $is={Sample$text1} width={30} height={$1.width * 2}>{$props.children}</Rectangle>;
+	}
+	Object.setPrototypeOf(Sample$text1, Rectangle);
+	return Sample$text1;
+})();",
+    );
+    // A text put together is one of what was put into it; a name it does
+    // not declare is found where the file giving it finds its own.
+    assert_contains(&code, "const $text2 = ($hole1) => {");
+    assert_contains(&code, r#"text={"it is " + $hole1} color={$lookup($scope, "root").shade}"#);
+    assert_contains(&code, "<Button></Button><Sample $context={$scope}></Sample>");
+    assert_contains(&code, "const a = $file($text1, $scope).createObject(root);");
+    assert_contains(&code, "const b = $file($text2(name), $scope).createObject(a);");
+    assert_contains(&code, "const c = $file($text3, $scope).createObject(b);");
+    // A text nothing of which is written is left to the runtime to refuse.
+    assert_contains(&code, "return Qt.createQmlObject(name, root);");
+}
+
+#[test]
+fn a_text_of_qml_that_cannot_be_compiled_is_an_error_where_it_is_written() {
+    let within = |text: &str| {
+        errors(&format!("import QtQuick\nimport QtQuick.Controls.Material\nItem {{\n    id: root\n    Button {{ }}\n    function make(n) {{ return Qt.createQmlObject({text}, root) }}\n}}"))
+    };
+    assert_eq!(within("'import QtQuick; Rectangle { width: ; }'"), ["Unexpected token"]);
+    assert_eq!(
+        within("'import QtQuick; Rectangle { width: ' + n + ' }'"),
+        ["what is put into a text given to `Qt.createQmlObject` can only be put into a string of it yet"]
+    );
+    assert_eq!(
+        within("'import QtQuick.Controls.Fusion; Button { }'"),
+        ["`Button` is one thing to the file and another to the text given to `Qt.createQmlObject`"]
+    );
+    assert_eq!(
+        within("'pragma Singleton; import QtQuick; Item { }'"),
+        ["a text given to `Qt.createQmlObject` is no singleton"]
+    );
+    assert_eq!(within("'import QtQuick; Nothing { }'"), ["`Nothing` is not a type of anything the file imports"]);
+}
+
 /// The lowering of `source`, with `files` in its directory and under it.
 fn lowered_among(source: &str, files: &[&str]) -> String {
     let mut project = Project::new();
@@ -534,12 +607,14 @@ Item {
         &["Sample.qml", "pages/About.qml", "pages/Home.qml", "parts/Dial.qml"],
     );
     assert_contains(&code, r#"import { $file, $files, $object, $string, $url } from "qml-solid/object";"#);
-    // `Qt` is still what makes a type of a module.
-    assert_contains(&code, r#"import { Qt } from "qml-solid/QtQml";"#);
+    // Nothing is left for `Qt` to make as the program runs.
+    assert_lacks(&code, r#"from "qml-solid/QtQml""#);
     assert_contains(&code, r#"import $file1 from "./parts/Dial.qml";"#);
     assert_contains(&code, r#"import $file2 from "./pages/Home.qml";"#);
     assert_contains(&code, "$file($file1)");
-    assert_contains(&code, r#"Qt.createComponent("QtQuick", "Rectangle")"#);
+    // A type of a module, by their names, is the component the module has.
+    assert_contains(&code, r#"import { Item, Loader, Rectangle, Text } from "qml-solid/QtQuick";"#);
+    assert_contains(&code, "other={$file(Rectangle)}");
     assert_contains(&code, r#"icon={new URL("icons/a.png", import.meta.url).href}"#);
     assert_contains(&code, "where={$url(root.page, import.meta.url)}");
     // A path put together is one of the files it could be.
