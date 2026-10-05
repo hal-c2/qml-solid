@@ -166,3 +166,29 @@ test("what a type of a namespace attaches is asked of the object in a script", a
   // inside it, a quarter of the content in view, and no bar across.
   expect(await page.evaluate(() => window.scene.read())).toEqual([true, "bar", true, true, 0.25, null]);
 });
+
+test("Component.onCompleted is told of the object made last first, when all have made of each other what they make", async ({ page }) => {
+  await open(page, "completion");
+  // Qt 6.11: what a Loader loaded and the rows of a Repeater are complete
+  // before those they are in, whose root then sees the rows laid out.
+  expect(await page.evaluate(() => window.scene.answers())).toEqual([
+    "loaded",
+    "q inner",
+    "q child",
+    "row 0",
+    "row child 0",
+    "row 1",
+    "row child 1",
+    "root 2,30,24,4,true",
+    "b",
+    "b1",
+    "loader",
+    "repeater",
+    "p inner",
+    "p outer",
+    "p child",
+    "a",
+    "a2",
+    "a1",
+  ]);
+});

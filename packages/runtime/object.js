@@ -1098,7 +1098,13 @@ function complete(make) {
     const firsts = [];
     for (const watch of watched) watch(firsts);
     for (const handler of firsts) soon(handler);
-    for (const handler of handlers) soon(handler);
+    // What the objects make of each other once they are made, as a row of
+    // where its items are and how wide that makes it, they have made before
+    // any is told that it is complete.
+    if (handlers.length > 0) settle();
+    // `Component.onCompleted`, as Qt tells of it: of the object made last
+    // first, so of one before those in it, and of those the last first.
+    for (let index = handlers.length - 1; index >= 0; index--) soon(handlers[index]);
   } finally {
     if (--creating === 0) {
       for (const tell of kept) after(tell);
