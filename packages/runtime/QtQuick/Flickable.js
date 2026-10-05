@@ -8,6 +8,8 @@
 import { onCleanup, runWithOwner, untrack } from "solid-js";
 import { contents, defineType, derived, effect, inside, QtObject, slot } from "../object.js";
 import { Item } from "./Item.js";
+import { LeftButton } from "./keycodes.js";
+import { CancelGrabExclusive, CancelGrabPassive, canTake, receive, takeExclusive } from "./pointer.js";
 import { settle } from "./settle.js";
 
 const sheet = new CSSStyleSheet();
@@ -17,6 +19,7 @@ qq-flick::-webkit-scrollbar { display: none; }
 .qq-extent { position: absolute; left: 0; top: 0; overflow: clip; }
 qq-flick.qq-snap > .qq-extent > .qq > .qq { scroll-snap-align: start; }
 qq-flick.qq-snap-one > .qq-extent > .qq > .qq { scroll-snap-stop: always; }
+qq-flick.qq-held { scroll-snap-type: none !important; }
 `);
 document.adoptedStyleSheets.push(sheet);
 
@@ -171,6 +174,7 @@ function released(self) {
 function stopped(self) {
   if (self.$touching || !self.$moving) return;
   self.$thrown = null;
+  if (!self.$mouse) self.$viewport.classList.remove("qq-held");
   watched.delete(self);
   const flicked = self.$flicking;
   self.$moving = self.$flicking = false;
@@ -208,6 +212,159 @@ function wheeled(event) {
 
 const PASSIVE = { passive: true };
 
+// The mouse. A finger's drag is the browser's, and a mouse has none there:
+// its drag is Qt's, which moves the content by what the mouse has moved and
+// throws it on at the speed the mouse is let go at.
+//
+// Qt's style hints and `QQuickFlickable`'s own numbers: how far a press goes
+// before it is a drag, how far and how fast one goes before it is a flick,
+// and how long a mouse may rest before it is let go and still have thrown.
+const DRAG_THRESHOLD = 10;
+const FLICK_THRESHOLD = 15;
+const SNAP_ONE_THRESHOLD = 30;
+const MINIMUM_FLICK_VELOCITY = 75;
+const RESTED = 100;
+
+// Whether it may be flicked along an axis: `xflick()` and `yflick()`.
+function flicks(self, horizontal) {
+  const direction = self.flickableDirection;
+  const more = horizontal ? self.$maxX() - self.$minX() : self.$maxY() - self.$minY();
+  if (direction & AutoFlickIfNeeded) return more > 0;
+  if (direction === 0) return Math.floor(more) > 0;
+  return (direction & (horizontal ? HorizontalFlick : VerticalFlick)) !== 0;
+}
+
+// Whether a press is one it drags by: the first button of a mouse, on one
+// that is not a ScrollView's, whose bars a mouse has instead.
+function drags(self, point) {
+  if (point.type !== "mouse" || !point.primary || point.button !== LeftButton) return false;
+  return untrack(() => self.interactive && self.visible && self.parent?.$scrolled?.() !== self);
+}
+
+function pressed(self, point) {
+  if (self.$mouse?.press === point.pressTime) return;
+  self.$mouse = { press: point.pressTime, stage: 0, x: null, y: null, left: 0, top: 0, alongX: false, alongY: false, samples: [] };
+  // A press on content that was thrown stops it where it is.
+  if (self.$thrown) self.cancelFlick();
+}
+
+// The first move past the threshold makes it a drag, the one after that
+// takes the press from whoever had it, and the content moves by what the
+// mouse moves from there.
+function moved(self, point) {
+  const mouse = self.$mouse;
+  if (!mouse) return;
+  const dx = point.x - point.pressX;
+  const dy = point.y - point.pressY;
+  const [alongX, alongY] = untrack(() => [flicks(self, true), flicks(self, false)]);
+  mouse.alongX = alongX;
+  mouse.alongY = alongY;
+  const overX = alongX && Math.abs(dx) > DRAG_THRESHOLD;
+  const overY = alongY && Math.abs(dy) > DRAG_THRESHOLD;
+  const samples = mouse.samples;
+  samples.push({ x: point.x, y: point.y, time: point.time });
+  while (samples.length > 2 && point.time - samples[0].time > RESTED) samples.shift();
+  if (mouse.stage === 0) {
+    if (overX || overY) mouse.stage = 1;
+    return;
+  }
+  if (mouse.stage === 1) {
+    if (!overX && !overY) return;
+    if (point.exclusive !== self && !canTake(point, self)) return;
+    mouse.stage = 2;
+    self.$touching = self.$dragging = true;
+    self.$viewport.classList.add("qq-held");
+  }
+  const began = mouse.x === null && mouse.y === null;
+  untrack(() => {
+    if (overX && mouse.x === null) {
+      mouse.x = dx;
+      mouse.left = self.contentX;
+      write(self, "movingHorizontally", true);
+      write(self, "draggingHorizontally", true);
+    }
+    if (overY && mouse.y === null) {
+      mouse.y = dy;
+      mouse.top = self.contentY;
+      write(self, "movingVertically", true);
+      write(self, "draggingVertically", true);
+    }
+    if (mouse.x !== null) write(self, "contentX", clamp(mouse.left - (dx - mouse.x), self.$minX(), self.$maxX()));
+    if (mouse.y !== null) write(self, "contentY", clamp(mouse.top - (dy - mouse.y), self.$minY(), self.$maxY()));
+  });
+  const started = !self.$moving;
+  self.$moving = true;
+  settle();
+  if (began) self.dragStarted();
+  if (started) self.movementStarted();
+  // Whoever had the press hears it is no longer theirs once it has moved.
+  if (point.exclusive !== self) takeExclusive(point, self);
+}
+
+// How fast the mouse was going when it was let go, along an axis: over the
+// last moments of its way, and not at all once it has rested or where it
+// has not gone far.
+function speed(mouse, point, axis) {
+  const samples = mouse.samples;
+  const last = samples[samples.length - 1];
+  if (!mouse[axis === "x" ? "alongX" : "alongY"] || !last || point.time - last.time >= RESTED) return 0;
+  if (Math.abs(axis === "x" ? point.x - point.pressX : point.y - point.pressY) <= FLICK_THRESHOLD) return 0;
+  const first = samples[0];
+  const velocity = last.time > first.time ? ((last[axis] - first[axis]) * 1000) / (last.time - first.time) : 0;
+  return Math.abs(velocity) > MINIMUM_FLICK_VELOCITY ? velocity : 0;
+}
+
+// Where content that snaps rests, along the axis it snaps on: where one of
+// its items begins, as the browser has it, and the nearest of those to where
+// it was thrown. A view that goes an item at a time goes one on, the way it
+// was thrown or was dragged far enough, and back if it was not.
+function snapped(self, horizontal, to, velocity, from) {
+  const viewport = self.$viewport;
+  const padding = parseFloat(getComputedStyle(viewport)[horizontal ? "scrollPaddingLeft" : "scrollPaddingTop"]) || 0;
+  const [min, max] = horizontal ? [self.$minX(), self.$maxX()] : [self.$minY(), self.$maxY()];
+  const stops = [];
+  for (const child of self.$contentItem.children) {
+    if (child.visible) stops.push(clamp((horizontal ? child.x : child.y) - padding, min, max));
+  }
+  if (!stops.length) return to;
+  const nearest = (to, among) => among.reduce((best, stop) => (Math.abs(stop - to) < Math.abs(best - to) ? stop : best));
+  if (!viewport.classList.contains("qq-snap-one")) return nearest(to, stops);
+  const at = horizontal ? self.contentX : self.contentY;
+  const dragged = at - from;
+  const near = nearest(at, stops);
+  if (!velocity && (Math.abs(dragged) <= SNAP_ONE_THRESHOLD || (near - from) * dragged > 0)) return near;
+  const on = velocity ? velocity < 0 : dragged > 0;
+  const beyond = stops.filter((stop) => (on ? stop > at : stop < at));
+  return beyond.length ? nearest(at, beyond) : near;
+}
+
+// The press is over: let go of, or taken away. Content that was dragged goes
+// on as it was thrown, and to where it snaps.
+function dropped(self, point) {
+  const mouse = self.$mouse;
+  self.$mouse = null;
+  if (!mouse) return;
+  const viewport = self.$viewport;
+  // A press that went nowhere moves nothing, unless it was what stopped
+  // content on its way to where it snaps.
+  if (mouse.stage === 0 && !viewport.classList.contains("qq-held")) return;
+  self.$touching = false;
+  released(self);
+  untrack(() => {
+    const vx = point ? speed(mouse, point, "x") : 0;
+    const vy = point ? speed(mouse, point, "y") : 0;
+    if (vx || vy) viewport.classList.add("qq-held");
+    let x = clamp(self.contentX + thrown(self, vx), self.$minX(), self.$maxX());
+    let y = clamp(self.contentY + thrown(self, vy), self.$minY(), self.$maxY());
+    const snap = viewport.style.scrollSnapType;
+    if (snap.startsWith("x")) x = snapped(self, true, x, vx, mouse.x === null ? self.contentX : mouse.left);
+    if (snap.startsWith("y")) y = snapped(self, false, y, vy, mouse.y === null ? self.contentY : mouse.top);
+    if (send(self, x, y, vx !== 0 || vy !== 0)) return;
+    if (self.$moving) stopped(self);
+    else viewport.classList.remove("qq-held");
+  });
+}
+
 const ratio = (part, whole) => (whole > 0 ? part / whole : 0);
 
 // `visibleArea`: what a scroll bar shows, as fractions of the content.
@@ -225,6 +382,7 @@ const VisibleArea = defineType("VisibleArea", QtObject, {
 
 const HorizontalFlick = 1;
 const VerticalFlick = 2;
+const AutoFlickIfNeeded = 12;
 const StopAtBounds = 0;
 
 // How far content thrown at `velocity` goes before it stops: Qt decelerates
@@ -234,6 +392,33 @@ function thrown(self, velocity) {
   const limit = self.maximumFlickVelocity;
   if (limit >= 0) velocity = clamp(velocity, -limit, limit);
   return (-Math.sign(velocity) * velocity * velocity) / (2 * (self.flickDeceleration || 1500));
+}
+
+// Sends the content on to where it will rest, as the browser moves it: thrown
+// there, or only coming to where it snaps. Whether there was anywhere to go.
+function send(self, x, y, flicked) {
+  const dx = x - self.contentX;
+  const dy = y - self.contentY;
+  if (!dx && !dy) return false;
+  const started = !self.$moving;
+  self.$moving = true;
+  if (flicked) self.$flicking = true;
+  if (dx) {
+    write(self, "movingHorizontally", true);
+    if (flicked) write(self, "flickingHorizontally", true);
+  }
+  if (dy) {
+    write(self, "movingVertically", true);
+    if (flicked) write(self, "flickingVertically", true);
+  }
+  settle();
+  if (started) self.movementStarted();
+  if (flicked) self.flickStarted();
+  self.$thrown = { left: x - self.$minXShown, top: y - self.$minYShown };
+  SMOOTH.left = self.$thrown.left;
+  SMOOTH.top = self.$thrown.top;
+  self.$viewport.scrollTo(SMOOTH);
+  return true;
 }
 
 export const Flickable = defineType("Flickable", Item, {
@@ -274,7 +459,7 @@ export const Flickable = defineType("Flickable", Item, {
     HorizontalFlick,
     VerticalFlick,
     HorizontalAndVerticalFlick: 3,
-    AutoFlickIfNeeded: 12,
+    AutoFlickIfNeeded,
     StopAtBounds,
     DragOverBounds: 1,
     OvershootBounds: 2,
@@ -314,33 +499,40 @@ export const Flickable = defineType("Flickable", Item, {
       untrack(() => {
         const x = clamp(this.contentX + thrown(this, xVelocity), this.$minX(), this.$maxX());
         const y = clamp(this.contentY + thrown(this, yVelocity), this.$minY(), this.$maxY());
-        const dx = x - this.contentX;
-        const dy = y - this.contentY;
-        if (!dx && !dy) return;
+        if (x === this.contentX && y === this.contentY) return;
         // An element that is not shown cannot be seen moving.
         if (!this.$viewport.clientWidth && !this.$viewport.clientHeight) {
           write(this, "contentX", x);
           write(this, "contentY", y);
           return settle();
         }
-        const started = !this.$moving;
-        this.$moving = this.$flicking = true;
-        if (dx) {
-          write(this, "movingHorizontally", true);
-          write(this, "flickingHorizontally", true);
-        }
-        if (dy) {
-          write(this, "movingVertically", true);
-          write(this, "flickingVertically", true);
-        }
-        settle();
-        if (started) this.movementStarted();
-        this.flickStarted();
-        this.$thrown = { left: x - this.$minXShown, top: y - this.$minYShown };
-        SMOOTH.left = this.$thrown.left;
-        SMOOTH.top = this.$thrown.top;
-        this.$viewport.scrollTo(SMOOTH);
+        send(this, x, y, true);
       });
+    },
+    // The mouse: a press in it is its own, and one on something inside it
+    // is that one's until it is a drag.
+    $press(point) {
+      if (!drags(this, point)) return false;
+      pressed(this, point);
+      return true;
+    },
+    $filter(point) {
+      if (!drags(this, point) || !this.contains(point.in(this))) return false;
+      pressed(this, point);
+      return true;
+    },
+    $move(point) {
+      moved(this, point);
+    },
+    $release(point) {
+      dropped(this, point);
+    },
+    $grab(transition) {
+      if (transition === CancelGrabExclusive || transition === CancelGrabPassive) dropped(this, null);
+    },
+    // What it drags, nothing takes from it.
+    $keeps() {
+      return this.$mouse?.stage === 2;
     },
     cancelFlick() {
       const viewport = this.$viewport;
@@ -380,6 +572,8 @@ export const Flickable = defineType("Flickable", Item, {
     self.$extent = extent;
     self.$left = self.$top = 0;
     self.$minXShown = self.$minYShown = 0;
+    self.$mouse = null;
+    receive(self);
     self.$contentItem = inside(self, () =>
       untrack(() =>
         Item({
