@@ -7,7 +7,7 @@
 // a Behavior, and reads as what the transition's animations show until they
 // are done.
 import { createEffect, createMemo, createRoot, createSignal, runWithOwner, untrack } from "solid-js";
-import { contents, defineType, flush, group, QtObject, replace, slot, whenComplete } from "../object.js";
+import { bound, contents, defineType, flush, group, QtObject, replace, slot, whenComplete } from "../object.js";
 import { follow, parallel } from "./animation/Animation.js";
 import { drain, later } from "./animation/clock.js";
 import { display, Property } from "./animation/property.js";
@@ -26,8 +26,8 @@ const capture = (property) => {
   return held ? { bound: held.bound, assigned: held.assigned, value: held.value } : { value: property.get() };
 };
 
-function bind(held, bound) {
-  held.bound = bound;
+function bind(held, reads) {
+  held.bound = reads;
   held.assigned = false;
   held.value = undefined;
   held.changed();
@@ -95,9 +95,11 @@ function binding(states, owner, property, value, memos, index, restoring, explic
   if (explicit) {
     return change(states, property, restoring, () => restore(held, { bound: null, assigned: true, value: value() }));
   }
-  // One memo for each change, however often the state is entered.
-  const bound = (memos[index] ??= runWithOwner(owner.$owner, () => createMemo(value, SYNC)));
-  return change(states, property, restoring, () => bind(held, bound));
+  // One binding for each change, however often the state is entered. It may
+  // be of a ring as any binding may: a width a layout is to give, which the
+  // layout's own size comes of.
+  const reads = (memos[index] ??= bound(owner.$owner, value));
+  return change(states, property, restoring, () => bind(held, reads));
 }
 
 function reverting(states, revert) {

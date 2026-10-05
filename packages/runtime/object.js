@@ -446,6 +446,12 @@ export function looped(owner, compute, first) {
   return ringed(owner, compute, first, false);
 }
 
+// A binding given later than the object was made: what a state binds a
+// property to while it is in it.
+export function bound(owner, compute, first) {
+  return ringed(owner, compute, first, true);
+}
+
 function ringed(owner, compute, first, binding) {
   let memo;
   let held = first;
