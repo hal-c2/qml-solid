@@ -1811,6 +1811,9 @@ test("the passes of an Effect read and draw into what Qt has them", async ({ pag
     [[30, 64, 96], [255, 128, 64], [30, 64, 96], [128, 192, 255], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96]],
     // Nothing behind the scene: nothing is there in the picture either.
     [[0, 0, 0], [255, 255, 255], [255, 255, 255], null, [16, 48, 16], [0, 0, 0], [0, 0, 0], [16, 48, 16], [16, 48, 16], [0, 0, 0], [16, 48, 16]],
+    // What a shader says before it is compiled, it does not say in what is
+    // only written about it: half of each colour, and not twice.
+    [[19, 44, 69], [187, 93, 44], [93, 140, 187], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69]],
   ]);
   // Read past its right edge, the picture is not there again.
   points.push([[192, 112], [30, 64, 96]]);

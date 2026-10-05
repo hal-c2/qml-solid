@@ -240,5 +240,13 @@ Rectangle {
                 by: "effects/sheer.frag"
             }
         }
+
+        // What a shader says before it is compiled, and does not say where
+        // that is only written about.
+        Seen {
+            effects: Through {
+                by: "effects/said.frag"
+            }
+        }
     }
 }

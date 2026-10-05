@@ -117,7 +117,8 @@ function reckoned(text) {
 // A shader with what is under `#if` kept where it holds and dropped where
 // it does not, and with a name that `#define` gives a value put for that
 // value. A `#define` that takes arguments is left for the browser, which
-// has those.
+// has those. What is written about a shader in it says nothing: a `#define`
+// in a comment of several lines is of the comment.
 export function conditioned(source, given = {}) {
   const values = new Map(Object.entries(given).map(([name, value]) => [name, String(value)]));
   const holds = (text) => {
@@ -130,7 +131,9 @@ export function conditioned(source, given = {}) {
   const open = [];
   const kept = () => open.every((level) => level.now);
   const lines = [];
-  for (const line of source.replace(/\\\r?\n/g, "").split("\n")) {
+  // A comment is left out, its lines kept: an error says which line.
+  const bare = source.replace(/\/\/.*|\/\*[^]*?\*\//g, (all) => (all.startsWith("//") ? all : all.replace(/[^\n]/g, "")));
+  for (const line of bare.replace(/\\\r?\n/g, "").split("\n")) {
     const said = /^\s*#\s*(\w+)\s*(.*?)\s*$/.exec(line);
     if (!said) {
       lines.push(kept() ? line : "");
