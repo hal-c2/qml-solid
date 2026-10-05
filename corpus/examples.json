@@ -773,6 +773,7 @@
       "cpp": [
         "StocQt: StockEngine (singleton; quotes from the network or from data/), TimeFormatter (a QtGraphs axis formatter)"
       ],
+      "volatile": "time",
       "qt": {
         "runnable": true,
         "controlsConf": "qtquickcontrols2.conf",
