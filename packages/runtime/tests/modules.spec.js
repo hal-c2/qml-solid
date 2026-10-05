@@ -67,6 +67,28 @@ test("a picture Qt keeps inside a module is one the build has", async ({ page })
   expect(read).toEqual(["qrc:/qt-project.org/imports/QtShelf/Pine/images/knot.png", 40, 20]);
 });
 
+test("a file the program keeps inside itself is one the build has", async ({ page }) => {
+  await open(page, "kept");
+  await page.waitForFunction(() => window.scene.sizes().every(([status]) => status === 1));
+  // One that goes with a module, one whose name is put together as the
+  // program runs, and one the build keeps by itself.
+  expect(await page.evaluate(() => window.scene.sizes())).toEqual([
+    [1, 40, 20],
+    [1, 60, 30],
+    [1, 50, 50],
+  ]);
+  // What the program named them by is what it still reads.
+  expect(await page.evaluate(() => window.scene.names())).toEqual([
+    "qrc:/qt/qml/Kept/flag.png",
+    "qrc:/qt/qml/Kept/marks/disc.svg",
+    "qrc:/pictures/alone.png",
+  ]);
+  // Another of the files that start as the name does is there to be named.
+  await page.evaluate(() => (window.scene.mark = "mark"));
+  await page.waitForFunction(() => window.scene.sizes()[1][1] !== 60 && window.scene.sizes()[1][0] === 1);
+  expect(await page.evaluate(() => window.scene.sizes()[1])).toEqual([1, 90, 60]);
+});
+
 test("the style of a module is chosen by the file that imports it", async ({ page }) => {
   await open(page, "modules-oak");
   expect(await page.evaluate(() => [window.objects.shelf.width, window.objects.shelf.height])).toEqual([60, 20]);

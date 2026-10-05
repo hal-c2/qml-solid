@@ -7,7 +7,7 @@
 //! read first. A component then takes exactly the properties some instance
 //! sets, and everything else stays as static as it was written.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{CallExpression, Expression, IdentifierReference};
@@ -34,6 +34,10 @@ pub struct Project {
     memberships: HashMap<String, Vec<String>>,
     /// The files that stand in for a type the program has in C++.
     standins: HashSet<String>,
+    /// The files the program keeps inside itself, by what it names each by
+    /// (`qrc:/qt/qml/Thermostat/images/icon.png`): where each is, from the
+    /// directory of the file compiled.
+    resources: BTreeMap<String, String>,
 }
 
 /// A file's component or one of its inline components.
@@ -234,6 +238,23 @@ impl Project {
         let memberships = self.memberships.entry(file.to_string()).or_default();
         if !memberships.iter().any(|module| module == uri) {
             memberships.push(uri.to_string());
+        }
+    }
+
+    /// Says the program keeps the file at `path` inside itself, and names it
+    /// by `address`: what the build that makes a module says of the files
+    /// that go with it.
+    pub fn add_resource(&mut self, address: &str, path: &str) {
+        self.resources.insert(address.to_string(), path.to_string());
+    }
+
+    /// The files kept in the program that `address` names: the one it is
+    /// the name of, or else, as it may be the start of a name put together
+    /// when the program runs, every one whose name starts so.
+    pub(crate) fn resources(&self, address: &str) -> Vec<(&String, &String)> {
+        match self.resources.get_key_value(address) {
+            Some(one) => vec![one],
+            None => self.resources.range(address.to_string()..).take_while(|(name, _)| name.starts_with(address)).collect(),
         }
     }
 

@@ -12,7 +12,39 @@ use std::collections::HashMap;
 pub struct Module {
     pub uri: String,
     pub types: Vec<Type>,
+    /// The files the build keeps in the program with the module
+    /// (`RESOURCES`), from the directory of what describes it.
+    pub resources: Vec<String>,
+    /// Where in the program it keeps them: under `qrc:/qt/qml`, unless the
+    /// build says otherwise (`RESOURCE_PREFIX`).
+    pub prefix: String,
 }
+
+impl Module {
+    /// `qrc:/qt/qml/Thermostat/images/icon.png`: what the program names one
+    /// of its `resources` by.
+    pub fn address(&self, resource: &str) -> String {
+        address(&[&self.prefix, &self.uri.replace('.', "/"), resource])
+    }
+}
+
+/// A file the build keeps in the program by itself (`qt_add_resources`).
+#[derive(Debug, PartialEq, Eq)]
+pub struct Resource {
+    /// What the program names it by: `qrc:/data/medals.csv`.
+    pub address: String,
+    /// Where it is, from the directory of what describes it.
+    pub path: String,
+}
+
+/// `qrc:/` and the `parts` of a path, each with or without slashes around it.
+fn address(parts: &[&str]) -> String {
+    let parts = parts.iter().map(|part| part.strip_prefix("./").unwrap_or(part).trim_matches('/'));
+    format!("qrc:/{}", parts.filter(|part| !part.is_empty()).collect::<Vec<_>>().join("/"))
+}
+
+/// Where a build keeps a module when it does not say.
+const PREFIX: &str = "/qt/qml";
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Type {
@@ -48,7 +80,8 @@ pub fn qmldir(text: &str) -> Option<Module> {
             types.push(Type { name: (*name).to_string(), path: (*path).to_string() });
         }
     }
-    Some(Module { uri: uri?, types })
+    // A `qmldir` says nothing of what is kept with the module.
+    Some(Module { uri: uri?, types, resources: Vec::new(), prefix: PREFIX.to_string() })
 }
 
 /// The modules a `CMakeLists.txt` makes:
@@ -61,11 +94,27 @@ pub fn qmldir(text: &str) -> Option<Module> {
 /// written there is read: a list in a variable `set` in the same file is
 /// followed, anything computed is not.
 pub fn cmake(text: &str) -> Vec<Module> {
+    build(text).0
+}
+
+/// The files a `CMakeLists.txt` keeps in the program by themselves:
+///
+/// ```text
+/// qt_add_resources(app "data" PREFIX "/data" BASE "data" FILES "data/medals.csv")
+/// ```
+///
+/// Each is named by its path from `BASE` under `PREFIX`.
+pub fn kept(text: &str) -> Vec<Resource> {
+    build(text).1
+}
+
+fn build(text: &str) -> (Vec<Module>, Vec<Resource>) {
     let mut variables: HashMap<String, Vec<String>> = HashMap::new();
     for here in ["CMAKE_CURRENT_SOURCE_DIR", "CMAKE_CURRENT_LIST_DIR"] {
         variables.insert(here.to_string(), vec![".".to_string()]);
     }
     let mut modules = Vec::new();
+    let mut kept = Vec::new();
     for (name, arguments) in commands(text) {
         let arguments = expand(&arguments, &variables);
         match name.to_ascii_lowercase().as_str() {
@@ -82,15 +131,43 @@ pub fn cmake(text: &str) -> Vec<Module> {
                 }
             }
             "qt_add_qml_module" | "qt6_add_qml_module" => modules.extend(module(&arguments)),
+            "qt_add_resources" | "qt6_add_resources" => kept.extend(resources(&arguments)),
             _ => {}
         }
     }
-    modules
+    (modules, kept)
+}
+
+fn resources(arguments: &[String]) -> Vec<Resource> {
+    let mut prefix = "";
+    let mut base = "";
+    let mut files = Vec::new();
+    let mut keyword = "";
+    for argument in arguments.iter().skip(2) {
+        if is_keyword(argument) {
+            keyword = argument;
+            continue;
+        }
+        match keyword {
+            "PREFIX" => prefix = argument,
+            "BASE" => base = argument.strip_prefix("./").unwrap_or(argument).trim_end_matches('/'),
+            "FILES" => files.push(argument),
+            _ => {}
+        }
+    }
+    let named = |file: &String| {
+        let path = file.strip_prefix("./").unwrap_or(file);
+        let from = path.strip_prefix(base).and_then(|rest| rest.strip_prefix('/')).unwrap_or(path);
+        Resource { address: address(&[prefix, from]), path: file.clone() }
+    };
+    files.into_iter().map(named).collect()
 }
 
 fn module(arguments: &[String]) -> Option<Module> {
     let mut uri = None;
     let mut types = Vec::new();
+    let mut resources = Vec::new();
+    let mut prefix = PREFIX.to_string();
     let mut keyword = "";
     for argument in arguments.iter().skip(1) {
         if is_keyword(argument) {
@@ -106,10 +183,12 @@ fn module(arguments: &[String]) -> Option<Module> {
                     types.push(Type { name: name.to_string(), path: argument.clone() });
                 }
             }
+            "RESOURCES" => resources.push(argument.clone()),
+            "RESOURCE_PREFIX" => prefix = argument.clone(),
             _ => {}
         }
     }
-    Some(Module { uri: uri?, types })
+    Some(Module { uri: uri?, types, resources, prefix })
 }
 
 /// `QML_FILES`, `NO_PLUGIN`: what says what the arguments after it are.

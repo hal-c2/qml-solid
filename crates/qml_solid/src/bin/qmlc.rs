@@ -127,9 +127,17 @@ fn modules(project: &mut Project, root: &Path, base: &Path, standing: bool) {
         let modules = if description.ends_with("qmldir") {
             discover::qmldir(&text).into_iter().collect()
         } else {
+            for resource in discover::kept(&text) {
+                let Ok(file) = directory.join(&resource.path).canonicalize() else { continue };
+                project.add_resource(&resource.address, &relative(base, &file));
+            }
             discover::cmake(&text)
         };
         for module in modules {
+            for resource in &module.resources {
+                let Ok(file) = directory.join(resource).canonicalize() else { continue };
+                project.add_resource(&module.address(resource), &relative(base, &file));
+            }
             for ty in module.types {
                 let Ok(file) = directory.join(&ty.path).canonicalize() else { continue };
                 let path = relative(base, &file);
