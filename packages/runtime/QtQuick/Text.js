@@ -34,6 +34,7 @@ const WRAP_ANYWHERE = 3;
 
 const PARAGRAPHS = /\r\n|[\n\u2028\u2029]/;
 const TRAILING = /[ \t]+$/;
+const HANGING = / +$/;
 // A text whose first letter is Hebrew or Arabic starts from the right.
 export const RIGHT_TO_LEFT = /^[^\p{L}]*[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u;
 
@@ -118,14 +119,34 @@ function wrap(font, text, limit, mode, lines) {
   }
 }
 
+// The paragraphs of a plain text, as Qt sets them. The spaces before a line
+// break hang: they count neither in how wide their line is nor in where its
+// alignment puts it, though those that end the text do. And a line break that
+// ends the text starts no line: it is `open`, which only makes the text a
+// line taller than what it covers. A TextEdit sets them `whole`, as written.
+function paragraphs(text, whole) {
+  const all = text.split(PARAGRAPHS);
+  if (whole) return { parts: all.map((shown) => ({ shown, hung: "" })), open: false };
+  const open = all.length > 1 && all[all.length - 1] === "";
+  if (open) all.pop();
+  const ended = open ? all.length : all.length - 1;
+  const parts = all.map((paragraph, index) => {
+    const shown = index < ended ? paragraph.replace(HANGING, "") : paragraph;
+    return { shown, hung: paragraph.slice(shown.length) };
+  });
+  return { parts, open };
+}
+
 // The lines of a plain text: wrapped to `limit`, no more than `most` and no
 // taller together than `ceiling`, the last one elided when there was more.
-export function arrange(text, font, limit, mode, elide, most, ceiling, pitch, align) {
+export function arrange(text, font, limit, mode, elide, most, ceiling, pitch, align, whole) {
   const lines = [];
   const wraps = mode !== 0 && limit !== Infinity;
-  for (const paragraph of text.split(PARAGRAPHS)) {
-    if (wraps) wrap(font, paragraph, limit, mode, lines);
-    else lines.push(row(font, paragraph, false));
+  const { parts, open } = paragraphs(text, whole);
+  for (const { shown, hung } of parts) {
+    if (wraps) wrap(font, shown, limit, mode, lines);
+    else lines.push(row(font, shown, false));
+    lines[lines.length - 1].hung = hung;
   }
   const full = lines.length;
   let widest = 0;
@@ -154,7 +175,7 @@ export function arrange(text, font, limit, mode, elide, most, ceiling, pitch, al
       // line its paragraph ended is only marked.
       const cut = last.soft
         ? elided(font, last.paragraph.slice(last.start, following.end), ELIDE_RIGHT, limit)
-        : last.text + ELLIPSIS;
+        : last.text + last.hung + ELLIPSIS;
       lines[count - 1] = row(font, cut, false);
     }
   } else if (elide !== ELIDE_NONE && limit !== Infinity && full === 1 && lines[0].width > limit) {
@@ -177,7 +198,9 @@ export function arrange(text, font, limit, mode, elide, most, ceiling, pitch, al
     right = Math.max(right, justified ? limit : start + line.width);
   }
   const width = right - left;
-  return { lines, text: lines.map((line) => line.text).join("\n"), width, span, count, truncated, widest, wrapped, full };
+  // The line an open text is taller by is one more of those there may be.
+  const below = open && count === full && full < most ? pitch : 0;
+  return { lines, text: lines.map((line) => line.text).join("\n"), width, span, count, truncated, widest, wrapped, full, below };
 }
 
 // The line height as CSS, for markup: Qt's is the font's height rounded up,
@@ -203,7 +226,7 @@ function natural(self, state) {
     return survey(text, { kind, font, line, pitch: 0, limit: Infinity, mode: 0, most: MANY, elide: ELIDE_NONE }).width;
   }
   let width = 0;
-  for (const paragraph of text.split(PARAGRAPHS)) width = Math.max(width, advance(font, paragraph) + overhang(font, paragraph));
+  for (const { shown } of paragraphs(text).parts) width = Math.max(width, advance(font, shown) + overhang(font, shown));
   return width;
 }
 
@@ -235,7 +258,7 @@ function laid(self, state, bounded) {
     const pitch = fixed ? factor : face.height * factor;
     if (kind) {
       const look = { kind, font, line: leading(font, factor, fixed), pitch, limit, mode, most, elide };
-      return { ...survey(text, look), kind, text, look, font, pitch };
+      return { ...survey(text, look), kind, text, look, font, pitch, below: 0 };
     }
     const made = arrange(text, font, limit, mode, elide, most, ceiling, pitch, align);
     made.kind = 0;
@@ -334,7 +357,10 @@ export const Text = defineType("Text", Item, {
     bottomPadding: padding,
     hoveredLink: "",
     implicitWidth: derived((self) => self.$text.natural() + self.leftPadding + self.rightPadding),
-    implicitHeight: derived((self) => self.$text.implicit().height + self.topPadding + self.bottomPadding),
+    implicitHeight: derived((self) => {
+      const made = self.$text.implicit();
+      return made.height + made.below + self.topPadding + self.bottomPadding;
+    }),
     contentWidth: derived((self) => layout(self).width),
     contentHeight: derived((self) => layout(self).height),
     paintedWidth: derived((self) => layout(self).width),

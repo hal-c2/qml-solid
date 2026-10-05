@@ -143,6 +143,82 @@ test("what the page shows is as large as what was measured, and where the alignm
   ).toEqual([WHITE, BLACK, WHITE, BLACK, WHITE, WHITE, BLACK, BLACK, WHITE, BLACK, WHITE]);
 });
 
+// What `qml6` prints for the scene: implicitWidth, contentWidth,
+// implicitHeight, contentHeight, lineCount, truncated, height and
+// baselineOffset of each text, in the default font.
+const QT_HANGING = (() => {
+  const one = (implicitWidth, implicitHeight, contentHeight, lineCount) => [
+    implicitWidth,
+    implicitWidth,
+    implicitHeight,
+    contentHeight,
+    lineCount,
+    false,
+    implicitHeight,
+    14.484375,
+  ];
+  const aligned = [
+    one(17.78125, 18, 18, 1),
+    one(22.21875, 18, 18, 1),
+    one(22.21875, 18, 18, 1),
+    one(26.65625, 18, 18, 1),
+    one(17.78125, 36, 36, 2),
+    one(17.78125, 36, 18, 1),
+    one(25.765625, 36, 36, 2),
+    one(17.78125, 54, 36, 2),
+    one(0, 36, 18, 1),
+  ];
+  const more = [
+    [106.609375, 57.875, 54, 36, 2, false, 54, 14.484375],
+    one(57.875, 36, 36, 2),
+    one(17.78125, 18, 18, 1),
+    one(17.78125, 36, 36, 2),
+    [17.78125, 38.21875, 18, 18, 1, true, 18, 14.484375],
+    [17.78125, 17.78125, 36, 18, 1, false, 40, 36.484375],
+    one(17.78125, 36, 36, 2),
+    one(22.21875, 36, 36, 2),
+  ];
+  return [aligned, aligned, more];
+})();
+
+test("a space before a line break hangs, and a line break that ends the text starts no line", async ({ page }) => {
+  await open(page, "hanging");
+  expect(await page.evaluate(() => JSON.parse(JSON.stringify(window.scene.answers())))).toEqual(QT_HANGING);
+  // The lines of each text, and how far their right ends are from the right
+  // edge of the item: a space that hangs is not there to be set.
+  const lines = (column) =>
+    page.evaluate((column) => {
+      const texts = Array.from(window.scene.children[column].children).filter((text) => text.$markup);
+      return texts.map((text) => {
+        const range = document.createRange();
+        range.selectNodeContents(text.$markup);
+        const frame = text.$node.getBoundingClientRect();
+        const ends = Array.from(range.getClientRects(), (line) => Math.round((frame.right - line.right) * 100) / 100);
+        return [text.$markup.textContent, [...new Set(ends)]];
+      });
+    }, column);
+  expect(await lines(0)).toEqual([
+    ["ab", [0]],
+    ["ab ", [0]],
+    [" ab", [0]],
+    ["ab  ", [0]],
+    ["ab\ncd", [0]],
+    ["ab", [0]],
+    [" ab\n cd ", [0]],
+    ["ab\n", [0]],
+    ["", []],
+  ]);
+  expect((await lines(2)).map(([text]) => text)).toEqual([
+    "ab cd ef\ngh ij kl",
+    "ab cd ef\ngh ij kl",
+    "ab",
+    "ab\n",
+    "ab …",
+    "ab",
+    "ab\ncd",
+  ]);
+});
+
 test("a text is laid out again when what it depends on changes", async ({ page }) => {
   await boxes(page);
   const read = await page.evaluate(() => {
