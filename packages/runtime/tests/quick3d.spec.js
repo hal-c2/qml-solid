@@ -2141,6 +2141,23 @@ test("what reads the picture of what is behind it is drawn before all that is se
   near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
 });
 
+// Every number here is what Qt 6.11 paints of the same scene. Solid warns of
+// what follows two thousand things or more, and a warning fails a test: a
+// view that followed each property of every node and of every material
+// would follow thirteen thousand here.
+test("a view of many nodes follows the few at the top, and draws what changes far inside", async ({ page }) => {
+  await open(page, "manynodes3d");
+  const none = [32, 32, 32];
+  const places = [[155, 80], [29, 120], [47, 120], [29, 160], [371, 260], [29, 40], [20, 20]];
+  const first = [[255, 0, 0], [255, 255, 255], [0, 0, 255], [255, 255, 255], [0, 0, 255], [255, 255, 255], none];
+  near(await painted(page, places.map((place, index) => [place, first[index]])), first, "", 3);
+  // One square of another colour, a row seen through by half and a row not
+  // shown: the rest as they were.
+  await page.evaluate(() => window.scene.step(0));
+  const after = [[0, 255, 0], [144, 144, 144], [16, 16, 144], none, [0, 0, 255], [255, 255, 255], none];
+  near(await painted(page, places.map((place, index) => [place, after[index]])), after, "", 3);
+});
+
 // The views of the scenes of effects are 100 by 75, four to a row, and
 // these the places looked at in each: the surroundings, the nearer shape
 // and the further one first. A place not looked at is null.
