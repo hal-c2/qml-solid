@@ -88,8 +88,10 @@ function arrived(self) {
 }
 
 // The size Qt would load the picture at: its own, or the one `sourceSize`
-// asks for, which keeps the picture's shape unless it is a drawing and both
-// sides were given.
+// asks for. A drawing is loaded at exactly that when both sides are given;
+// otherwise the picture keeps its shape, at the smaller of the two sizes the
+// sides ask for, or the bigger where the fill mode keeps its shape too. And
+// what is not a drawing is only made bigger for such a fill mode.
 function loaded(self) {
   const record = arrived(self);
   const { width, height, scalable } = record;
@@ -97,10 +99,14 @@ function loaded(self) {
   const wide = given(self, "sourceSize", "width") ? Math.round(Number(self.sourceSize.width)) || 0 : 0;
   const tall = given(self, "sourceSize", "height") ? Math.round(Number(self.sourceSize.height)) || 0 : 0;
   if ((wide <= 0 && tall <= 0) || !width || !height) return record;
-  if (scalable && wide > 0 && tall > 0) return { width: wide, height: tall };
+  const keeps = self.$keeps();
+  if (scalable && !keeps && wide > 0 && tall > 0) return { width: wide, height: tall };
   let ratio = 0;
-  if (wide > 0 && (scalable || wide < width)) ratio = wide / width;
-  if (tall > 0 && (scalable || tall < height) && (ratio === 0 || tall / height < ratio)) ratio = tall / height;
+  if (wide > 0 && (keeps || scalable || wide < width)) ratio = wide / width;
+  if (tall > 0 && (keeps || scalable || tall < height)) {
+    const other = tall / height;
+    if (ratio === 0 || (keeps ? other > ratio : other < ratio)) ratio = other;
+  }
   return ratio > 0 ? { width: Math.round(width * ratio), height: Math.round(height * ratio) } : record;
 }
 
@@ -125,6 +131,12 @@ export const ImageBase = defineType("ImageBase", Item, {
     implicitHeight: derived((self) => self.$image.size().height),
   },
   enums: { Null: NULL, Ready: READY, Loading: LOADING, Error: ERROR },
+  methods: {
+    // Whether the picture is loaded for a fill mode that keeps its shape.
+    $keeps() {
+      return false;
+    },
+  },
   setup(self) {
     self.$load = fetched;
     self.$pictures = pictures;
@@ -268,6 +280,11 @@ export const Image = defineType("Image", ImageBase, {
     AlignTop: 32,
     AlignBottom: 64,
     AlignVCenter: 128,
+  },
+  methods: {
+    $keeps() {
+      return this.fillMode === FIT || this.fillMode === CROP;
+    },
   },
   setup(self) {
     const style = face(self).style;

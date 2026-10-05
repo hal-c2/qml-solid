@@ -510,3 +510,30 @@ test("an AnimatedImage is paused, stopped and set on a frame", async ({ page }) 
   });
   expect(await frame(page)).toEqual([0, 2, 1, 2, 0]);
 });
+
+// What Qt 6.11 answers for the same scene: which of the pictures are there
+// (1) and which are not (3), then each one's size and its `sourceSize`.
+test("a path and a group given through an alias are the aliased object's, and a picture is loaded at Qt's size", async ({ page }) => {
+  await open(page, "aliased");
+  const answers = () => page.evaluate(() => JSON.parse(JSON.stringify(window.scene.answers())));
+  await expect.poll(async () => (await answers())[0]).toEqual([1, 3, 1, 3]);
+  await expect.poll(answers).toEqual([
+    [1, 3, 1, 3],
+    [1, 40, 20, 40, 20],
+    [1, 10, 5, 10, 10],
+    [1, 20, 10, 10, 10],
+    [100, 20, 100, 20],
+    [100, 50, 100, 20],
+    [100, 50, 100, 20],
+    [200, 100, 20, 100],
+    [100, 50, 100, 0],
+    [100, 20, 100, 20],
+    [10, 5, 30, 5],
+    [30, 15, 30, 5],
+    [30, 15, 30, 5],
+    [400, 200, 400, 5],
+    [600, 300, 400, 300],
+    [40, 20, 400, 300],
+    [10, 5, 400, 5],
+  ]);
+});

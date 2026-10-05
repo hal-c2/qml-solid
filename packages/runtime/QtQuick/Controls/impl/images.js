@@ -73,6 +73,13 @@ export const IconImage = defineType("IconImage", Image, {
     implicitHeight: derived((self) => self.$image.size().height),
   },
   resolve: { color: colorValue },
+  methods: {
+    // An icon is loaded before its fill mode is chosen, by the size it
+    // came at.
+    $keeps() {
+      return false;
+    },
+  },
   setup(self) {
     tinted(self, () => seen(self.color));
   },
