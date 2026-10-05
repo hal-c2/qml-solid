@@ -1139,6 +1139,17 @@ export function whenMade(work) {
   holding.push(() => runWithOwner(owner, work));
 }
 
+// Runs `work` once nothing is being made any more, not the object a property
+// holds either, which is made as the property is asked for and is not what
+// the property has until it is: for what an object makes that may name
+// whatever holds it, as the effect of the layer of a control's background
+// does the control's `background`. Qt gives a property its object before it
+// completes it.
+export function whenHeld(work) {
+  if (creating > 0) kept.push(work);
+  else after(work);
+}
+
 // A render effect that waits likewise: `compute` reads properties, `apply`
 // writes what it returned to the DOM.
 export function effect(compute, apply) {

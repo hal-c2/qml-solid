@@ -19,6 +19,8 @@
 //   a change of colour of the same rectangle looks like in Qt too. A blur
 //   or a mask of it would be hidden behind or in front of the item itself
 //   there, and is left out here.
+// - The effect of an item's layer (`layer.effect: MultiEffect {}`) is what
+//   Qt draws of the item, where the item is: all of it is done to the item.
 import { onCleanup } from "solid-js";
 import { Rect } from "../../QtQml/values.js";
 import { defineType, derived, effect, slot } from "../../object.js";
@@ -46,8 +48,9 @@ const number = (value) => Number(value) || 0;
 const unit = (value) => Math.min(1, Math.max(0, number(value)));
 const round = (value) => Math.round(value * 1e4) / 1e4 + 0;
 
-// What `source` gave: an item that has an element.
-const item = (value) => (value?.$node ? value : null);
+// What `source` gave: an item that has an element, which the item a layer
+// is of has.
+const item = (value) => (value?.$layer ?? (value?.$node ? value : null));
 
 // Whether an item says of itself that it is shown, whatever its parent is.
 function saysVisible(object) {
@@ -183,9 +186,13 @@ function painted(self) {
 function wanted(self, names) {
   const source = item(self.source);
   if (!source || !self.visible) return null;
-  // Shown only through the effect, or shown as well.
-  const alone = !saysVisible(source);
-  const opacity = unit(self.opacity);
+  // Shown only through the effect, or shown as well. An item with a layer
+  // is seen through the layer's effect alone and stays where it is, as
+  // clear as it is itself: Qt gives the effect the item's opacity, and the
+  // item's element has it here.
+  const layered = self.source?.$layer === source;
+  const alone = layered || !saysVisible(source);
+  const opacity = layered ? 1 : unit(self.opacity);
   const filters = [];
   const colours = matrix(self, alone ? 1 : opacity);
   if (colours) filters.push(`url(#${names.colours})`);
@@ -206,19 +213,23 @@ function wanted(self, names) {
   const next = { node: source.$node, filter: filters.join(" "), colours, shown: null, mask: null, levels: "" };
   if (!alone) return next;
   if (opacity < 1) next.filter += `${next.filter ? " " : ""}opacity(${round(opacity)})`;
-  next.shown = hidden(source, []);
-  // From the source's rectangle to the effect's. CSS does `translate` and
-  // `scale` before the `transform` the item itself keeps.
-  const wide = source.width;
-  const tall = source.height;
-  const sx = wide > 0 ? self.width / wide : 1;
-  const sy = tall > 0 ? self.height / tall : 1;
-  const [ex, ey] = origin(self);
-  const [px, py] = origin(source.parent);
-  const tx = ex - px - sx * source.x;
-  const ty = ey - py - sy * source.y;
-  next.scale = sx === 1 && sy === 1 ? "" : `${round(sx)} ${round(sy)}`;
-  next.translate = Math.abs(tx) < 1e-6 && Math.abs(ty) < 1e-6 ? "" : `${round(tx)}px ${round(ty)}px`;
+  let sx = 1;
+  let sy = 1;
+  if (!layered) {
+    next.shown = hidden(source, []);
+    // From the source's rectangle to the effect's. CSS does `translate` and
+    // `scale` before the `transform` the item itself keeps.
+    const wide = source.width;
+    const tall = source.height;
+    sx = wide > 0 ? self.width / wide : 1;
+    sy = tall > 0 ? self.height / tall : 1;
+    const [ex, ey] = origin(self);
+    const [px, py] = origin(source.parent);
+    const tx = ex - px - sx * source.x;
+    const ty = ey - py - sy * source.y;
+    next.scale = sx === 1 && sy === 1 ? "" : `${round(sx)} ${round(sy)}`;
+    next.translate = Math.abs(tx) < 1e-6 && Math.abs(ty) < 1e-6 ? "" : `${round(tx)}px ${round(ty)}px`;
+  }
   // With no room around it, a blur and a shadow end where the effect does,
   // but for what `paddingRect` adds.
   if (!self.autoPaddingEnabled && padded(self)) {

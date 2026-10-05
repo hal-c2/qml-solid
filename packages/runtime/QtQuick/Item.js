@@ -11,6 +11,7 @@ import { drawing, drawn } from "./drawn.js";
 import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus, under } from "./focus.js";
 import { methods as geometry } from "./geometry.js";
 import { navigable } from "./Keys.js";
+import { layer, layered } from "./layer.js";
 import { mirrored } from "./LayoutMirroring.js";
 import { stateful } from "./states.js";
 import "./style.js";
@@ -217,7 +218,8 @@ function arranged(self) {
   let previous = EMPTY;
   runWithOwner(self.$owner, () =>
     effect(
-      () => children(self).map((item) => item.$node),
+      // An item's effect is drawn under it: its element comes first.
+      () => children(self).flatMap((item) => (item.$layerEffect ? [item.$layerEffect, item.$node] : [item.$node])),
       (nodes) => {
         arrange(self.$content ?? self.$node, nodes, previous);
         previous = nodes;
@@ -306,6 +308,7 @@ export const Item = defineType("Item", QtObject, {
       baselineOffset: 0,
       alignWhenCentered: true,
     }),
+    layer,
   },
   enums: {
     TopLeft: 0,
@@ -393,6 +396,7 @@ export const Item = defineType("Item", QtObject, {
         node.style.overflow = clip ? "hidden" : "";
       },
     );
+    layered(self, props);
     if ("focus" in props) declared(self, props);
     if ("activeFocusOnTab" in props) reachable(self);
     navigable(self, props);
