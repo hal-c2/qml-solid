@@ -1,4 +1,5 @@
 import { expect, test } from "./open.js";
+import { pixels } from "./pixels.js";
 
 async function show(page, part) {
   await page.goto(`/?scene=particles&part=${part}`);
@@ -201,6 +202,44 @@ test("a picture is multiplied by its particle's colour", async ({ page }) => {
   expect(await pixel(page, "tinted", 80, 50)).toEqual([0, 255, 0, 255]);
   // Its picture is the one it had.
   expect(await page.evaluate(() => window.objects.scene.tinted.status)).toBe(1);
+});
+
+test("a particle brighter than its alpha adds more light than it covers", async ({ page }) => {
+  await show(page, "Bright");
+  await ready(page, "paint", "smoke");
+  await page.evaluate(() => {
+    const { spots, puffs } = window.objects.scene;
+    spots.burst(10, 50, 50);
+    spots.burst(10, 250, 50);
+    puffs.burst(10, 50, 150);
+    puffs.burst(10, 250, 150);
+    puffs.burst(1, 50, 250);
+    spots.burst(1, 250, 250);
+  });
+  await advance(page, 16);
+  await advance(page, 16);
+  // As Qt 6.11 draws them. One spot of dark blue paint a fifth there leaves
+  // four fifths of what is under it and adds all of its own colour; ten of
+  // them on white are a blue no paler than this, not white.
+  const near = (found, wanted) => found.split(" ").every((value, index) => Math.abs(value - wanted[index]) <= 3);
+  const [paint, deep, smoke, sunk, puff, spot, white, blue] = await pixels(page, [
+    [50, 50],
+    [250, 50],
+    [50, 150],
+    [250, 150],
+    [50, 250],
+    [250, 250],
+    [120, 50],
+    [320, 50],
+  ]);
+  expect([white, blue]).toEqual(["255 255 255", "32 96 192"]);
+  expect(near(paint, [144, 144, 255]), paint).toBe(true);
+  expect(near(deep, [119, 126, 255]), deep).toBe(true);
+  // Yellow smoke a tenth there: pale on white, yellow where it is thick.
+  expect(near(puff, [255, 255, 230]), puff).toBe(true);
+  expect(near(smoke, [255, 255, 91]), smoke).toBe(true);
+  expect(near(sunk, [255, 255, 69]), sunk).toBe(true);
+  expect(near(spot, [52, 103, 255]), spot).toBe(true);
 });
 
 test("a particle fades or grows in and out as its painter's entry effect says", async ({ page }) => {

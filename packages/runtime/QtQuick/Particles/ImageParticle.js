@@ -7,11 +7,14 @@
 //
 // Qt multiplies the picture by the particle's colour. Here the picture is
 // tinted once for each colour in use, in an atlas the frame copies from, and
-// the particle's alpha is the copy's.
+// the particle's alpha is the copy's. That is Qt's picture as long as no
+// colour is brighter than its alpha; particles that may be are drawn as Qt
+// draws them (see glow.js), where the browser can.
 import { defineType, effect, settle, slot } from "../../object.js";
 import { colorValue } from "../color.js";
 import { rules } from "../compute.js";
 import { between, ORIGINS, outermost } from "./geometry.js";
+import { lights, lit, shine } from "./glow.js";
 import { ParticlePainter } from "./painter.js";
 import { AX, AY, END, LIFE, SIZE, STRIDE, T, VX, VY, X, Y } from "./system.js";
 
@@ -260,9 +263,13 @@ export const ImageParticle = defineType("ImageParticle", ParticlePainter, {
         context.setTransform(1, 0, 0, 1, 0, 0);
         context.clearRect(0, 0, width, height);
       }
-      // Qt's particles add their light to what is behind them the more the
-      // less alpha they have: one that is mostly transparent only adds.
-      context.globalCompositeOperation = look.additive ? "lighter" : "source-over";
+      const sprites = look.sprites;
+      // Brighter than their alpha: drawn as Qt's shader does.
+      const glows = look.bright && !sprites && lights(image);
+      // Without that, Qt's particles add their light to what is behind them
+      // the more the less alpha they have: one that is mostly transparent
+      // only adds.
+      context.globalCompositeOperation = look.additive && !glows ? "lighter" : "source-over";
       // From the system's coordinates to the canvas' pixels.
       const a = region[4] * ratio;
       const b = region[5] * ratio;
@@ -275,7 +282,6 @@ export const ImageParticle = defineType("ImageParticle", ParticlePainter, {
       const reach = Math.hypot(a, b, c, d) * 0.7072;
       const time = sim.now / 1000;
       const entry = look.entry;
-      const sprites = look.sprites;
       const tints = this.$tints;
       let turned = false;
       for (let each = 0; each < groups.length; each++) {
@@ -325,6 +331,13 @@ export const ImageParticle = defineType("ImageParticle", ParticlePainter, {
             const vy = data[at + VY] + data[at + AY] * age;
             if (vx || vy) angle += Math.atan2(vy, vx);
           }
+          if (glows) {
+            const cos = Math.cos(angle) * size;
+            const sin = Math.sin(angle) * size;
+            const part = fade / 255;
+            lit(cx, cy, a * cos + c * sin, b * cos + d * sin, c * cos - a * sin, d * cos - b * sin, red * part, green * part, blue * part, color[index * 4 + 3] * part);
+            continue;
+          }
           let left = x - size / 2;
           let top = y - size / 2;
           if (angle) {
@@ -351,6 +364,11 @@ export const ImageParticle = defineType("ImageParticle", ParticlePainter, {
             context.drawImage(tints.canvas, (cell & 15) * pitch, (cell >> 4) * pitch, tints.side, tints.side, left, top, size, size);
           }
         }
+      }
+      if (glows) {
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.globalAlpha = 1;
+        shine(context, image, width, height);
       }
     },
     // The sprite that follows the one a particle is at: one of those it names,
@@ -461,6 +479,9 @@ export const ImageParticle = defineType("ImageParticle", ParticlePainter, {
           interpolate: Boolean(self.spritesInterpolate),
           visible: Boolean(self.visible),
           additive: self.alpha * tint.a < 0.5,
+          // Whether a particle may be brighter than its alpha, which none
+          // is that is as opaque as can be.
+          bright: self.alpha * tint.a < 1 || self.alphaVariation > 0,
         };
       },
       (look) => {
