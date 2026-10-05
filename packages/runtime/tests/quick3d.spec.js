@@ -2026,3 +2026,26 @@ test("Quaternion makes the turns Qt's makes", async ({ page }) => {
     square: [0.92, -0.081, -0.381, -0.033],
   });
 });
+
+test("an object in space has states, and goes between them by its transitions", async ({ page }) => {
+  await open(page, "states3d");
+  const read = () => page.evaluate(() => window.scene.read());
+  const step = (index) => page.evaluate((index) => window.scene.step(index), index);
+  const closed = { door: ["closed", 0, 0, 0], lid: ["", 0, 0] };
+  near(await read(), { ...closed, body: ["", "#a6a6a6", 0, 1, true] });
+  // A door swings open over the better part of a second, and is not there at once;
+  // what a Node's state changes of other things is changed with no
+  // transition.
+  await step(0);
+  await expect.poll(async () => (await read()).door[0]).toBe("open");
+  expect(Math.abs((await read()).door[1])).toBeLessThan(41);
+  await expect.poll(async () => (await read()).door[1]).toBe(41);
+  near(await read(), { door: ["open", 41, -18, 51], lid: ["", 0, 0], body: ["red", "#a21010", 0.5, 2, true] });
+  // Everything a state changed is as it was once another is entered.
+  await step(1);
+  await expect.poll(async () => (await read()).door.join()).toBe("closed,0,0,0");
+  near(await read(), { ...closed, body: ["dark", "#a6a6a6", 0, 1, false] });
+  // A state that is named is entered when it is.
+  near(await step(2), { lid: ["raised", -50, 40] });
+  near(await step(3), { lid: ["", 0, 0] });
+});
