@@ -130,6 +130,28 @@ plain("a binding that cannot be evaluated is told of, unless what it met is not 
   expect(warnings.length).toBeGreaterThanOrEqual(2);
 });
 
+plain("a binding that cannot be evaluated while objects are made is told of when they are, if it still cannot", async ({ page }) => {
+  const warnings = [];
+  page.on("console", (message) => {
+    if (message.type() === "warning") warnings.push(message.text());
+  });
+  const told = (name) => `${name}: TypeError: Cannot read properties of null (reading 'title')`;
+  await open(page, "mended");
+  const read = () => page.evaluate(() => JSON.parse(JSON.stringify(window.scene.read())));
+  // Qt's answers and complaints: nothing of what `Component.onCompleted` or
+  // the stack's first item made whole, though they came after the binding
+  // was first asked.
+  expect(await read()).toEqual(["first", "", "first", "page"]);
+  expect(warnings).toEqual([told("broken")]);
+  // From then on, of each as it happens.
+  await page.evaluate(() => window.scene.step(0));
+  expect(await read()).toEqual(["first", "", "first", "page"]);
+  expect(warnings.toSorted()).toEqual([told("broken"), told("mended"), told("title")]);
+  await page.evaluate(() => window.scene.step(1));
+  expect(await read()).toEqual(["second", "", "second", "page"]);
+  expect(warnings).toHaveLength(3);
+});
+
 test("what an object is made with is not a change, unless it was a binding", async ({ page }) => {
   await open(page, "told");
   // Qt's answers: a number, a text and the key of an enum are what the object
