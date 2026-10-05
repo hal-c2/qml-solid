@@ -217,7 +217,10 @@ function exported(context, file, names = new Set(), seen = new Set()) {
   return names;
 }
 
-// - `qmlc`, `args`: the compiler and what it is run with.
+// - `qmlc`, `args`: the compiler and what it is run with, or a function of
+//   the file compiled that gives that: `--urls-on-assignment` for a program
+//   that sets `QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT`, whose paths are taken
+//   from the file they are written in whatever they are given to.
 // - `qt`: where the QML modules of Qt are, when not where `qtpaths` says:
 //   a directory, or several, a module being of the first to have it. When
 //   not given, `QML_IMPORT_PATH` names more of them, as it does to Qt.
@@ -514,7 +517,7 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
       // Qt's own is compiled once, whichever programs come to it.
       const own = roots.some((root) => file.startsWith(root + sep));
       if (own && compiled.has(file)) return { code: compiled.get(file), map: null };
-      const result = spawnSync(qmlc, [...args, ...more.flatMap((directory) => ["--with", directory]), ...(selector ? ["--select", selector] : []), file], {
+      const result = spawnSync(qmlc, [...(typeof args === "function" ? args(file) : args), ...more.flatMap((directory) => ["--with", directory]), ...(selector ? ["--select", selector] : []), file], {
         encoding: "utf8",
       });
       if (result.error) this.error(`could not run ${qmlc}: ${result.error.message}`);

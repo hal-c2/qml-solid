@@ -55,6 +55,13 @@ function controls(importer) {
   return conf && existsSync(conf) ? conf : undefined;
 }
 
+// What the compiler is told of the example a file is of: that its main.cpp
+// has paths taken from the file they are written in, as Qt 5 took them.
+function args(file) {
+  const example = readManifest().find(({ directory }) => file.startsWith(directory + sep));
+  return example?.qt.env?.QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT === "1" ? ["--urls-on-assignment"] : [];
+}
+
 // The QML that stands in for the C++ of the example a file is of, or is
 // itself one of the files that do.
 function standins(file) {
@@ -62,6 +69,42 @@ function standins(file) {
     ({ directory, standins }) => standins && (file.startsWith(directory + sep) || file.startsWith(standins + sep)),
   );
   return example ? [example.standins] : [];
+}
+
+// What an example's build downloads and puts among its files is not among
+// them in the corpus: a file asked for there that is not there is served from
+// where it has been fetched to. What an example downloads itself is served
+// from there too, for a page that is to ask nobody else: to any page, as the
+// place it is downloaded from serves it.
+function assets() {
+  const fetched = () => readManifest().flatMap((example) => example.fetched);
+  const served = () => readManifest().flatMap((example) => example.served);
+  const kept = (directory, rest) => `/@fs${join(directory, decodeURIComponent(rest)).split(sep).map(encodeURIComponent).join("/")}`;
+  return {
+    name: "gallery-assets",
+    config: () => ({ server: { fs: { allow: [...fetched(), ...served()].map(([, from]) => from) } } }),
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const [asked, query = ""] = request.url.split("?");
+        const address = served().find(([, , local]) => asked.startsWith(local));
+        if (address) {
+          const rest = asked.slice(address[2].length);
+          response.setHeader("Access-Control-Allow-Origin", "*");
+          if (!existsSync(join(address[1], decodeURIComponent(rest)))) {
+            response.statusCode = 404;
+            response.end();
+            return;
+          }
+          request.url = kept(address[1], rest);
+        } else if (asked.startsWith("/@fs/")) {
+          const file = decodeURIComponent(asked.slice("/@fs".length));
+          const place = fetched().find(([to]) => file.startsWith(to + sep));
+          if (place && !existsSync(file)) request.url = `${kept(place[1], file.slice(place[0].length + 1))}${query && "?" + query}`;
+        }
+        next();
+      });
+    },
+  };
 }
 
 // The plugin stops the build at a file `qmlc` does not take. Here that is the
@@ -84,7 +127,7 @@ function tolerant(plugin) {
 
 export default defineConfig({
   base: "./",
-  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), style, controls, standins }))],
+  plugins: [examples(), assets(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), args, style, controls, standins }))],
   resolve: {
     // Qt's examples have no app behind them: nothing to find here.
     alias: { "qml-solid/host": path("./host.js") },

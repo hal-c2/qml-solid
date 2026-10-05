@@ -191,6 +191,16 @@ impl<'a> Tree<'a> {
         types.member(object.kind.as_ref()?, name)
     }
 
+    /// The file a path given to the object's property `name` is taken from,
+    /// where that is not the one the object is written in.
+    pub(crate) fn home(&self, types: Types<'_>, index: usize, name: &str) -> Option<String> {
+        let object = &self.objects[index];
+        if object.declared.contains_key(name) {
+            return None;
+        }
+        types.home(object.kind.as_ref()?, name)
+    }
+
     /// The names a handler of the object's signal `name` may call its
     /// arguments; None if it has no such signal.
     pub(crate) fn signal(&self, types: Types<'_>, index: usize, name: &str) -> Option<Vec<String>> {

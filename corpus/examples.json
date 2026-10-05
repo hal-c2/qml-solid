@@ -10,6 +10,7 @@
     "modules": "the example's own QML modules: URI to directory, in `dir`",
     "imports": "every other module its QML files import",
     "cpp": "what it needs from C++ of its own",
+    "assets": "what its build downloads (`url`, an archive) and where it puts each directory of it: `places`, the directory in `dir` to the one in the archive. One that downloads them itself as it starts has `addresses` instead: where a browser asks for each directory, to the one in the archive. `without`: what is in the archive and is not read. `mise run assets` fetches them",
     "volatile": "why its picture is not the same twice: time, animation, network",
     "qt": "`runnable`: the `qml` tool of the Qt installed here renders it, or `reason` why not. For the run: `style` or `controlsConf` (the Controls style its main.cpp or resources choose), `env` (environment its main.cpp sets), `module` (the URI its files import it by), `properties` (initial properties main.cpp sets), `offline`, `settle` (ms before the picture, default 1500), `shaders` (the shader sources its build compiles, in `dir`)"
   },
@@ -151,6 +152,17 @@
       "cpp": [
         "Quick3DAssets.Snow: ShapeAffector3D"
       ],
+      "assets": {
+        "url": "https://download.qt.io/learning/examples/car-configurator-assets-v3.zip",
+        "addresses": {
+          "https://download.qt.io/learning/examples/car-configurator-assets/content/": "content",
+          "https://download.qt.io/learning/examples/car-configurator-assets/asset_imports/": "asset_imports"
+        },
+        "without": [
+          "content/images/_Desert.hdr",
+          "content/images/HDR/_Desert.ktx"
+        ]
+      },
       "qt": {
         "runnable": false,
         "reason": "QtQuick3D is not installed; nor are QtQuick.Studio.Components, QtQuick.Studio.DesignEffects, QtQuick.Timeline and Qt.labs.assetdownloader. Its 3D assets are downloaded at start."
@@ -883,9 +895,9 @@
       "rootType": "ApplicationWindow",
       "load": "QQmlApplicationEngine::loadFromModule(\"ToyCustomizer\", \"Main\")",
       "window": {
-        "width": 1536,
-        "height": 946,
-        "from": "ApplicationWindow in qml/Main.qml"
+        "width": 1344,
+        "height": 756,
+        "from": "Component.onCompleted of qml/Main.qml: 0.7 of the screen (1920x1080 for the reference)"
       },
       "importPaths": [],
       "modules": {
@@ -906,9 +918,20 @@
         "QtQuick3D.Helpers"
       ],
       "cpp": [],
+      "volatile": "animation",
+      "assets": {
+        "url": "https://ordp.qt.io/qt/bundles/toycustomizer/toy-customizer-assets.zip",
+        "places": {
+          "qml/animations": "animations",
+          "qml/fonts": "fonts",
+          "qml/icons": "images/icons",
+          "qml/images": "images",
+          "qml/meshes": "meshes"
+        }
+      },
       "qt": {
-        "runnable": false,
-        "reason": "QtQuick3D is not installed (nor QtQuick.Timeline). Its singletons are declared in CMakeLists.txt, not in a qmldir."
+        "runnable": true,
+        "shaders": ["qml/shaders/buttonpressedshadow.frag", "qml/shaders/buttonpressedshadow.vert", "qml/shaders/coloroverlay.frag"]
       }
     },
     {

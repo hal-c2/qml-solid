@@ -62,6 +62,7 @@ mise run gallery        # Qt's examples in a browser, against Qt's pictures of t
 mise run gallery:serve  # the same page, to look at
 mise run corpus         # how much of Qt's examples compiles, and what stops the rest
 mise run reference      # take Qt's pictures again (needs Qt 6's `qml` tool; `sway` for shader effects)
+mise run assets ID...   # download what an example's build downloads (its pictures, meshes, fonts)
 mise run types          # the table of Qt's types, from the Qt installed here
 ```
 
@@ -111,6 +112,28 @@ Likewise a type that is QML of Qt's own (`qmlc --qml-types`), where that module
 of Qt's is not installed: `QtQuick3D.Helpers: OrbitCameraController is QML of
 Qt's own, and Qt's QtQuick3D.Helpers is not installed here`. The gallery tells
 of such an example and does not hold it to what it rendered before.
+
+Some of Qt's examples have their pictures, meshes and fonts downloaded when
+they are built, not in their sources. The manifest says where from (`assets`),
+and `mise run assets ID` fetches them into `~/.cache/qml-solid/assets` (or
+`QML_SOLID_ASSETS`): the gallery serves them from there as if they were in the
+example, and `mise run reference` puts them where the build would. An example
+without them still renders, with what it has, and is not held to Qt's picture.
+One that downloads them itself as it starts (car-configurator) asks a browser
+for them one by one, at the address they are kept at: with a network it has
+them from there, and the gallery's test, which has none, is given what was
+fetched.
+
+A path in QML is relative to a file: the one that has the object that loads
+it. `Image { source: "a.png" }` is next to the file that says so, and so is
+the `source` of a component that is an Image; a path given to a property a
+component declares (`property url shown`, `property alias source:
+image.source`) is next to the component's file, where it is used. A program
+whose main.cpp sets `QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT` has them all next
+to the file they are written in: `qmlc --urls-on-assignment`, which the
+plugin's `args` may give by the file compiled. QML that stands in for a type
+in C++ (`--with`) has a path as that type does: next to the file that makes
+the object.
 
 ## Components
 

@@ -126,6 +126,12 @@ pub(crate) struct Lower<'a, 's> {
     specs: usize,
     /// The files the module names, each once: `$url1` is the first.
     urls: Vec<String>,
+    /// Where the path being lowered is taken from, when that is not this
+    /// file's directory: the way there, ending in a slash.
+    home: Option<String>,
+    /// A path is taken from this file wherever it is given: the program's
+    /// `QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT`.
+    pub(crate) assigned: bool,
     /// The enum keys each open frame has a constant for.
     keys: Vec<HashSet<String>>,
     /// The keys of the enums the component being built declares.
@@ -149,6 +155,8 @@ impl<'a, 's> Lower<'a, 's> {
             default: None,
             specs: 0,
             urls: Vec::new(),
+            home: None,
+            assigned: false,
             keys: Vec::new(),
             enums: Vec::new(),
             dynamic: types.project.dynamic_names(),
@@ -571,7 +579,12 @@ impl<'a, 's> Lower<'a, 's> {
                 if self.makes(&binding.value) {
                     built.made.push(path.join("$"));
                 }
-                self.value(binding.value, property)
+                if property.is_url && !self.assigned {
+                    self.home = self.tree.home(self.types, index, path[0]).and_then(|file| self.towards(&file));
+                }
+                let value = self.value(binding.value, property);
+                self.home = None;
+                value
             }
         };
         built.attributes.push(b.attr(&path.join("$"), value));
@@ -918,8 +931,18 @@ impl<'a, 's> Lower<'a, 's> {
         b.id(&constant)
     }
 
+    /// The directory of the file `file`, from this one's; None when it is
+    /// this one's own.
+    fn towards(&self, file: &str) -> Option<String> {
+        let path = types::relative(self.types.file, file);
+        // A file of Qt's own is not beside this one, wherever it is served.
+        let (directory, _) = path.rsplit_once('/').filter(|_| !path.starts_with('/'))?;
+        (directory != ".").then(|| format!("{}/", directory.strip_prefix("./").unwrap_or(directory)))
+    }
+
     /// A URL is relative to the file it is written in, which only the
-    /// compiled module knows: `import.meta.url`.
+    /// compiled module knows: `import.meta.url`. One given to a property a
+    /// component in another directory uses is relative to that (`home`).
     fn url(&mut self, expression: Expression<'a>) -> Expression<'a> {
         let b = self.b;
         let Expression::StringLiteral(literal) = &expression else {
@@ -927,12 +950,18 @@ impl<'a, 's> Lower<'a, 's> {
                 return expression;
             }
             self.uses.kernel.insert("$url");
-            return b.call(b.id("$url"), [expression, b.import_meta_url()]);
+            let base = match &self.home {
+                Some(home) => b.member(b.new_(b.id("URL"), [b.string(home), b.import_meta_url()]), "href"),
+                None => b.import_meta_url(),
+            };
+            return b.call(b.id("$url"), [expression, base]);
         };
         let value = literal.value.as_str();
         if value.is_empty() || is_absolute(value) {
             return expression;
         }
+        let moved = self.home.as_ref().map(|home| format!("{home}{value}"));
+        let value = moved.as_deref().unwrap_or(value);
         let picture = self.uses.paths.picture(value);
         let value = picture.as_deref().unwrap_or(value);
         // A QML file is the component it was compiled to, and what that

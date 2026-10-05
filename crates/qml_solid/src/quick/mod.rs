@@ -50,6 +50,7 @@ pub(crate) fn lower<'a>(
     let mut lower = Lower::new(b, &tree, types, stem);
     lower.uses.paths.known.clone_from(&options.files);
     lower.uses.paths.pictures.clone_from(&options.pictures);
+    lower.assigned = options.urls_on_assignment;
     let root = document.root.type_name.to_string();
     let (component, enums) = lower.component(&name, document.root, !is_singleton);
     errors.append(&mut lower.errors);

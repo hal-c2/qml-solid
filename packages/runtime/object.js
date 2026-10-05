@@ -351,31 +351,57 @@ export function gather(work) {
 // object ended in the meantime: a delegate whose row went with what it read
 // (`text: list[index].label` under `model: list.length`) is destroyed in Qt
 // before its binding is asked, and here in the same flush as it is.
-function guarded(key, compute) {
+//
+// And not while objects are being made: Qt keeps the error until the ones
+// being made all are, and has none to tell of where the binding could be
+// evaluated by then, as `stack.currentItem.title` can once the stack has its
+// first item. So it is asked again then (unless it is not `pure`: what makes
+// objects would make them twice).
+function guarded(key, compute, pure = true) {
   let last;
   let failed = null;
-  return () => {
-    // Evaluated again, so not ended: what cleaned up was this.
-    if (failed) failed.ended = false;
+  const guard = () => {
+    // Evaluated again, so not ended: what cleaned up was this. One kept for
+    // later is spoken for by this evaluation.
+    if (failed?.kept) failed.again = true;
+    else if (failed) failed.ended = false;
     failed = null;
+    guard.failing = false;
     const before = early;
     try {
       return (last = compute());
     } catch (error) {
       if (!(error instanceof TypeError)) throw error;
+      guard.failing = true;
       // Nothing to tell of what met an object that is not made yet: Qt
       // evaluates no binding until all of them are, and this one is
       // evaluated again when that one is.
       if (early === before) {
-        const failure = (failed = { ended: false });
+        const failure = (failed = { ended: false, kept: creating > 0, again: false, error });
         if (getOwner()) onCleanup(() => (failure.ended = true));
-        after(() => {
-          if (!failure.ended) console.warn(`${key.replaceAll("$", ".")}: ${error}`);
-        });
+        const tell = () => {
+          if (failure.ended || failure.again) return;
+          if (failure.kept && pure) {
+            try {
+              untrack(compute);
+              return;
+            } catch (error) {
+              if (!(error instanceof TypeError)) return;
+              failure.error = error;
+            }
+          }
+          console.warn(`${key.replaceAll("$", ".")}: ${failure.error}`);
+        };
+        if (failure.kept) kept.push(tell);
+        else after(tell);
       }
       return last;
     }
   };
+  // Whether it could not be evaluated when last asked: it then has nothing
+  // new to give.
+  guard.failing = false;
+  return guard;
 }
 
 // The objects a property is given (`background: Rectangle {}`) are made once,
@@ -649,7 +675,8 @@ class Slot {
     // binding, is what the property had.
     const kind = this.kind;
     const make = () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key]));
-    const compute = descriptor?.get ? guarded(key, props.$made?.includes(key) ? apart(make) : make) : null;
+    const made = props.$made?.includes(key);
+    const compute = descriptor?.get ? guarded(key, made ? apart(make) : make, !made) : null;
     this.bound = compute ? ringed(self.$owner, kind ? converted(key, kind, compute) : compute, undefined, true) : null;
     this.given = descriptor && !descriptor.get ? this.made(descriptor.value) : undefined;
     this.bound?.start();
@@ -1023,6 +1050,10 @@ let completions = null;
 let holding = null;
 // The item whose children are being created.
 let parent = null;
+// How many creations are under way, one in the work of another, and the
+// bindings that could not be evaluated in them: told of when all are done.
+let creating = 0;
+let kept = [];
 
 // Runs `work` once the objects being created all exist; now, if none are.
 export function whenComplete(work) {
@@ -1044,19 +1075,27 @@ function complete(make) {
   const handlers = (completions = []);
   const held = (holding = []);
   let made;
+  creating++;
   try {
-    made = make();
+    try {
+      made = make();
+    } finally {
+      waiting = watches = completions = holding = null;
+    }
+    // Each is complete before what holds it has anything to do with it.
+    for (const hold of held) hold();
+    for (const work of works) work();
+    // What changes from here on is a change: everything is as it was made.
+    const firsts = [];
+    for (const watch of watched) watch(firsts);
+    for (const handler of firsts) soon(handler);
+    for (const handler of handlers) soon(handler);
   } finally {
-    waiting = watches = completions = holding = null;
+    if (--creating === 0) {
+      for (const tell of kept) after(tell);
+      kept = [];
+    }
   }
-  // Each is complete before what holds it has anything to do with it.
-  for (const hold of held) hold();
-  for (const work of works) work();
-  // What changes from here on is a change: everything is as it was made.
-  const firsts = [];
-  for (const watch of watched) watch(firsts);
-  for (const handler of firsts) soon(handler);
-  for (const handler of handlers) soon(handler);
   return made;
 }
 
@@ -1177,7 +1216,8 @@ function defineAlias(self, name, [target, ...path]) {
       (value) =>
         settled(() => {
           const object = holder();
-          if (!object) return;
+          // A binding that could not be evaluated has nothing to assign.
+          if (!object || (value === undefined && binding.failing)) return;
           // It is a binding all the same: a value the property cannot hold
           // leaves it what it held, and is told of.
           try {
@@ -1197,10 +1237,17 @@ function defineAlias(self, name, [target, ...path]) {
 // `holder`, `key` the prop.
 function through(holder, props, key, name) {
   const at = name.indexOf("$");
-  const target = untrack(() => holder[name.slice(0, at)]);
+  const head = name.slice(0, at);
+  // An alias of a group (`property alias sourceSize: image.sourceSize`):
+  // what is said of it is said of the group, of the object that has it.
+  const [aliased, ...path] = holder.$props?.$aliases?.[head] ?? [];
+  if (path.length) return onto(aliased, props, key, [...path, name.slice(at + 1)].join("$"));
+  onto(untrack(() => holder[head]), props, key, name.slice(at + 1));
+}
+
+function onto(target, props, key, rest) {
   // A group is the object's own, and its type's to read.
   if (!target?.$type) return;
-  const rest = name.slice(at + 1);
   // What the object was made with, it has.
   const given = Object.getOwnPropertyDescriptor(props, key);
   const had = Object.getOwnPropertyDescriptor(target.$props, rest);
@@ -1212,9 +1259,12 @@ function through(holder, props, key, name) {
   if (rest.includes("$")) return through(target, props, key, rest);
   // An alias: assigned.
   if (!(rest in target)) return;
-  createRenderEffect(
-    guarded(key, () => props[key]),
-    (value) => settled(() => void (target[rest] = value)),
+  const binding = guarded(key, () => props[key]);
+  createRenderEffect(binding, (value) =>
+    settled(() => {
+      // A binding that could not be evaluated has nothing to assign.
+      if (value !== undefined || !binding.failing) target[rest] = value;
+    }),
   );
 }
 

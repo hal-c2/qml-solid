@@ -60,6 +60,11 @@ pub struct Options {
     /// The other files there, likewise (`images/logo.png`): what a source
     /// written with no suffix (`images/logo`) may be the picture of.
     pub pictures: Option<Vec<String>>,
+    /// A path is taken from the file it is written in, whatever it is given
+    /// to: what Qt 5 did, and Qt 6 does for a program that sets
+    /// `QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT`. Otherwise one given to a
+    /// property a component declares is taken from the component's file.
+    pub urls_on_assignment: bool,
     pub solid: SolidOptions,
 }
 
@@ -74,6 +79,7 @@ impl Default for Options {
             project: None,
             files: None,
             pictures: None,
+            urls_on_assignment: false,
             solid: SolidOptions::default(),
         }
     }

@@ -416,7 +416,7 @@ function laid(self) {
   const wide = sized(self, "width");
   const limit = wide ? Math.max(self.width - self.leftPadding - self.rightPadding, 0) : Infinity;
   const text = capitalized(string(self), self.font.capitalization);
-  const made = arrange(text, spec, limit, wide ? self.wrapMode : 0, 3, MANY, Infinity, face.height, self.effectiveHorizontalAlignment);
+  const made = arrange(text, spec, limit, wide ? self.wrapMode : 0, 3, MANY, Infinity, face.height, self.effectiveHorizontalAlignment, true);
   made.height = made.count * face.height;
   return made;
 }
