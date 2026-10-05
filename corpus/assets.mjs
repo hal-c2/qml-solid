@@ -12,8 +12,10 @@
 // them itself, as it starts, asks for them one by one where a browser is
 // concerned: `addresses` says at which addresses, and what is kept is given
 // for them where there is to be no network. `without` names what is in the
-// archive and nothing of the example reads. The cache is QML_SOLID_ASSETS,
-// or `qml-solid/assets` in the user's cache directory.
+// archive and nothing of the example reads. One that has no archive has the
+// names of its files in a source of its own (`listed`), each of them under
+// `url`: those are downloaded one by one into `files`. The cache is
+// QML_SOLID_ASSETS, or `qml-solid/assets` in the user's cache directory.
 import { spawnSync } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
@@ -37,9 +39,39 @@ export function assetsOf(example) {
   return [...places, ...addresses].every(([, from]) => existsSync(from)) ? { directory, places, addresses } : null;
 }
 
-async function download(example) {
+// The files a source of the example's names, a string on a line each.
+function listed(example, examples) {
+  const text = readFileSync(join(examples, example.dir, example.assets.listed), "utf8");
+  return [...text.matchAll(/^\s*"([^":]+\.\w+)",?\s*$/gm)].map(([, name]) => name);
+}
+
+// Each of them, into `files`: which is there when all of them are, so that
+// half of them are not taken for what the example has.
+async function each(example, examples, directory) {
+  const names = listed(example, examples);
+  const part = join(directory, "files.part");
+  for (const [index, name] of names.entries()) {
+    const file = join(part, name);
+    if (existsSync(file)) continue;
+    console.log(`${example.id}: ${index + 1} of ${names.length}, ${name}`);
+    const answer = await fetch(new URL(name, example.assets.url));
+    if (!answer.ok) throw new Error(`${answer.url}: ${answer.status} ${answer.statusText}`);
+    mkdirSync(dirname(file), { recursive: true });
+    await pipeline(Readable.fromWeb(answer.body), createWriteStream(`${file}.part`));
+    renameSync(`${file}.part`, file);
+  }
+  renameSync(part, join(directory, "files"));
+}
+
+async function download(example, examples) {
   const directory = join(cache, example.id);
   if (assetsOf(example)) {
+    console.log(`${example.id}: ${directory}`);
+    return;
+  }
+  if (example.assets.listed) {
+    await each(example, examples, directory);
+    if (!assetsOf(example)) throw new Error(`${example.assets.listed} names nothing of ${Object.values({ ...example.assets.places, ...example.assets.addresses }).join(", ")}`);
     console.log(`${example.id}: ${directory}`);
     return;
   }
@@ -67,7 +99,8 @@ async function download(example) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "examples.json"), "utf8"));
+  const corpus = dirname(fileURLToPath(import.meta.url));
+  const manifest = JSON.parse(readFileSync(join(corpus, "examples.json"), "utf8"));
   const having = manifest.examples.filter((example) => example.assets);
   const wanted = process.argv.slice(2);
   const unknown = wanted.filter((id) => !having.some((example) => example.id === id));
@@ -78,5 +111,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (!wanted.length) {
     for (const example of having) console.log(`${example.id}: ${assetsOf(example) ? "here" : "not here"} (${example.assets.url})`);
   }
-  for (const example of having.filter((example) => wanted.includes(example.id))) await download(example);
+  for (const example of having.filter((example) => wanted.includes(example.id))) await download(example, join(corpus, manifest.root));
 }

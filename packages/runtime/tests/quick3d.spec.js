@@ -2049,3 +2049,34 @@ test("an object in space has states, and goes between them by its transitions", 
   near(await step(2), { lid: ["raised", -50, 40] });
   near(await step(3), { lid: ["", 0, 0] });
 });
+
+// Qt 6.11 says nothing of the frames a second has until the second is over,
+// and then some sixty for a cube that turns; the times of a frame it says
+// from the first.
+test("a View3D says how fast it draws", async ({ page }) => {
+  await open(page, "stats3d");
+  const read = () =>
+    page.evaluate(() => {
+      const told = ({ fps, frameTime, renderTime, maxFrameTime, syncTime, renderPrepareTime }) => ({ fps, frameTime, renderTime, maxFrameTime, syncTime, renderPrepareTime });
+      const { turning, still, seen, fps } = window.scene;
+      return { turning: told(turning), still: told(still), seen: [...seen], fps, same: turning === window.scene.turning, other: turning !== still };
+    });
+  const first = await read();
+  expect(first).toMatchObject({ same: true, other: true, fps: 0, seen: [] });
+  expect(first.turning).toMatchObject({ fps: 0, maxFrameTime: 0 });
+  expect(await page.evaluate(() => {
+    const { extendedDataCollectionEnabled, drawCallCount, renderPassCount, renderPassDetails, graphicsApiName, pipelineCount } = window.scene.turning;
+    window.scene.turning.releaseCachedResources();
+    return { extendedDataCollectionEnabled, drawCallCount, renderPassCount, renderPassDetails, graphicsApiName, pipelineCount };
+  })).toEqual({ extendedDataCollectionEnabled: false, drawCallCount: 0, renderPassCount: 0, renderPassDetails: "", graphicsApiName: "OpenGL", pipelineCount: 0 });
+
+  await expect.poll(async () => (await read()).fps, { timeout: 5000 }).toBeGreaterThan(0);
+  const later = await read();
+  expect(later.seen.at(-1)).toBe(later.fps);
+  expect(later.turning.frameTime).toBeGreaterThan(0);
+  expect(later.turning.renderTime).toBeGreaterThan(0);
+  expect(later.turning.renderTime).toBeLessThanOrEqual(later.turning.frameTime);
+  expect(later.turning.maxFrameTime).toBeGreaterThan(0);
+  // The one drawn once has not had a second of frames.
+  expect(later.still).toMatchObject({ fps: 0, maxFrameTime: 0 });
+});

@@ -57,13 +57,69 @@ async function unnamed(url) {
   return URL.createObjectURL(new Blob([await response.arrayBuffer()]));
 }
 
+// How many of QtSvg's units one of each is: it takes an inch for 90.
+const UNITS = { "": 1, px: 1, pt: 1, pc: 1, mm: 3.543307, cm: 35.43307, in: 90, em: 0, ex: 0, "%": 1 };
+const LENGTH = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*(px|pt|pc|mm|cm|in|em|ex|%)?\s*$/i;
+
+// A side of a drawing as the file says it: how long, and whether that is a
+// percentage.
+function side(text) {
+  const [, number, unit = ""] = LENGTH.exec(text ?? "") ?? [];
+  if (number === undefined) return [0, false];
+  return [Math.trunc(Number(number) * UNITS[unit.toLowerCase()]), unit === "%"];
+}
+
+function box(text) {
+  const numbers = (text ?? "").trim().split(/[\s,]+/).map(Number);
+  return numbers.length === 4 && numbers.every(Number.isFinite) && numbers[2] > 0 && numbers[3] > 0 ? numbers : null;
+}
+
+// The size QtSvg makes of a drawing, which is not the browser's:
+// - `width` and `height`, cut down to whole numbers. An inch is 90 of them,
+//   and `mm` and `cm` go by that; `pt` and `pc` count as they are written.
+//   A percentage is of the `viewBox`.
+// - where either is missing, nothing, or in `em` or `ex`: the `viewBox`,
+//   rounded.
+// Nothing for a file that says neither a size nor a `viewBox`, which Qt
+// gives the bounds of what it draws. `view` is the `viewBox` it has.
+export function measured(root) {
+  const view = box(root.getAttribute("viewBox"));
+  const [wide, wideOf] = side(root.getAttribute("width"));
+  const [tall, tallOf] = side(root.getAttribute("height"));
+  const said = wide > 0 && tall > 0;
+  if (!view && (!said || wideOf || tallOf)) return null;
+  const width = !said ? Math.round(view[2]) : wideOf ? Math.round(0.01 * wide * view[2]) : wide;
+  const height = !said ? Math.round(view[3]) : tallOf ? Math.round(0.01 * tall * view[3]) : tall;
+  return { width, height, view };
+}
+
+// That size of the drawing at `url`, where it can be read.
+async function drawing(url) {
+  const parsed = new DOMParser().parseFromString(await (await fetch(url)).text(), "image/svg+xml");
+  const root = parsed.documentElement;
+  if (root.localName !== "svg" || parsed.querySelector("parsererror")) return null;
+  const size = measured(root);
+  return size && { width: size.width, height: size.height };
+}
+
 function fetched(url) {
   const record = picture(url);
   const element = document.createElement("img");
+  let size = null;
   element.onload = () => {
     record.width = element.naturalWidth;
     record.height = element.naturalHeight;
+    if (record.scalable && size) Object.assign(record, size);
     record.settle(READY);
+  };
+  // A drawing is as big as Qt makes it, where the file can be read; one
+  // from somewhere that does not let a page read it, as the browser does.
+  // It is read before the browser is given it: what shows the picture is
+  // told of it as the browser has it, and paints it without waiting again.
+  const show = (address) => {
+    const shown = () => (element.src = address);
+    if (record.scalable) drawing(address).then((found) => (size = found), () => {}).then(shown);
+    else shown();
   };
   const failed = () => record.settle(ERROR);
   element.onerror = failed;
@@ -75,9 +131,9 @@ function fetched(url) {
       unnamed(url).then((address) => (element.src = record.url = address), failed);
     };
   }
-  if (!PACKED.test(url)) element.src = url;
+  if (!PACKED.test(url)) show(url);
   // What is shown is what was opened.
-  else opened(url).then((address) => (element.src = record.url = address), failed);
+  else opened(url).then((address) => show((record.url = address)), failed);
   return record;
 }
 

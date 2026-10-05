@@ -10,7 +10,7 @@
     "modules": "the example's own QML modules: URI to directory, in `dir`",
     "imports": "every other module its QML files import",
     "cpp": "what it needs from C++ of its own",
-    "assets": "what its build downloads (`url`, an archive) and where it puts each directory of it: `places`, the directory in `dir` to the one in the archive. One that downloads them itself as it starts has `addresses` instead: where a browser asks for each directory, to the one in the archive. `without`: what is in the archive and is not read. `mise run assets` fetches them",
+    "assets": "what its build downloads (`url`, an archive) and where it puts each directory of it: `places`, the directory in `dir` to the one in the archive. One that downloads them itself as it starts has `addresses` instead: where a browser asks for each directory, to the one in the archive. `without`: what is in the archive and is not read. One with no archive has `listed`, a source in `dir` that names its files, each under `url` and kept in `files`. `mise run assets` fetches them",
     "volatile": "why its picture is not the same twice: time, animation, network",
     "qt": "`runnable`: the `qml` tool of the Qt installed here renders it, or `reason` why not. For the run: `style` or `controlsConf` (the Controls style its main.cpp or resources choose), `env` (environment its main.cpp sets), `module` (the URI its files import it by), `properties` (initial properties main.cpp sets), `offline`, `settle` (ms before the picture, default 1500), `shaders` (the shader sources its build compiles, in `dir`)"
   },
@@ -362,6 +362,13 @@
       "cpp": [
         "QtQuick.Studio.Application: StudioApplication"
       ],
+      "assets": {
+        "url": "https://download.qt.io/learning/examples/FX_Material_Showroom_Assets/",
+        "listed": "src/imagedownloader.h",
+        "addresses": {
+          "https://download.qt.io/learning/examples/FX_Material_Showroom_Assets/": "files"
+        }
+      },
       "qt": {
         "runnable": false,
         "reason": "QtQuick3D is not installed (nor QtQuick3D.Particles3D). Its 3D assets are downloaded at start."

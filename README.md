@@ -126,7 +126,10 @@ without them still renders, with what it has, and is not held to Qt's picture.
 One that downloads them itself as it starts (car-configurator) asks a browser
 for them one by one, at the address they are kept at: with a network it has
 them from there, and the gallery's test, which has none, is given what was
-fetched.
+fetched. FX_Material_Showroom's main.cpp downloads a list of files to beside
+the program, and its QML reads them from there: what stands in for main.cpp
+says they are at the address it downloads from, and `mise run assets` fetches
+each file of the list.
 
 A path in QML is relative to a file: the one that has the object that loads
 it. `Image { source: "a.png" }` is next to the file that says so, and so is
@@ -156,6 +159,12 @@ A file the build keeps in the program is named by where it is in there:
 `FILES` of `qt_add_resources`), and a module that writes such a name, or the
 start of one it puts together as the program runs, says where a browser finds
 the file. The program still reads the name it wrote.
+
+A file the program has beside it as it runs is named without saying from
+where, `file:content/images/dust.png`: Qt looks in the directory the program
+was started in. The program put it there itself, so what stands in for that
+part of it says where a browser finds the directory:
+`beside("file:content/", url)` of `qml-solid/object`.
 
 A file is a function that makes its root object:
 
