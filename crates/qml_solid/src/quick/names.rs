@@ -383,6 +383,10 @@ impl<'a> Resolver<'a, '_, '_> {
         {
             return None;
         }
+        // `Type.Enum.Key`: a key that has the name of a type is still a key.
+        if self.is_enum(&inner.object) {
+            return None;
+        }
         let of = match &inner.object {
             Expression::Identifier(object) if self.is_free(object) && object.name.starts_with(|c: char| c.is_ascii_uppercase()) => {
                 // `Qt.Window`, `Text.Text`: a member of a type or a global.
@@ -431,6 +435,23 @@ impl<'a> Resolver<'a, '_, '_> {
                 b.call(b.member(b.id(&name), "attached"), [attachee])
             }
         })
+    }
+
+    /// Whether `expression` is `Type.Enum` or `Namespace.Type.Enum`: an enum
+    /// of a type, by the type's name.
+    fn is_enum(&self, expression: &Expression<'a>) -> bool {
+        let Expression::StaticMemberExpression(member) = expression else { return false };
+        let found = match &member.object {
+            Expression::Identifier(ty) if self.is_free(ty) => self.types.find(&[ty.name.as_str()]),
+            Expression::StaticMemberExpression(ty) => match &ty.object {
+                Expression::Identifier(namespace) if self.is_free(namespace) => {
+                    self.types.namespace(namespace.name.as_str()).and_then(|_| self.types.find(&[namespace.name.as_str(), ty.property.name.as_str()]))
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        found.is_some_and(|found| matches!(self.member_of(&found.kind, member.property.name.as_str()), Access::Enum))
     }
 
     /// `Qt.createQmlObject("import QtQuick; Item {}", parent)`: the object of

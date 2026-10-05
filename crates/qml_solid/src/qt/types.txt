@@ -16225,6 +16225,8 @@ module QtQuick3D.Helpers
 		method syncVisible
 	type QtQuick3D/Helpers/ExtendedSceneEnvironment.qml ExtendedSceneEnvironment
 		prototype SceneEffectEnvironment
+		enum GlowBlendMode Additive Screen SoftLight Replace
+		enum GlowLevel One Two Three Four Five Six Seven
 		prop ssgiEnabled alias
 		prop ssgiIndirectLightEnabled alias
 		prop ssgiIndirectLightBoost alias

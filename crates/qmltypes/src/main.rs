@@ -372,6 +372,7 @@ fn files(sources: &BTreeMap<String, Source>, modules: &mut Modules) {
                 }
                 class.is_singleton |= file.is_singleton;
                 class.default_property = file.default_property.clone();
+                class.enums = file.enums.clone();
                 class.properties = file.properties.clone();
                 for property in &mut class.properties {
                     // Left as written when it is not a type (`alias`).
