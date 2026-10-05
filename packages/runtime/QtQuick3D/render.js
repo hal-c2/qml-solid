@@ -1123,16 +1123,22 @@ const forms = () => ({
 });
 
 // A picture as a texture, sampled as its Texture says: an element of the
-// page, or numbers, whose first row is the bottom one already.
+// page, or numbers, whose first row is the bottom one already, or what a
+// view last drew.
 const textures = new WeakMap();
+// Which picture is being drawn: what something draws on is read once for
+// one, however many read it.
+let turn = 0;
 function bound(map, unit = 0) {
   const from = map.element ?? map.data;
-  let made = textures.get(from);
+  let made = map.view ? viewed(map) : textures.get(from);
   const fresh = !made;
-  if (fresh) textures.set(from, (made = { texture: gl.createTexture(), mipped: false }));
+  if (fresh) textures.set(from, (made = { texture: gl.createTexture(), mipped: false, turn: 0 }));
   gl.activeTexture(gl.TEXTURE0 + unit);
   gl.bindTexture(gl.TEXTURE_2D, made.texture);
-  if (fresh && map.data) {
+  if (map.view) {
+    // Nothing is read: it is here already.
+  } else if (fresh && map.data) {
     const { pixels, width, height, format } = map.data;
     const [inner, outer, kind] = forms()[format];
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -1140,9 +1146,10 @@ function bound(map, unit = 0) {
     gl.texImage2D(gl.TEXTURE_2D, 0, inner, width, height, 0, outer, kind, pixels);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-  } else if (!map.data && (fresh || map.live)) {
+  } else if (!map.data && (fresh || (map.live && made.turn !== turn))) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, map.element);
     made.mipped = false;
+    made.turn = turn;
   }
   if (map.mip && !made.mipped) {
     gl.generateMipmap(gl.TEXTURE_2D);
@@ -1155,6 +1162,51 @@ function bound(map, unit = 0) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, WRAPS[map.horizontal] ?? gl.REPEAT);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, WRAPS[map.vertical] ?? gl.REPEAT);
   if (unit) gl.activeTexture(gl.TEXTURE0);
+}
+
+// What a view last drew, for what takes the view as a texture: the right
+// way up and upside down, as it is asked for. The picture leaves the
+// surface for the page once drawn, so it is copied before it does, and a
+// view that reads itself reads the picture before the one being drawn.
+const views = new WeakMap();
+let undrawn = null;
+function viewed(map) {
+  const record = views.get(map.element);
+  const side = record && (map.down ? record.down : record.up);
+  if (side) return side;
+  if (!undrawn) {
+    undrawn = { texture: gl.createTexture(), mipped: false };
+    gl.activeTexture(gl.TEXTURE0 + MAKING);
+    gl.bindTexture(gl.TEXTURE_2D, undrawn.texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  }
+  return undrawn;
+}
+
+// The surface as it stands is kept as a view's picture: `ways` says which
+// way up it is wanted, the right way (1), upside down (2) or both.
+function retained(canvas, width, height, ways) {
+  let record = views.get(canvas);
+  if (!record) views.set(canvas, (record = { width: 0, height: 0, up: null, down: null }));
+  const sized = record.width !== width || record.height !== height;
+  Object.assign(record, { width, height });
+  gl.activeTexture(gl.TEXTURE0 + MAKING);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+  for (const [way, name] of [[1, "up"], [2, "down"]]) {
+    if (!(ways & way)) continue;
+    let side = record[name];
+    const fresh = !side;
+    if (fresh) side = record[name] = { texture: gl.createTexture(), frame: gl.createFramebuffer(), mipped: false };
+    gl.bindTexture(gl.TEXTURE_2D, side.texture);
+    if (fresh || sized) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, side.frame);
+    if (fresh) gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, side.texture, 0);
+    // A texture's first row is its bottom one, as the surface's is.
+    if (way === 1) gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    else gl.blitFramebuffer(0, 0, width, height, 0, height, width, 0, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    side.mipped = false;
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
 // A cube of so many levels, each side of the first `size` across.
@@ -2180,7 +2232,7 @@ function reflected(probe, scene, environment, surroundings) {
 // Draws `scene` (`{ width, height, environment, projection, camera, models,
 // lights, probes }`) and hands the picture to `paper`, the context of
 // `canvas`.
-export function draw(scene, canvas, paper) {
+export function draw(scene, canvas, paper, ways = 0) {
   const ratio = window.devicePixelRatio || 1;
   const width = Math.round(scene.width * ratio);
   const height = Math.round(scene.height * ratio);
@@ -2190,6 +2242,7 @@ export function draw(scene, canvas, paper) {
   }
   if (surface.width !== width) surface.width = width;
   if (surface.height !== height) surface.height = height;
+  turn++;
   const { environment } = scene;
   const probe = environment.probe ? probed(environment.probe.map) : null;
   // What an effect brings to the screen afterwards is drawn in linear
@@ -2286,6 +2339,7 @@ export function draw(scene, canvas, paper) {
   const picture = effects ? affected(effects, linear.color, width, height, scene, canvas) : late ? linear.color : null;
   if (grade) finished(grade, picture);
   else if (effects) shown(picture, environment.tonemap);
+  if (ways) retained(canvas, width, height, ways);
   // The picture leaves the surface for the canvas: nothing is copied.
   paper.transferFromImageBitmap(surface.transferToImageBitmap());
 }

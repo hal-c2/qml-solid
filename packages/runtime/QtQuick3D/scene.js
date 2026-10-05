@@ -218,6 +218,8 @@ const MirroredRepeat = 2;
 const Repeat = 3;
 const Nearest = 1;
 const Linear = 2;
+// ShaderEffectSource's.
+const MirrorVertically = 2;
 
 export const Texture = defineType("Texture", Object3D, {
   properties: {
@@ -252,9 +254,23 @@ export const Texture = defineType("Texture", Object3D, {
     // them: flipped, moved, then turned and scaled about the pivot. The
     // picture is an item's where it has one, else the numbers it is given,
     // else the file it names, which is the order Qt looks in.
+    //
+    // An item that stands for another (a ShaderEffectSource) is that one. A
+    // View3D is a picture upside down, as it is in Qt where Qt draws with
+    // OpenGL, unless what stands for it mirrors it back, which one does
+    // that is not told otherwise; and what reads a view is drawn again when
+    // the view is.
     self.$texture = () => {
       const source = String(self.source ?? "");
-      const item = self.sourceItem;
+      let item = self.sourceItem;
+      let mirrored = false;
+      for (let seen = 0; item?.sourceItem !== undefined && seen < 8; seen++) {
+        mirrored = Boolean(item.textureMirroring & MirrorVertically);
+        item = item.sourceItem;
+      }
+      const view = Boolean(item?.$view);
+      const down = view && !mirrored;
+      if (view) item.$view(down);
       const given = item ? null : self.textureData;
       const url = item || given || !source ? null : located(source);
       const data = given ? (given.$picture?.() ?? null) : url && BRIGHT.test(url) ? bright(url) : null;
@@ -276,6 +292,8 @@ export const Texture = defineType("Texture", Object3D, {
         data,
         // A canvas may have been drawn on since, and may be seen through.
         live: Boolean(item),
+        view,
+        down,
         sheer: data ? data.sheer : loaded ? loaded.sheer : true,
         horizontal: self.tilingModeHorizontal,
         vertical: self.tilingModeVertical,

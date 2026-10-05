@@ -13,7 +13,7 @@
 // nearest a place, and the items in a scene, of which none is picked; the
 // picture is drawn in the item whatever `renderMode` says, and of the ways
 // of smoothing edges there is one.
-import { untrack } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import { defineType, effect, inside as within, QtObject, settle, slot } from "../object.js";
 import { Vector2d, Vector3d } from "../QtQml/values.js";
 import { Item } from "../QtQuick/Item.js";
@@ -242,32 +242,46 @@ export const View3D = defineType("View3D", Item, {
       if (from < rested) return void setTimeout(drawn, rested - from);
       const scene = due;
       due = null;
-      draw(scene, canvas, paper);
+      draw(scene, canvas, paper, ways);
+      last = scene;
+      if (ways) setTimes((times) => times + 1);
       const ended = performance.now();
       frame(from, ended);
       const took = ended - from;
       rested = took > SLOW ? ended + Math.min(took, REST) : 0;
     };
 
+    // The view is a picture to what takes it for one (a Texture's item),
+    // the right way up or upside down, and that is drawn again when the
+    // view is: but a view that reads its own picture, as one does that lays
+    // each picture over its last, is not drawn again for having been
+    // drawn. A picture first asked for after the view was drawn is drawn
+    // again to be kept.
+    const [times, setTimes] = createSignal(0);
+    let own = false;
+    let ways = 0;
+    let last = null;
+    self.$canvas = { element: canvas };
+    self.$view = (down) => {
+      const way = down ? 2 : 1;
+      if (!(ways & way)) {
+        ways |= way;
+        if (!due && last) {
+          queueMicrotask(drawn);
+          due = last;
+        }
+      }
+      return own ? 0 : times();
+    };
+
     effect(
       () => {
-        const { width, height } = self;
-        const { models, lights, paints, probes, camera: any } = found(self);
-        const camera = self.camera ?? any;
-        return {
-          width,
-          height,
-          camera,
-          models,
-          lights,
-          paints,
-          probes,
-          eye: camera?.$world() ?? null,
-          projection: camera?.$projection(width, height) ?? null,
-          far: camera?.clipFar ?? 0,
-          near: camera?.clipNear ?? 0,
-          environment: (self.environment ?? SceneEnvironment).$environment?.() ?? PLAIN,
-        };
+        own = true;
+        try {
+          return sight();
+        } finally {
+          own = false;
+        }
       },
       (seen) => {
         // A camera maps to the view it was last seen through.
@@ -277,6 +291,26 @@ export const View3D = defineType("View3D", Item, {
         due = { ...seen, camera: seen.eye };
       },
     );
+
+    function sight() {
+      const { width, height } = self;
+      const { models, lights, paints, probes, camera: any } = found(self);
+      const camera = self.camera ?? any;
+      return {
+        width,
+        height,
+        camera,
+        models,
+        lights,
+        paints,
+        probes,
+        eye: camera?.$world() ?? null,
+        projection: camera?.$projection(width, height) ?? null,
+        far: camera?.clipFar ?? 0,
+        near: camera?.clipNear ?? 0,
+        environment: (self.environment ?? SceneEnvironment).$environment?.() ?? PLAIN,
+      };
+    }
   },
 });
 

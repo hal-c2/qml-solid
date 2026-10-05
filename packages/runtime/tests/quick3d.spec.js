@@ -2050,6 +2050,41 @@ test("an object in space has states, and goes between them by its transitions", 
   near(await step(3), { lid: ["", 0, 0] });
 });
 
+// A view is a picture upside down where Qt draws with OpenGL, which is
+// how it is here: a ShaderEffectSource of it stands it up, unless it is
+// told to mirror nothing. Each of the three is 100 across from 30, 150 and
+// 270, and from 100 down: of a sheet in each quarter but one, where a small
+// one is, before a grey.
+test("a View3D is a picture in another's scene, the way up Qt has it", async ({ page }) => {
+  await open(page, "viewmap3d");
+  const GREY = grey(128);
+  const PINK = [255, 0, 255];
+  const quarters = (left, first, second, third, fourth, small) => [
+    [[left + 25, 125], first],
+    [[left + 75, 125], second],
+    [[left + 25, 175], third],
+    [[left + 75, 175], fourth],
+    small,
+  ];
+  const seen = (first, other) => [
+    // The view itself: its top row is the picture's bottom one.
+    ...quarters(30, BLUE, GREY, first, GREEN, [[92, 137], YELLOW]),
+    // Through a ShaderEffectSource it is as the view shows it,
+    ...quarters(150, other, GREEN, BLUE, GREY, [[212, 162], YELLOW]),
+    // and through one that mirrors nothing it is as the view itself is.
+    ...quarters(270, BLUE, GREY, other, GREEN, [[332, 137], YELLOW]),
+    [[80, 112], GREY],
+    [[200, 187], GREY],
+    [[10, 10], BLACK],
+  ];
+  const before = seen(RED, PINK);
+  expect(await painted(page, before)).toEqual(before.map(([, colour]) => colour));
+  // What is drawn with a view is drawn again when the view is.
+  await page.evaluate(() => window.scene.step());
+  const after = seen([0, 255, 255], [255, 255, 255]);
+  expect(await painted(page, after)).toEqual(after.map(([, colour]) => colour));
+});
+
 // Qt 6.11 says nothing of the frames a second has until the second is over,
 // and then some sixty for a cube that turns; the times of a frame it says
 // from the first.
