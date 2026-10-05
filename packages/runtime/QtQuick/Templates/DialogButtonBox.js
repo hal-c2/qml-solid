@@ -68,8 +68,9 @@ const AlignVertical = 480;
 const nothing = () => {};
 const isa = (item, Type) => item?.$type?.chain.includes(Type) === true;
 
-// What is attached to a button, if anything was.
-const attachedTo = (button) => button.$attached?.DialogButtonBox;
+// What is attached to a button: made when first asked for, so that what
+// asks before anything else has is told of the role the button was given.
+const attachedTo = (button) => DialogButtonBox.attached(button);
 
 // The role of a button, which says what a click on it means; a dialog asks
 // too.

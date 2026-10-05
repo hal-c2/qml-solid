@@ -33,6 +33,8 @@ const SYNC = { sync: true };
 // What `Qt.binding(f)` marks its function with: assigning one binds.
 const BINDING = Symbol.for("qml-solid.binding");
 
+const versioned = () => createSignal(0, WRITABLE);
+
 const hidden = (object, key, value) =>
   Object.defineProperty(object, key, { value, writable: true, configurable: true });
 
@@ -652,8 +654,8 @@ class Slot {
     this.over = false;
     // Set by a Behavior: what is shown while the value it follows moves.
     this.shown = null;
-    // Most properties are never written, so a slot has no signal of its own
-    // until it is: before that its readers share the object's.
+    // A slot has no signal of its own until something follows it: most
+    // properties are read once as an object is made, and never again.
     this.version = null;
     this.bump = null;
     this.given$ = resolve ? () => this.own() : null;
@@ -691,16 +693,25 @@ class Slot {
     this.changed();
   }
 
+  // Has whoever is reading told when the property changes.
+  follow() {
+    if (!this.version) {
+      if (!getObserver()) return;
+      // The signal is the object's, not of the computation that happens to
+      // be the first to read the property.
+      [this.version, this.bump] = runWithOwner(this.self.$owner ?? null, versioned);
+    }
+    this.version();
+  }
+
   get() {
-    if (this.version) this.version();
-    else this.self.$track();
+    this.follow();
     return this.shown ? this.shown() : this.target();
   }
 
   // What the property was given, before its type has its say.
   asked() {
-    if (this.version) this.version();
-    else this.self.$track();
+    this.follow();
     return this.own();
   }
 
@@ -730,15 +741,12 @@ class Slot {
   // Whether something gave the property a value: a border is drawn only
   // when its width or colour was set.
   explicit() {
-    if (this.version) this.version();
-    else this.self.$track();
+    this.follow();
     return this.assigned || (this.bound ? this.bound() : this.given) !== undefined || this.bound?.busy?.() === true;
   }
 
   changed() {
-    if (this.version) return this.bump(next);
-    [this.version, this.bump] = createSignal(0, WRITABLE);
-    this.self.$touch(next);
+    this.bump?.(next);
   }
 
   // An assignment: it replaces the binding, as in QML, and what depends on

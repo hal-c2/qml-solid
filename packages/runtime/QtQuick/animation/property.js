@@ -66,11 +66,6 @@ export function display(slot) {
 // told its property that way already.
 export const keyOf = (name) => (name.includes(".") ? name.replaceAll(".", "$") : name);
 
-// Reading a slot's value follows its signal when it has one of its own.
-function track(slot) {
-  if (slot.version) slot.version();
-  else slot.self.$track();
-}
 
 export class Property {
   constructor(object, name) {
@@ -106,7 +101,7 @@ export class Property {
   // The value it has, whatever is shown; tracked, for what follows it.
   target() {
     if (!this.slot) return this.object[this.key];
-    track(this.slot);
+    this.slot.follow();
     return this.slot.target();
   }
 

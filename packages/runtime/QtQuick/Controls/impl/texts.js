@@ -56,34 +56,13 @@ export const MnemonicLabel = defineType("MnemonicLabel", Text, {
       const kind = format === 1 ? 2 : format === 4 || (format === 2 && mightBeRichText(text)) ? 1 : 0;
       return { kind, text: kind ? text : capitalized(text, self.font.capitalization) };
     });
-    // The letters are underlined in what the text put there, where they are
+    // The letters are underlined in what the text puts there, where they are
     // still in it: a text cut short may have lost them.
-    effect(
-      () => {
-        const made = state.layout();
-        const plain = state.source().text;
-        if (made.kind) return null;
-        const shown = made.text;
-        return { shown, marks: parts().marks.filter((at) => at < shown.length && shown.slice(0, at + 1) === plain.slice(0, at + 1)) };
-      },
-      (next) => {
-        if (!next || content.querySelector("div")) return;
-        const { shown, marks } = next;
-        if (!marks.length) {
-          if (content.firstElementChild) content.textContent = shown;
-          return;
-        }
-        const pieces = [];
-        let from = 0;
-        for (const at of marks) {
-          const letter = document.createElement("u");
-          letter.textContent = shown[at];
-          pieces.push(shown.slice(from, at), letter);
-          from = at + 1;
-        }
-        content.replaceChildren(...pieces, shown.slice(from));
-      },
-    );
+    state.marks = (made) => {
+      const plain = state.source().text;
+      const shown = made.text;
+      return parts().marks.filter((at) => at < shown.length && shown.slice(0, at + 1) === plain.slice(0, at + 1));
+    };
   },
 });
 
