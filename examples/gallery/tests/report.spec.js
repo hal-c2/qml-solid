@@ -92,6 +92,17 @@ for (const example of readManifest()) {
     }
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    // What the example and the runtime warn of as it runs: it may render
+    // and still say that something is not as its QML has it.
+    const said = new Map();
+    page.on("console", (message) => {
+      if (message.type() !== "warning" && message.type() !== "error") return;
+      // The graphics driver says of itself that the browser, drawing without
+      // a screen, read a picture back.
+      const text = message.text();
+      if (text.includes("GL Driver Message")) return;
+      said.set(text, (said.get(text) ?? 0) + 1);
+    });
     // The page only learns that a module did not load. Why is what the dev
     // server answered: most often a module of Qt the runtime does not have.
     const refused = [];
@@ -169,6 +180,7 @@ for (const example of readManifest()) {
       mismatch: similarity?.mismatch ?? null,
       lacks: compiled.lacks,
       compileErrors: compiled.errors,
+      said: Array.from(said, ([text, times]) => ({ text: text.replaceAll(example.directory + "/", ""), times })).slice(0, 40),
     };
     await testInfo.attach("example", { body: JSON.stringify(result), contentType: "application/json" });
 

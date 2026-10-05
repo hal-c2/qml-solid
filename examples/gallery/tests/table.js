@@ -113,6 +113,7 @@ function page(rows) {
   <td>${picture(row, "qt") || `<i>${escape(row.qt ?? "no reference picture")}</i>`}</td>
   <td>${picture(row, "diff")}</td>
   <td><pre>${escape(row.error ?? row.mismatch ?? "")}</pre></td>
+  <td><pre>${escape((row.said ?? []).map(({ text, times }) => (times > 1 ? `${times}x ` : "") + text.split("\n")[0]).join("\n"))}</pre></td>
 </tr>`,
     )
     .join("\n");
@@ -128,7 +129,7 @@ function page(rows) {
   i { color: #777; display: block; max-width: 300px; }
 </style>
 <table>
-<tr><th>example</th><th>report</th><th>web</th><th>Qt</th><th>difference</th><th>what stops it</th></tr>
+<tr><th>example</th><th>report</th><th>web</th><th>Qt</th><th>difference</th><th>what stops it</th><th>what it warns of</th></tr>
 ${body}
 </table>
 `;
