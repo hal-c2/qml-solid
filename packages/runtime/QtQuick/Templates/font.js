@@ -2,7 +2,7 @@
 // was given, else what the style sets a control of its type in. A Button in
 // a Pane with `font.pixelSize: 20` is that big, and as bold as the style
 // makes buttons.
-import { derived, group } from "../../object.js";
+import { derived, group, kinds, typed } from "../../object.js";
 import { given, lazy } from "../compute.js";
 import { font as styled } from "./theme.js";
 
@@ -45,12 +45,18 @@ export const font = group({
   underline: inherited("underline", false),
   overline: inherited("overline", false),
   strikeout: inherited("strikeout", false),
-  pixelSize: derived((self) =>
-    given(self, "font", "pointSize")
-      ? pixels(self.font.pointSize)
-      : (said(self, "pixelSize", "pointSize", pixels) ?? styled(self.$type).pixelSize),
+  pixelSize: typed(
+    kinds.pixels,
+    derived((self) =>
+      given(self, "font", "pointSize")
+        ? pixels(self.font.pointSize)
+        : (said(self, "pixelSize", "pointSize", pixels) ?? styled(self.$type).pixelSize),
+    ),
   ),
-  pointSize: derived((self) => (self.font.pixelSize * 72) / 96),
+  pointSize: typed(
+    kinds.points,
+    derived((self) => (self.font.pixelSize * 72) / 96),
+  ),
   capitalization: inherited("capitalization", 0),
   letterSpacing: inherited("letterSpacing", 0),
   wordSpacing: inherited("wordSpacing", 0),

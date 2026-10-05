@@ -2,7 +2,7 @@
 // one is. Text is measured here, on a canvas, and not by laying out
 // elements: a binding reads `implicitWidth` before anything is in the page.
 import { createSignal } from "solid-js";
-import { derived, flush, group } from "../object.js";
+import { derived, flush, group, kinds, typed } from "../object.js";
 import { given } from "./compute.js";
 
 // `Font.Bold`, `Font.AllUppercase`: the enums of the `font` value type.
@@ -43,8 +43,14 @@ export const font = group({
   underline: false,
   overline: false,
   strikeout: false,
-  pixelSize: derived((self) => (given(self, "font", "pointSize") ? Math.round((self.font.pointSize * 96) / 72) : 12)),
-  pointSize: derived((self) => (given(self, "font", "pixelSize") ? (self.font.pixelSize * 72) / 96 : 9)),
+  pixelSize: typed(
+    kinds.pixels,
+    derived((self) => (given(self, "font", "pointSize") ? Math.round((self.font.pointSize * 96) / 72) : 12)),
+  ),
+  pointSize: typed(
+    kinds.points,
+    derived((self) => (given(self, "font", "pixelSize") ? (self.font.pixelSize * 72) / 96 : 9)),
+  ),
   capitalization: 0,
   letterSpacing: 0,
   wordSpacing: 0,

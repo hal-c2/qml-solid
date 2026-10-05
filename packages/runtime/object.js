@@ -122,6 +122,24 @@ function int(value) {
 }
 int.type = "int";
 
+// How big a font is, in pixels: a whole number that is more than nothing,
+// the nearest one to what it is given. Qt's font takes no notice of a size
+// that is not, and stays as big as it was; what is no number at all (the NaN
+// of a sum with something missing in it) cannot be one.
+function pixels(value) {
+  if (typeof value === "number" && !Number.isFinite(value)) return REFUSED;
+  const made = typeof value === "number" ? Math.round(value) : int(value);
+  return made === REFUSED || made > 0 ? made : KEPT;
+}
+pixels.type = "int";
+
+// And in points, which need not be whole.
+function points(value) {
+  const made = real(value);
+  return made === REFUSED || made > 0 ? made : KEPT;
+}
+points.type = "double";
+
 // Whatever JavaScript makes a number of, so a string that is no number is
 // not refused: it is NaN.
 function real(value) {
@@ -231,7 +249,7 @@ function named(value) {
 
 // For a type that says how a property of its own is typed:
 // `typed(kinds.int, -1)`.
-export const kinds = { int, real, share, bool, string, color: tint, place };
+export const kinds = { int, real, share, bool, string, color: tint, place, pixels, points };
 
 // What the compiler declares a property of a file as.
 export const $int = typed(int, 0);
@@ -240,9 +258,10 @@ export const $bool = typed(bool, false);
 export const $string = typed(string, "");
 export const $color = typed(tint, color(""));
 
-// A binding's value as the property's type has it.
-function converted(key, kind, compute) {
-  let last;
+// A binding's value as the property's type has it. What the type refuses
+// leaves the property as it was: what the binding last gave it, or `last`,
+// what it was given before it had the binding.
+function converted(key, kind, compute, last) {
   return () => {
     const value = compute();
     if (value === undefined) return value;
@@ -708,7 +727,7 @@ class Slot {
     const make = () => complete(() => inside(self.$contentItem ?? (self.$node ? self : null), () => props[key]));
     const made = props.$made?.includes(key);
     const compute = descriptor?.get ? guarded(key, made ? apart(make) : make, !made) : null;
-    this.bound = compute ? ringed(self.$owner, kind ? converted(key, kind, compute) : compute, undefined, true) : null;
+    this.bound = compute ? ringed(self.$owner, kind ? converted(key, kind, compute, this.given) : compute, undefined, true) : null;
     this.given = descriptor && !descriptor.get ? this.made(descriptor.value) : undefined;
     this.bound?.start();
   }
@@ -962,10 +981,12 @@ function changes(self, name) {
 
 function defineGroup(Type, proto, name, properties) {
   const view = {};
-  for (const [property, initial] of Object.entries(properties)) {
+  for (const [property, given] of Object.entries(properties)) {
     const key = `${name}$${property}`;
     const resolve = Type.spec.resolve?.[key];
-    const make = (self) => (self.$slots[key] = new Slot(self, key, initial, resolve, name, property));
+    const kind = given?.[TYPED];
+    const initial = kind ? given.initial : given;
+    const make = (self) => (self.$slots[key] = new Slot(self, key, initial, resolve, name, property, kind));
     Type.slots[key] = make;
     Object.defineProperty(view, property, {
       get() {
