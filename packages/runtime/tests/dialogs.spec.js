@@ -617,7 +617,8 @@ test("a FolderListModel shows what is in a folder the user picked", async ({ pag
       atob("iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR4nGP4z8DwH4QBEfcD/ePF9e8AAAAASUVORK5CYII="),
       (char) => char.charCodeAt(0),
     );
-    const file = (name) => ({ kind: "file", name, getFile: async () => new File([png], name, { lastModified: 1700000000000 }) });
+    const kind = (name) => (name.endsWith(".png") ? "image/png" : "text/plain");
+    const file = (name) => ({ kind: "file", name, getFile: async () => new File([png], name, { type: kind(name), lastModified: 1700000000000 }) });
     window.showDirectoryPicker = async () => ({
       kind: "directory",
       name: "Pictures",
@@ -634,7 +635,7 @@ test("a FolderListModel shows what is in a folder the user picked", async ({ pag
   await page.evaluate(() => window.scene.dialog.open());
   await page.waitForFunction(() => window.scene.model.count === 2 && window.scene.shown().every(([, ready]) => ready));
   expect(await page.evaluate(() => window.scene.shown())).toEqual([
-    ["a.png", true, 2, 71, "Pictures/a.png", 1700000000000],
-    ["b.png", true, 2, 71, "Pictures/b.png", 1700000000000],
+    ["a.png", true, 2, 71, "Pictures/a.png", 1700000000000, 2],
+    ["b.png", true, 2, 71, "Pictures/b.png", 1700000000000, 2],
   ]);
 });

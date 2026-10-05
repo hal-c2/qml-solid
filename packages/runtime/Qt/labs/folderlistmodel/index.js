@@ -11,7 +11,8 @@
 // page look in: one the user picked in a FolderDialog.
 import { onCleanup } from "solid-js";
 import { defineType, derived, effect, settle, slot } from "../../../object.js";
-import { filesIn, pickedFolder } from "../../../QtQuick/Dialogs/files.js";
+import { filesIn, pickedFile, pickedFolder } from "../../../QtQuick/Dialogs/files.js";
+import { ready } from "../../../QtQuick/Image.js";
 import { AbstractListModel, reset } from "../../../QtQuick/model.js";
 
 const UNSORTED = 0;
@@ -175,16 +176,22 @@ function show(self, rows, status) {
 }
 
 // The files of a folder the user picked, each by the URL that shows it.
-const picked = (folder) =>
-  filesIn(folder).then((files) =>
-    files.map(({ name, url, file }) => ({
-      fileName: name,
-      fileUrl: url,
-      filePath: `${pickedFolder(folder).name}/${name}`,
-      fileSize: file.size,
-      fileModified: file.lastModified,
-    })),
-  );
+// They are files at hand, and Qt has the picture of one the moment an Image
+// is given it: a delegate places itself by how big its picture is as soon
+// as it is made. So the pictures the model is to show are looked into
+// before it shows them.
+async function picked(folder, wanted) {
+  const entries = (await filesIn(folder)).map(({ name, url, file }) => ({
+    fileName: name,
+    fileUrl: url,
+    filePath: `${pickedFolder(folder).name}/${name}`,
+    fileSize: file.size,
+    fileModified: file.lastModified,
+  }));
+  const pictures = present(entries, folder, wanted).filter(({ fileUrl }) => pickedFile(fileUrl).type.startsWith("image/"));
+  await Promise.all(pictures.map(({ fileUrl }) => ready(fileUrl)));
+  return entries;
+}
 
 // Asks the host what is in the folder, and shows it. What is shown stays
 // until the answer is here; an answer to a question since asked again is
@@ -196,7 +203,7 @@ function look(self) {
   slot(self, "status").write(LOADING);
   // Qt reads a folder on another thread: a model is never ready at once.
   Promise.resolve()
-    .then(() => (pickedFolder(folder) ? picked(folder) : lister ? lister(folder) : []))
+    .then(() => (pickedFolder(folder) ? picked(folder, self.$wanted) : lister ? lister(folder) : []))
     .then(
       (entries) => {
         if (self.$asked !== asked) return;

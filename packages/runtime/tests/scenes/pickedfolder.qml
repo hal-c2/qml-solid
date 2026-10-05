@@ -16,7 +16,7 @@ Item {
         const found = [];
         for (let i = 0; i < pictures.count; i++) {
             const item = pictures.itemAt(i);
-            found.push([item.fileName, item.status === Image.Ready, item.implicitWidth, item.fileSize, item.filePath, item.fileModified.getTime()]);
+            found.push([item.fileName, item.status === Image.Ready, item.implicitWidth, item.fileSize, item.filePath, item.fileModified.getTime(), item.first]);
         }
         return found;
     }
@@ -40,6 +40,9 @@ Item {
             required property int fileSize
             required property date fileModified
             source: fileUrl
+            // A file at hand: Qt has its picture by now.
+            property real first: -1
+            Component.onCompleted: first = width
         }
     }
 }

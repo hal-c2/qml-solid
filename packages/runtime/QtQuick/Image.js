@@ -155,6 +155,21 @@ export function shared(known, url, load) {
 
 const pictures = new Map();
 
+// The picture at `url` once it is there, or is known not to come: for what
+// has a file at hand. Qt shows such a picture as its Image is made, so what
+// is written for one reads its size then; a browser has yet to look into
+// it, unless it was asked to before.
+export function ready(url) {
+  const record = shared(pictures, url, fetched);
+  if (record.status() !== LOADING) return Promise.resolve();
+  return new Promise((resolve) => {
+    record.settle = ((settle) => (state) => {
+      settle(state);
+      resolve();
+    })(record.settle);
+  });
+}
+
 // The picture once it is there, with its size; before that, no size.
 function arrived(self) {
   const record = self.$image.record();
