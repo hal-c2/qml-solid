@@ -1158,11 +1158,11 @@ function bound(map, unit = 0) {
 }
 
 // A cube of so many levels, each side of the first `size` across.
-function cube(size, levels) {
+function cube(size, levels, format = fractions ? gl.RGBA16F : gl.RGBA8) {
   const made = gl.createTexture();
   gl.activeTexture(gl.TEXTURE0 + MAKING);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, made);
-  gl.texStorage2D(gl.TEXTURE_CUBE_MAP, levels, fractions ? gl.RGBA16F : gl.RGBA8, size, size);
+  gl.texStorage2D(gl.TEXTURE_CUBE_MAP, levels, format, size, size);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -1275,6 +1275,24 @@ function glossed(from, into, size, levels) {
   gl.bindSampler(MAKING, null);
 }
 
+// Surroundings Qt baked into a file are that cube already, every level of
+// it: handed over as they are, each side's first row first, and the file
+// let go of. Qt reads as many levels as the file has, whatever they hold.
+function baked(data) {
+  const { width, levels } = data;
+  if (!levels || width > gl.getParameter(gl.MAX_CUBE_MAP_TEXTURE_SIZE)) return null;
+  const made = cube(width, levels.length, gl.RGBA16F);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  levels.forEach((sides, level) => {
+    const across = Math.max(1, width >> level);
+    sides.forEach((side, index) => gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + index, level, 0, 0, across, across, gl.RGBA, gl.HALF_FLOAT, side));
+  });
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.activeTexture(gl.TEXTURE0);
+  data.spent();
+  return { cube: made, levels: levels.length };
+}
+
 // The picture of a light probe as the cube that is read when a scene is lit
 // by it, made as Qt makes it: each side at least 512 across, half the
 // picture's height where that is more, and six levels. The first is the
@@ -1287,6 +1305,10 @@ function probed(map) {
   const from = map.element ?? map.data;
   let made = probes.get(from);
   if (made !== undefined) return made;
+  if (map.data?.baked && map.data.sides === 6) {
+    probes.set(from, (made = baked(map.data)));
+    return made;
+  }
   fold ??= program(COVER, FOLD, ["u_from", "u_screen", "u_side"]);
   blur ??= program(COVER, BLUR, BLURRING);
   if (!fold || !blur) {

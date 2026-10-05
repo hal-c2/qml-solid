@@ -5,7 +5,7 @@
 // These say what there is; `render.js` draws it.
 //
 // Not here: shadows, a sky box that is a cube of six
-// pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, a material's
+// pictures (`skyBoxCubeMap`), a material's
 // own probe, and the distances a model draws the entries of its table
 // between (`instancingLodMin` and `instancingLodMax`). Of
 // a material's pictures: a height map moves nothing, nothing is let through
@@ -17,6 +17,7 @@ import { createSignal, untrack } from "solid-js";
 import { awaited, defineType, derived, effect, flush, group, located } from "../object.js";
 import { Vector3d } from "../QtQml/values.js";
 import { color } from "../QtQuick/color.js";
+import { ktx } from "./ktx.js";
 import * as math from "./math.js";
 import { read } from "./mesh.js";
 import { Node, Object3D } from "./Node.js";
@@ -102,9 +103,11 @@ function picture(url) {
 }
 
 // A picture whose numbers are not held to what a screen can show, which a
-// browser does not read: the numbers themselves, once they are here.
+// browser does not read: the numbers themselves, once they are here. A
+// Radiance picture is one, and what Qt baked of one into a KTX file.
+const BRIGHT = /\.(hdr|ktx)$/i;
 function bright(url) {
-  const read = file(url, "hdr", radiance).state();
+  const read = /\.ktx$/i.test(url) ? file(url, "ktx", ktx).state() : file(url, "hdr", radiance).state();
   if (read?.error) {
     if (!warned.has(url)) console.warn(`Texture: ${url}: ${read.error}`);
     warned.add(url);
@@ -254,8 +257,8 @@ export const Texture = defineType("Texture", Object3D, {
       const item = self.sourceItem;
       const given = item ? null : self.textureData;
       const url = item || given || !source ? null : located(source);
-      const data = given ? (given.$picture?.() ?? null) : url && /\.hdr$/i.test(url) ? bright(url) : null;
-      const loaded = url && !/\.hdr$/i.test(url) ? picture(url) : null;
+      const data = given ? (given.$picture?.() ?? null) : url && BRIGHT.test(url) ? bright(url) : null;
+      const loaded = url && !BRIGHT.test(url) ? picture(url) : null;
       const element = item ? (item.$canvas?.element ?? item.$shader?.canvas ?? null) : (loaded?.element ?? null);
       if (!element && !data) return null;
       let transform = [...math.IDENTITY];

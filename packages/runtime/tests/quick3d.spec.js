@@ -907,6 +907,57 @@ test("a Radiance picture lights a scene and is drawn as Qt has it", async ({ pag
   near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
 });
 
+test("surroundings Qt baked into a KTX file light a scene as they are", async ({ page }) => {
+  await open(page, "baked3d");
+  const points = [
+    // Behind, three sides of the cube and the quarters of each: the left
+    // one, the one ahead, and the one below.
+    [[60, 60], [62, 168, 168]],
+    [[300, 60], [129, 129, 43]],
+    [[350, 250], [155, 154, 61]],
+    [[370, 150], [135, 135, 46]],
+    [[100, 250], [168, 62, 168]],
+    [[200, 270], [168, 62, 168]],
+    [[20, 290], [211, 94, 212]],
+    // A rough ball, lit by the last level, where each side is the other
+    // colours than its own.
+    [[78, 150], [136, 158, 161]],
+    [[60, 140], [163, 143, 151]],
+    [[95, 165], [91, 171, 165]],
+    // A mirror: the three sides behind the eye, of the first level.
+    [[200, 150], [87, 87, 208]],
+    [[190, 135], [62, 168, 62]],
+    [[212, 138], [87, 208, 87]],
+    [[200, 128], [118, 239, 118]],
+    [[188, 162], [59, 59, 161]],
+    [[212, 165], [157, 56, 56]],
+    // A ball half as smooth: the same sides, of a level between, which is
+    // dimmer.
+    [[320, 150], [45, 45, 134]],
+    [[310, 140], [45, 130, 77]],
+    [[335, 160], [134, 45, 45]],
+    [[320, 172], [134, 45, 134]],
+  ];
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
+test("a KTX file is a material's picture by its first side", async ({ page }) => {
+  await open(page, "bakedmap3d");
+  const points = [
+    // In linear light: twice as bright as white, and a fifth of it.
+    [[100, 130], [255, 123, 123]],
+    [[140, 130], [255, 89, 89]],
+    [[100, 170], [187, 63, 63]],
+    [[140, 170], [137, 44, 44]],
+    // As a screen shows it.
+    [[260, 130], [255, 50, 50]],
+    [[300, 130], [255, 22, 22]],
+    [[260, 170], [128, 7, 7]],
+    [[300, 170], [64, 0, 0]],
+  ];
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
 test("the shapes QtQuick3D.Helpers works out are the ones Qt works out", async ({ page }) => {
   await open(page, "geometry3d");
   // The box each fits in. A grid's is not the one it fills, and a shape
