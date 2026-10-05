@@ -64,3 +64,31 @@ patch("halves.9.png", 6, 4, across=[(2, 4)], down=[(0, 4)], colour=lambda x, y: 
 patch("not.a.9.png", 6, 6, across=[(2, 4)], down=[(2, 4)], padded=([(1, 5)], [(1, 5)]))
 # A picture with no frame.
 Image.new("RGBA", (6, 6), (0, 128, 255, 255)).save(os.path.join(here, "whole.png"))
+
+# The pictures the tests of the selectors choose among, into `chosen/`: what
+# is in one says nothing, its name says which states it is for.
+there = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chosen")
+os.makedirs(there, exist_ok=True)
+
+names = [
+    # A state each, and none.
+    "one.png", "one-a.png", "one-b.png",
+    # Two states, in either order.
+    "two.png", "two-a.png", "two-b.png", "two-a-b.png", "two-b-a.png",
+    # States that are not next to each other among four.
+    "skip.png", "skip-a-c.png", "skip-b-d.png", "skip-c.png", "skip-d.png",
+    "gap.png", "gap-a-b-d.png", "gap-a.png",
+    # The first and the last of them, which are.
+    "wrap.png", "wrap-a-d.png", "wrap-b.png",
+    # Nothing for no state.
+    "only-a.png",
+    # What a name may end in.
+    "ext.png", "ext-a.png", "flat.png", "late.png", "spin.gif", "spin.webp", "turn.gif",
+    # Another separator.
+    "sep.png", "sep_a.png", "sep_a_b.png",
+]
+for index, name in enumerate(names):
+    shade = (40 + 7 * index, 250 - 7 * index, 128, 255)
+    Image.new("RGBA", (4, 4), shade).convert("RGB" if name.endswith(".gif") else "RGBA").save(os.path.join(there, name))
+for name in ("ext.9.png", "flat.9.png"):
+    Image.open(os.path.join(here, "stretch.9.png")).save(os.path.join(there, name), "PNG")

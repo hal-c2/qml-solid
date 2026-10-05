@@ -85,11 +85,13 @@ function chosen(folder, name, active, separator, extensions) {
 
 // What was chosen before, for a selector that remembers (`cache`): many
 // controls are in the same few states, and the orders of a handful of
-// states are many.
+// states are many. It is remembered by what Qt remembers it by, which is
+// not all that it was chosen by: a selector of another kind, or one with
+// another separator and a single state, is given the same file.
 const remembered = new Map();
 
 function recalled(folder, name, active, separator, extensions) {
-  const key = [folder, name, separator, extensions[0], ...active].join("\n");
+  const key = folder + name + active.join(separator);
   let found = remembered.get(key);
   if (found === undefined) remembered.set(key, (found = chosen(folder, name, active, separator, extensions)));
   return found;
@@ -103,13 +105,22 @@ function split(given) {
   return at === -1 ? { path: "", name: url } : { path: url.slice(0, at), name: url.slice(at + 1) };
 }
 
+// Whether a value is so, to Qt (`QVariant::toBool`): a number that is not
+// 0, a text that is not empty, "0" or "false" however it is written, and
+// of anything else only true.
+function so(value) {
+  if (typeof value === "number") return value !== 0 && !Number.isNaN(value);
+  if (typeof value === "string") return !["", "0", "false"].includes(value.toLowerCase());
+  return value === true;
+}
+
 // The states that are so, in the order they were given. Each is an object
-// of one name.
+// of one name: of several, the first as they are sorted.
 function active(states) {
   const names = [];
   for (const state of Array.isArray(states) ? states : []) {
     const [name] = Object.keys(state ?? {}).sort();
-    if (name !== undefined && state[name]) names.push(name);
+    if (name !== undefined && so(state[name])) names.push(name);
   }
   return names;
 }

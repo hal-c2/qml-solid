@@ -1,0 +1,50 @@
+[
+ [
+  ["one-a.png", "one-b.png", "two-a-b.png", "two-a-b.png", "skip.png", "gap-a.png", "wrap-b.png", "", "", "ext.9.png", "flat.png", "late.png", "spin.webp", "turn.gif", "sep_a_b.png", "one-a.png", "one.png", "one-a.png"],
+  [1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ["one.png", "one.png", "one-a.png", "one.png", "one.png", "one-a.png", "one.png", "one-a.png", "one.png", "one.png", "one.png", "one.png", "one.png", "one.png"],
+  ["one", "one-a.png", "chosen", "-", true]
+ ],
+ [
+  ["one-a.png", "one-b.png", "two-a-b.png", "two-a-b.png", "skip-c.png", "gap-a.png", "wrap-a-d.png", "", "only-a.png", "ext-a.png", "flat.png", "late.png", "spin.webp", "turn.gif", "sep_a_b.png", "one-a.png", "one.png", "one-a.png"],
+  [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ["one.png", "one.png", "one-a.png", "one.png", "one.png", "one-a.png", "one.png", "one-a.png", "one.png", "one.png", "one.png", "one.png", "one.png", "one.png"],
+  ["one", "one-a.png", "chosen", "-", true]
+ ],
+ [
+  ["one-a.png", "one-a.png", "two-a.png", "two-a.png", "skip-a-c.png", "gap-a.png", "wrap-a-d.png", "", "only-a.png", "ext-a.png", "flat.png", "late.png", "spin.webp", "turn.gif", "sep_a.png", "one-a.png", "one.png", "one-a.png"],
+  [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ["one.png", "one.png", "one-a.png", "one.png", "one.png", "one-a.png", "one.png", "one-a.png", "one.png", "one.png", "one.png", "one.png", "one.png", "one.png"],
+  ["one", "one-a.png", "chosen", "-", true]
+ ],
+ [
+  ["one.png", "one.png", "two.png", "two.png", "skip-c.png", "gap.png", "wrap.png", "", "only-a.png", "ext-a.png", "flat.png", "late.png", "spin.webp", "turn.gif", "sep.png", "one.png", "one.png", "one-a.png"],
+  [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ["one.png", "one.png", "one-a.png", "one.png", "one.png", "one-a.png", "one.png", "one-a.png", "one.png", "one.png", "one.png", "one.png", "one.png", "one.png"],
+  ["one", "one.png", "chosen", "-", true]
+ ],
+ [
+  ["two-a-b.png", "one-b.png", "two-a-b.png", "two-a-b.png", "skip-c.png", "gap-a.png", "wrap-a-d.png", "", "only-a.png", "ext-a.png", "flat.png", "late.png", "spin.webp", "turn.gif", "sep_a_b.png", "one-a.png", "one.png", "one-a.png"],
+  [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ["one.png", "one.png", "one-a.png", "one.png", "one.png", "one-a.png", "one.png", "one-a.png", "one.png", "one.png", "one.png", "one.png", "one.png", "one.png"],
+  ["two", "two-a-b.png", "chosen", "-", true]
+ ],
+ [
+  ["two-a-b.png", "one-b.png", "two-a-b.png", "two-a-b.png", "skip-c.png", "gap-a.png", "wrap-a-d.png", "", "only-a.png", "ext-a.png", "flat.png", "late.png", "spin.webp", "turn.gif", "sep_a.png", "one-a.png", "one.png", "one-a.png"],
+  [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ["one.png", "one.png", "one-a.png", "one.png", "one.png", "one-a.png", "one.png", "one-a.png", "one.png", "one.png", "one.png", "one.png", "one.png", "one.png"],
+  ["two", "two-a-b.png", "chosen", "-", true]
+ ],
+ [
+  ["two-a-b.png", "one-b.png", "two-a-b.png", "two-a-b.png", "skip-c.png", "gap-a.png", "wrap-a-d.png", "", "only-a.png", "ext-a.png", "flat.png", "late.png", "spin.webp", "turn.gif", "sep_a.png", "one-a.png", "one.png", "one-a.png"],
+  [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ["one.png", "one.png", "one-a.png", "one.png", "one.png", "one-a.png", "one.png", "one-a.png", "one.png", "one.png", "one.png", "one.png", "one.png", "one.png"],
+  ["two", "two-a-b.png", "chosen", "-", true]
+ ],
+ [
+  ["", "one-b.png", "two-a-b.png", "two-a-b.png", "skip-c.png", "gap-a.png", "wrap-a-d.png", "", "only-a.png", "ext-a.png", "flat.png", "late.png", "spin.webp", "turn.gif", "sep_a.png", "one-a.png", "one.png", "one-a.png"],
+  [0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ["one.png", "one.png", "one-a.png", "one.png", "one.png", "one-a.png", "one.png", "one-a.png", "one.png", "one.png", "one.png", "one.png", "one.png", "one.png"],
+  ["", "", "", "-", true]
+ ]
+]
