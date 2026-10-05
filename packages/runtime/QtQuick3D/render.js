@@ -114,6 +114,10 @@ uniform mat4 u_above;
 uniform float u_point;
 uniform bool u_skinned;
 uniform highp sampler2D u_bones;
+uniform int u_morphs;
+uniform ivec4 u_morphAt;
+uniform float u_morphBy[8];
+uniform highp sampler2DArray u_morphed;
 out vec3 v_position;
 out vec3 v_normal;
 out vec2 v_uv;
@@ -135,11 +139,37 @@ mat4 bone(int index) {
     return m;
 }
 
+// What a layer of the targets has for this corner: the layers are as wide
+// as high, a corner after a corner along the rows.
+vec3 target(int layer) {
+    int width = textureSize(u_morphed, 0).x;
+    int x = gl_VertexID % width;
+    return texelFetch(u_morphed, ivec3(x, (gl_VertexID - x) / width, layer), 0).xyz;
+}
+
+// Something of a corner, gone towards what each target has for it by as
+// much as the target weighs: a target is the whole of what it has, not how
+// far that is from the mesh's own, and each is gone towards from the mesh's
+// own. The layer is that of the first target, and none below zero.
+vec3 morphed(vec3 from, int first) {
+    if (first < 0) return from;
+    vec3 to = from;
+    for (int index = 0; index < u_morphs; index++) to += u_morphBy[index] * (target(first + index) - from);
+    return to;
+}
+
 void main() {
     vec4 position = vec4(attr_pos, 1.0);
     vec3 facing = attr_norm;
     vec3 tangent = attr_textan;
     vec3 binormal = attr_binormal;
+    // A shape goes towards its targets before its joints bend it.
+    if (u_morphs > 0) {
+        position.xyz = morphed(position.xyz, u_morphAt.x);
+        facing = morphed(facing, u_morphAt.y);
+        tangent = morphed(tangent, u_morphAt.z);
+        binormal = morphed(binormal, u_morphAt.w);
+    }
     // A corner no joint has a hold of stays where the mesh has it.
     if (u_skinned && attr_weights != vec4(0.0)) {
         ivec4 joints = ivec4(attr_joints);
@@ -613,6 +643,10 @@ const UNIFORMS = [
   "u_point",
   "u_skinned",
   "u_bones",
+  "u_morphs",
+  "u_morphAt",
+  "u_morphBy",
+  "u_morphed",
   "u_instanced",
   "u_above",
   "u_color",
@@ -1028,6 +1062,7 @@ function context() {
   at = shaded.at;
   gl.uniform1i(at.u_map, 0);
   gl.uniform1i(at.u_bones, 1);
+  gl.uniform1i(at.u_morphed, MORPHS);
   gl.uniform1i(at.u_probe, PROBE);
   gl.uniform1i(at.u_mirror, MIRROR);
   SAMPLERS.forEach((name, index) => name && gl.uniform1i(at[name], UNITS[index]));
@@ -1072,9 +1107,35 @@ const UNITS = [0, 2, 3, 4, 5, 6, 7, 2, 8, 9, 10];
 // from is while it is made.
 const PROBE = 11;
 const MAKING = 12;
+// Where the targets of a shape are read: where no program that draws a
+// shape reads anything else, and they are layers, which nothing else there
+// is.
+const MORPHS = 12;
 // And where the cube of a reflection probe is read.
 const MIRROR = 16;
 let nothing;
+
+// The targets of a shape as OpenGL holds them, layer on layer, and at which
+// layer those of where a corner is begin, of which way it faces, and of the
+// two ways along it: -1 where the mesh has none. No more than eight targets
+// are gone towards, as in Qt.
+const MOST = 8;
+function targeted(targets) {
+  if (!targets) return null;
+  const { count, width, names, data } = targets;
+  const texture = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + MORPHS);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA32F, width, width, names.length * count, 0, gl.RGBA, gl.FLOAT, data);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+  gl.activeTexture(gl.TEXTURE0);
+  const first = (name) => (names.includes(name) ? names.indexOf(name) * count : -1);
+  return { texture, count: Math.min(MOST, count), at: [first("attr_pos"), first("attr_norm"), first("attr_textan"), first("attr_binormal")] };
+}
 
 // A shape as OpenGL holds it: its corners as the mesh file has them, each
 // part of a corner said where it is in the row.
@@ -1105,7 +1166,7 @@ function held(shape) {
   gl.bindVertexArray(null);
   const jointed = Boolean(shape.entries.attr_joints && shape.entries.attr_weights);
   const framed = Boolean(shape.entries.attr_textan && shape.entries.attr_binormal);
-  shapes.set(shape, (made = { array, kind, size, mode: MODES[shape.drawMode] ?? gl.TRIANGLES, colors: Boolean(shape.entries.attr_color), jointed, framed }));
+  shapes.set(shape, (made = { array, kind, size, mode: MODES[shape.drawMode] ?? gl.TRIANGLES, colors: Boolean(shape.entries.attr_color), jointed, framed, morphs: targeted(shape.targets) }));
   return made;
 }
 
@@ -1685,6 +1746,7 @@ function tailor(source) {
     gl.useProgram(made.program);
     gl.uniform1i(made.at.u_map, 0);
     gl.uniform1i(made.at.u_bones, 1);
+    gl.uniform1i(made.at.u_morphed, MORPHS);
     gl.uniform1i(made.at.u_probe, PROBE);
     gl.uniform1i(made.at.u_mirror, MIRROR);
     SAMPLERS.forEach((name, index) => name && gl.uniform1i(made.at[name], UNITS[index]));
@@ -1755,6 +1817,7 @@ function part(piece) {
   gl.useProgram(shaded.program);
 }
 
+let morphing = null;
 function drawn(piece) {
   const { shape, subset, world, material, opacity } = piece;
   const made = held(shape);
@@ -1766,6 +1829,22 @@ function drawn(piece) {
   const skinned = Boolean(piece.bones) && made.jointed;
   gl.uniform1i(at.u_skinned, skinned ? 1 : 0);
   if (skinned) jointed(piece.bones);
+  // What it goes towards, and by how much: a target the model has no
+  // weight for is not gone towards at all.
+  const { morphs } = made;
+  gl.uniform1i(at.u_morphs, morphs ? morphs.count : 0);
+  if (morphs !== morphing) {
+    morphing = morphs;
+    gl.activeTexture(gl.TEXTURE0 + MORPHS);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, morphs?.texture ?? null);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  if (morphs) {
+    const by = new Float32Array(MOST);
+    (piece.weights ?? []).slice(0, morphs.count).forEach((weight, index) => (by[index] = weight));
+    gl.uniform4iv(at.u_morphAt, morphs.at);
+    gl.uniform1fv(at.u_morphBy, by);
+  }
   gl.uniform1f(at.u_point, material.point);
   gl.uniform4fv(at.u_color, material.color);
   gl.uniform1f(at.u_opacity, opacity * material.opacity);
@@ -2085,7 +2164,7 @@ function listed(scene, { view, seen, looking }, mirrored) {
   const probes = mirrored ? [] : (scene.probes ?? []);
   for (const model of scene.models) {
     if (mirrored && !model.mirrored) continue;
-    const { shape, materials, opacity, bones } = model;
+    const { shape, materials, opacity, bones, weights } = model;
     const lights = model.lights ?? scene.lights;
     let { instances } = model;
     if (instances && !instances.count) continue;
@@ -2107,7 +2186,7 @@ function listed(scene, { view, seen, looking }, mirrored) {
       const distance = -math.point(view, ...middle)[2];
       const through = sheer(material, opacity) || Boolean(instances?.sheer);
       const mirror = model.mirrors && probes.length ? near(probes, placed, subset) : null;
-      (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, lights, instances, placed, sheer: through, mirror });
+      (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, weights, lights, instances, placed, sheer: through, mirror });
     });
   }
   // What nodes draw by themselves (`paints`), each with a program of its

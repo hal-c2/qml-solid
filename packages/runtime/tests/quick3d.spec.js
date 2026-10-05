@@ -1972,6 +1972,92 @@ test("a CustomMaterial says of a clear coat and of what it mirrors what Qt hears
   near(await painted(page, mirrors), mirrors.map(([, colour]) => colour), "", 3);
 });
 
+test("a shape goes towards the targets of its mesh as Qt's does", async ({ page }) => {
+  await open(page, "morph3d");
+  const none = [32, 32, 32];
+  const lit = grey(188);
+  const turned = grey(170);
+  const points = [
+    // As the mesh has it: its middle, and beside and under it.
+    [[50, 50], lit],
+    [[68, 50], none],
+    [[50, 68], none],
+    // All the way to the first target: twice as wide and no taller, and
+    // darker, as it faces away to the right.
+    [[150, 50], turned],
+    [[175, 50], turned],
+    [[150, 68], none],
+    // Half way to it.
+    [[250, 50], grey(183)],
+    [[270, 50], grey(183)],
+    [[275, 50], none],
+    [[250, 68], none],
+    // Half way to the first and all the way to the second: each is gone
+    // towards from the mesh's own.
+    [[350, 50], grey(166)],
+    [[370, 50], grey(167)],
+    [[375, 50], none],
+    [[350, 25], grey(168)],
+    [[350, 78], grey(165)],
+    [[350, 83], none],
+    // A third target, which the mesh has not, is nothing: only the second
+    // is gone towards.
+    [[50, 150], turned],
+    [[68, 150], none],
+    [[50, 125], turned],
+    [[50, 178], turned],
+    // A target said to be of how the corners face moves them as well.
+    [[150, 150], turned],
+    [[175, 150], turned],
+    [[150, 168], none],
+    // A CustomMaterial with nothing to say of the corners is no different.
+    [[250, 150], turned],
+    [[275, 150], turned],
+    [[250, 168], none],
+    // One with something to say of them is where the mesh has it, and
+    // faces as the target does.
+    [[350, 150], grey(171)],
+    [[368, 150], none],
+    [[350, 168], none],
+    // One that names what a target has is where it says and faces as the
+    // mesh does: half way to the second target, however much either
+    // weighs.
+    [[50, 250], lit],
+    [[68, 250], none],
+    [[50, 230], lit],
+    [[50, 225], none],
+    [[50, 270], lit],
+    // How the first target faces, as a colour, on a shape gone as far as
+    // each target weighs.
+    [[150, 250], [153, 0, 204]],
+    [[175, 250], [153, 0, 204]],
+    [[150, 230], [153, 0, 204]],
+    [[150, 270], [153, 0, 204]],
+    [[150, 275], none],
+    // As far as each of as many as there are weighs.
+    [[250, 250], lit],
+    [[270, 250], lit],
+    [[275, 250], none],
+    [[250, 225], lit],
+    [[250, 278], lit],
+    // And a shape with no targets has nothing for one: it is where it was.
+    [[350, 250], lit],
+    [[362, 250], lit],
+    [[368, 250], none],
+    [[350, 268], none],
+  ];
+  near(await painted(page, points), points.map(([, colour]) => colour), "points", 3);
+  // A target that comes to weigh more is gone towards further.
+  await page.evaluate(() => window.scene.step(0));
+  const after = [
+    [[250, 50], turned],
+    [[270, 50], turned],
+    [[275, 50], turned],
+    [[250, 68], none],
+  ];
+  near(await painted(page, after), after.map(([, colour]) => colour), "after", 3);
+});
+
 // The views of the scenes of effects are 100 by 75, four to a row, and
 // these the places looked at in each: the surroundings, the nearer shape
 // and the further one first. A place not looked at is null.

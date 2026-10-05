@@ -6,6 +6,16 @@
 // is, which way it faces, where in a picture it is), the order the corners
 // are joined into triangles in, and its subsets: each a run of that order
 // drawn with one material.
+//
+// A mesh may have targets besides: other shapes of the same corners, which
+// a Model goes towards by the weights of its MorphTargets. They are kept as
+// Qt hands them to a shader, as layers of a picture each as many numbers
+// wide as high: four numbers to a corner, a layer for each target of what
+// is first said of the corners (where they are), then one for each of what
+// is said next (which way they face).
+//
+// Not here: the targets of a file older than version 7, which has them
+// among what is said of each corner.
 
 const FILE = 555777497;
 const MESH = 3365961549;
@@ -26,10 +36,13 @@ const KINDS = {
 export const Triangles = 7;
 
 // Reads the first mesh of a file: `{ entries, stride, vertices, indices,
-// subsets, drawMode, winding }`, or what is wrong with it as `{ error }`.
-// `entries` are by name (`attr_pos`, `attr_norm`, `attr_uv0`), each `{
-// offset, count, type }` into a row of `stride` bytes; `vertices` is the
-// rows as bytes, `indices` a typed array or null.
+// subsets, drawMode, winding, targets }`, or what is wrong with it as `{
+// error }`. `entries` are by name (`attr_pos`, `attr_norm`, `attr_uv0`),
+// each `{ offset, count, type }` into a row of `stride` bytes; `vertices`
+// is the rows as bytes, `indices` a typed array or null. `targets` is null,
+// or `{ count, width, names, data }`: how many targets, how wide a layer
+// is, what each run of `count` layers is of (`attr_pos`, `attr_norm`), and
+// the numbers of them all.
 export function read(buffer) {
   const view = new DataView(buffer);
   const size = view.byteLength;
@@ -57,15 +70,15 @@ export function read(buffer) {
   };
   const align = () => void (at += 4 - (at % 4));
 
-  u32(); // target entries
+  const targetEntries = u32();
   const entryCount = u32();
   const stride = u32();
-  u32(); // target data
+  const targetSize = u32();
   const vertexSize = u32();
   const indexType = u32();
   u32(); // where the indices are, which the format has anyway
   const indexSize = u32();
-  u32(); // targets
+  const targetCount = u32();
   const subsetCount = u32();
   u32(); // joints
   u32();
@@ -105,15 +118,50 @@ export function read(buffer) {
   at += indexSize;
   align();
   const subsets = [];
+  const named = [];
+  let simpler = 0;
   for (let index = 0; index < subsetCount; index++) {
     const subset = { count: u32(), offset: u32(), min: [f32(), f32(), f32()], max: [f32(), f32(), f32()] };
     u32(); // name
-    u32();
+    named.push(u32());
     if (version >= 5) at += 8; // the size of its light map
-    if (version >= 6) at += 4; // how many simpler ones there are of it
+    if (version >= 6) simpler += u32(); // how many simpler ones there are of it
     subsets.push(subset);
   }
-  return { entries, stride: stride || 1, vertices, indices, subsets, drawMode, winding };
+  let targets = null;
+  if (version >= 7 && targetEntries > 0 && targetCount > 0 && targetSize > 0) {
+    // After the subsets are their names, two bytes to a letter, and the
+    // simpler ones of each, three numbers to one.
+    align();
+    for (const length of named) {
+      at += length * 2;
+      align();
+    }
+    at += simpler * 12;
+    align();
+    at += targetEntries * 16;
+    align();
+    const names = [];
+    for (let index = 0; index < targetEntries; index++) {
+      const length = u32();
+      if (base + at + length > size) return { error: "it ends before its targets do" };
+      let name = "";
+      for (let letter = 0; letter < length; letter++) {
+        const code = view.getUint8(base + at + letter);
+        if (code === 0) break;
+        name += String.fromCharCode(code);
+      }
+      at += length;
+      align();
+      names.push(name);
+    }
+    if (base + at + targetSize > size) return { error: "it ends before its targets do" };
+    const layers = targetEntries * targetCount;
+    const width = Math.ceil(Math.sqrt(Math.floor(targetSize / layers) >> 4));
+    if (width * width * 16 * layers > targetSize) return { error: "it ends before its targets do" };
+    targets = { count: targetCount, width, names, data: new Float32Array(buffer.slice(base + at, base + at + width * width * 16 * layers)) };
+  }
+  return { entries, stride: stride || 1, vertices, indices, subsets, drawMode, winding, targets };
 }
 
 // One entry of every corner as numbers, `width` to a corner: what is not in

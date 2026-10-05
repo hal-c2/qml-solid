@@ -18,10 +18,17 @@
 // but a picture over the whole of another: theirs is a small one of its
 // own, with only what Qt hands an effect in it.
 //
+// A piece for the corners of a shape that has targets is handed what each
+// target has for the corner (`MORPH_POSITION(0)`) and how much each weighs
+// (`MORPH_WEIGHTS`), and what it does with them is its own: a shape drawn
+// with any piece for its corners is not moved towards its targets, and one
+// whose piece names what a target has does not face towards them either.
+//
 // Not here: what a piece is handed of a shape that bends by a skin
-// (`BONE_TRANSFORMS`) or that morphs, what is seen through a surface that
-// lets light through it (`TRANSMISSION_FACTOR` and what goes with it are
-// handed to a piece, and what it says of them is not drawn), a picture of
+// (`BONE_TRANSFORMS`), what a target has of a corner besides where it is
+// and the ways it faces, what is seen through a surface that lets light
+// through it (`TRANSMISSION_FACTOR` and what goes with it are handed to a
+// piece, and what it says of them is not drawn), a picture of
 // the light a scene was baked with, of how its surfaces face or of how they
 // move (`LIGHTMAP`, `NORMAL_ROUGHNESS_TEXTURE`, `MOTION_VECTOR_TEXTURE`),
 // more than one eye (`VIEW_INDEX` is always the first), and what a piece's
@@ -66,6 +73,12 @@ const NAMES = {
   INSTANCE_DATA: "qt_inst_data",
   INSTANCE_INDEX: "gl_InstanceID",
   VIEW_INDEX: "0",
+  MORPH_POSITION: "qt_morphPosition",
+  MORPH_NORMAL: "qt_morphNormal",
+  MORPH_TANGENT: "qt_morphTangent",
+  MORPH_BINORMAL: "qt_morphBinormal",
+  MORPH_WEIGHTS: "qt_u_morphBy",
+  QT_MORPH_MAX_COUNT: "qt_u_morphs",
   // And of an effect: the picture it is run over, where in it a place is
   // read, and how big it and what is drawn into are.
   INPUT: "qt_u_input",
@@ -157,7 +170,20 @@ const CORNERS = `
 layout(location = 13) in vec4 inst_data;
 uniform vec3 u_eye;
 uniform vec4 u_probing;
-${BOTH}`;
+${BOTH}
+// What one target has for this corner, whatever it weighs: nothing, where
+// the mesh has no such thing of its targets.
+vec3 targeted(int first, int index) {
+    return u_morphs > 0 && first >= 0 ? target(first + index) : vec3(0.0);
+}
+vec3 morphPosition(int index) { return targeted(u_morphAt.x, index); }
+vec3 morphNormal(int index) { return targeted(u_morphAt.y, index); }
+vec3 morphTangent(int index) { return targeted(u_morphAt.z, index); }
+vec3 morphBinormal(int index) { return targeted(u_morphAt.w, index); }
+`;
+
+// The words of a piece that has what its targets are from them itself.
+const MORPHING = ["MORPH_POSITION", "MORPH_NORMAL", "MORPH_TANGENT", "MORPH_BINORMAL", "MORPH_WEIGHTS"];
 
 const PIXELS = `
 uniform mat4 u_all;
@@ -185,7 +211,12 @@ vec4 linearTosRGB(vec4 c) {
 // Where a corner goes: as the renderer's own shader puts it, with the
 // piece asked first, of the corner as the mesh has it. A piece that says
 // itself where the corner is on the screen is not said otherwise.
-const corner = (has, placed) => `
+//
+// A shape with targets goes towards them as Qt has it: all of it, where
+// there is no piece for the corners (`morphs` is "all"); where there is
+// one, only the ways a corner faces, after the piece is asked ("facing");
+// and nothing, where the piece names what a target has ("none").
+const corner = (has, placed, morphs) => `
 void main() {
     customGlobals();
     vec3 vertex = attr_pos;
@@ -208,6 +239,8 @@ void main() {
     }
     gl_PointSize = u_point;
     ${has.has("MAIN") ? "customMain(vertex, facing, uv0, uv1, tangent, binormal, joints, weights, color, world, all);" : ""}
+    ${morphs === "all" ? "if (u_morphs > 0) vertex = morphed(vertex, u_morphAt.x);" : ""}
+    ${morphs === "none" ? "" : "if (u_morphs > 0) { facing = morphed(facing, u_morphAt.y); tangent = morphed(tangent, u_morphAt.z); binormal = morphed(binormal, u_morphAt.w); }"}
     vec4 position = vec4(vertex, 1.0);
     if (u_skinned && weights != vec4(0.0)) {
         mat4 moved = bone(joints.x * 2) * weights.x + bone(joints.y * 2) * weights.y + bone(joints.z * 2) * weights.z + bone(joints.w * 2) * weights.w;
@@ -382,8 +415,10 @@ export function customised(own, { vertex, fragment, shaded, declared }) {
   // What one shader reads of the other, the other hands it: nothing, where
   // its piece says nothing of it.
   const missing = pixels.handed.filter((read) => !corners.handed.some((written) => written.name === read.name)).map((read) => `out ${read.said};`);
+  const names = mentioned(vertex);
+  const morphs = !String(vertex ?? "").trim() ? "all" : corners.has.has("MAIN") && MORPHING.some((name) => names.has(name)) ? "none" : "facing";
   return {
-    vertex: whole(head(own.vertex, CORNERS), declared, missing.join("\n"), corners.text, corner(corners.has, mentioned(vertex).has("POSITION"))),
+    vertex: whole(head(own.vertex, CORNERS), declared, missing.join("\n"), corners.text, corner(corners.has, names.has("POSITION"), morphs)),
     fragment: whole(head(own.fragment, PIXELS), declared, "", pixels.text, shaded ? lit(pixels.has, mentioned(fragment).has("CLEARCOAT_AMOUNT")) : unlit(pixels.has)),
   };
 }

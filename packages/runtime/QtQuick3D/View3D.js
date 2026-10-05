@@ -47,6 +47,7 @@ function found(self) {
           shape,
           world: node.$world(),
           bones: node.$bones(),
+          weights: node.$weights(),
           instances: node.$instances(),
           materials: node.$materials().map((material) => material?.$material?.() ?? null),
           opacity,

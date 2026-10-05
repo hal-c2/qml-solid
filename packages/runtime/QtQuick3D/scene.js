@@ -172,6 +172,8 @@ export const Model = defineType("Model", Node, {
     // What bends it: a skin's joints, else a skeleton's with the poses the
     // model has for them.
     self.$bones = () => (self.skin ? (self.skin.$bones?.() ?? null) : (self.skeleton?.$bones?.(list(self.inverseBindPoses)) ?? null));
+    // How much it goes towards each target its mesh has, in their order.
+    self.$weights = () => list(self.morphTargets).map((target) => Number(target?.weight) || 0);
     // The table it is drawn by, once for each entry, and where the entries
     // are: `above` is what the whole table is moved by and `local` what
     // each entry is, in its own place. Null where it is drawn once.
