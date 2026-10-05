@@ -176,6 +176,9 @@ fn binding_values() {
     limits: { "from": 0, to: 9 }
     onMoved: { count = 0 }
     height: { width }
+    onChosen: { if (active) { move() } }
+    onLeft: { while (busy) { step() } }
+    tools: { pick(item) { return item } }
 }"#;
     let document = parse(&allocator, source);
     let value = |index: usize| {
@@ -206,6 +209,10 @@ fn binding_values() {
     assert!(matches!(value(11), QmlBindingValue::Expression(Expression::ObjectExpression(_))));
     assert!(matches!(value(12), QmlBindingValue::Statement(Statement::BlockStatement(_))));
     assert!(matches!(value(13), QmlBindingValue::Statement(Statement::BlockStatement(_))));
+    // A statement written as a call and a block is no method of that name.
+    assert!(matches!(value(14), QmlBindingValue::Statement(Statement::BlockStatement(_))));
+    assert!(matches!(value(15), QmlBindingValue::Statement(Statement::BlockStatement(_))));
+    assert!(matches!(value(16), QmlBindingValue::Expression(Expression::ObjectExpression(_))));
 }
 
 #[test]

@@ -44,6 +44,8 @@ test("a mirrored item is laid out from the right, and so is what inherits it", a
   await step(3);
   right = but(right, 0, 1, 395);
   expect(await read()).toEqual([...right, [true, true, false, true, true, false, 1]]);
+  // It had said nothing of mirroring until now, and is drawn where it says.
+  await expect.poll(() => page.evaluate(() => window.scene.late().$node.getBoundingClientRect().x)).toBe(395);
   await step(4);
   expect(await read()).toEqual([...right, [true, true, false, true, true, false, 1]]);
 

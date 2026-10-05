@@ -581,3 +581,9 @@ test("a path and a group given through an alias are the aliased object's, and a 
     [10, 5, 400, 5],
   ]);
 });
+
+test("a source a block works out is beside the file as one that is written", async ({ page }) => {
+  await open(page, "worked");
+  // `Image.Ready`.
+  await expect.poll(() => page.evaluate(() => window.scene.read())).toEqual([1, true, true]);
+});

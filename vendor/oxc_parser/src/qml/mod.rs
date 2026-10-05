@@ -9,7 +9,7 @@
 pub mod ast;
 
 use oxc_allocator::ArenaVec;
-use oxc_ast::ast::{Comment, Expression, IdentifierName, ObjectPropertyKind};
+use oxc_ast::ast::{Comment, Expression, IdentifierName, ObjectPropertyKind, PropertyKey};
 use oxc_diagnostics::Diagnostics;
 
 use crate::{
@@ -385,7 +385,9 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
     /// `name: { ... }` is an object literal when it parses as one and a script
     /// block otherwise, which is how Qt's own parser resolves the ambiguity.
     /// `{ a }` and `{ a = b }` are both to JavaScript's grammar, the second
-    /// until it turns out not to be a pattern; in QML they are blocks.
+    /// until it turns out not to be a pattern; in QML they are blocks. So is
+    /// `{ if (a) { } }`, which to JavaScript's grammar is also an object with
+    /// a method named `if`.
     fn parse_qml_braced_value(&mut self) -> QmlBindingValue<'a> {
         let checkpoint = self.checkpoint_with_error_recovery();
         let errors_before = self.errors_count();
@@ -396,7 +398,9 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
             QmlBindingValue::Expression(Expression::ObjectExpression(object)) => {
                 object.properties.is_empty()
                     || object.properties.iter().any(|property| match property {
-                        ObjectPropertyKind::ObjectProperty(property) => !property.shorthand,
+                        ObjectPropertyKind::ObjectProperty(property) => {
+                            !property.shorthand && !(property.method && Self::qml_names_statement(&property.key))
+                        }
                         ObjectPropertyKind::SpreadProperty(_) => true,
                     })
             }
@@ -410,6 +414,12 @@ impl<'a, C: ParserConfig> ParserImpl<'a, C> {
         QmlBindingValue::Statement(
             self.context_add(Context::Return, |p| p.parse_block_statement()),
         )
+    }
+
+    /// A method by the name of a statement that is written as a call and a
+    /// block: `if (a) { }`.
+    fn qml_names_statement(key: &PropertyKey<'a>) -> bool {
+        matches!(key, PropertyKey::StaticIdentifier(name) if matches!(name.name.as_str(), "if" | "while" | "with" | "switch" | "for"))
     }
 
     /// At `Type {` or `Ns.Type {`, where the brace is on the same line.

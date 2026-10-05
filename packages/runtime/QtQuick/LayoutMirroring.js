@@ -5,10 +5,14 @@
 // says the same of everything inside the item that does not say otherwise.
 import { createSignal } from "solid-js";
 import { defineType, QtObject, slot } from "../object.js";
+import { lazy } from "./compute.js";
 
 // Nearly no program mirrors anything, and then no item has to ask what it
-// is in: this counts the attached objects there have been.
-const [made, setMade] = createSignal(0, { ownedWrite: true });
+// is in: this says whether an attached object was ever made. Every item
+// that can be mirrored reads it, so it changes once and never again.
+const [made, setMade] = createSignal(false, { ownedWrite: true });
+
+const next = (version) => version + 1;
 
 const NOT = 0;
 const LEFT = 1;
@@ -20,11 +24,23 @@ const said = (attached) => {
   return enabled.explicit() ? Boolean(enabled.asked()) : null;
 };
 
-// What an item tells those inside it: nothing, or which way they run.
-function told(item) {
+// What an item says of mirroring, which it may come to say later than it
+// was first asked: whoever asked is told when it does.
+const says = (item) => {
+  const attached = item.$attached?.LayoutMirroring;
+  if (!attached) item.$track();
+  return attached;
+};
+
+// What an item tells those inside it: nothing, or which way they run. It
+// works that out once for all of them, from what the item it is in tells
+// it: what is inside follows the one item, not every item around that.
+const told = (item) => (item.$mirrors ??= lazy(item, () => tell(item)))();
+
+function tell(item) {
   const parent = item.parent;
   const from = parent?.$node ? told(parent) : NOT;
-  const attached = item.$attached?.LayoutMirroring;
+  const attached = says(item);
   if (!attached) return from;
   const inherit = attached.childrenInherit;
   if (from === NOT && !inherit) return NOT;
@@ -35,7 +51,7 @@ function told(item) {
 // Whether an item is mirrored: by what it says, or else by what it is in.
 export function mirrored(item) {
   if (!made()) return false;
-  const attached = item.$attached?.LayoutMirroring;
+  const attached = says(item);
   const parent = item.parent;
   return (attached && said(attached)) ?? (parent?.$node ? told(parent) === RIGHT : false);
 }
@@ -51,8 +67,9 @@ const LayoutMirroringAttached = defineType("LayoutMirroringAttached", QtObject, 
   properties: { enabled: false, childrenInherit: false },
   // It reads as what the item is, whoever said so.
   resolve: { enabled: (self) => mirrored(self.$props.$attachee) },
-  setup() {
-    setMade((count) => count + 1);
+  setup(self, props) {
+    setMade(true);
+    props.$attachee.$touch(next);
   },
 });
 

@@ -276,3 +276,23 @@ test("a state named from the start whose `when` does not hold is not the state",
   await page.evaluate(() => window.scene.step(0));
   expect(await read()).toEqual(["", 50, "", 50, "box , other "]);
 });
+
+// The answers are Qt 6.11's, once its layout has laid out.
+test("what a state binds a property to may come of what the property makes of others", async ({ page }) => {
+  await open(page, "statering");
+  const said = await page.evaluate(() => {
+    const { scene } = window;
+    const seen = [scene.sizes()];
+    for (const state of ["tall", "", "tall"]) {
+      scene.state = state;
+      seen.push(scene.sizes());
+    }
+    return seen;
+  });
+  expect(said).toEqual([
+    [70, 20, 40, 20, 30, 10],
+    [69, 24, 40, 24, 29, 10],
+    [70, 20, 40, 20, 30, 10],
+    [69, 24, 40, 24, 29, 10],
+  ]);
+});

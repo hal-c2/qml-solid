@@ -92,6 +92,9 @@ Item {
         ]
     }
 
+    // The item that comes to say otherwise for itself, for where it is drawn.
+    function late() { return b }
+
     function step(index) {
         if (index === 0) root.on = true
         else if (index === 1) root.inherit = true

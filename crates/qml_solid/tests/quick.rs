@@ -222,6 +222,27 @@ Item {
 }
 
 #[test]
+fn a_url_a_block_works_out_is_beside_its_file() {
+    // `source: { if (red) "gfx/red.png"; else "gfx/blue.png" }` names files
+    // beside the QML as `source: red ? "gfx/red.png" : "gfx/blue.png"` does.
+    let code = lowered(
+        r#"import QtQuick
+Image {
+    property bool red: true
+    source: {
+        if (red) {
+            "gfx/red.png";
+        } else {
+            "gfx/blue.png";
+        }
+    }
+}"#,
+    );
+    assert_contains(&code, "source={$url((() => {");
+    assert_contains(&code, "})(), import.meta.url)}");
+}
+
+#[test]
 fn what_a_type_attaches_is_read_of_another_object_too() {
     let code = lowered(
         r#"import QtQuick
