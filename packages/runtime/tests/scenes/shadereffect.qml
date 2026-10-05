@@ -40,11 +40,24 @@ Item {
         vertexShader: "shaders/squeeze.vert.qsb"
         fragmentShader: "shaders/tint.frag.qsb"
     }
+    // A shader as Qt baked it, fetched when the program runs: where it is
+    // is not written here for the build to read.
+    property string served: "/scenes/shaders/baked"
+    ShaderEffect {
+        id: fetched
+        x: 240; width: 100; height: 50
+        property color tint: "#00ff00"
+        property real level: 0.5
+        fragmentShader: root.served + "/tint.frag.qsb"
+    }
     ShaderEffect { id: wrong; y: 240; width: 20; height: 20; fragmentShader: "/scenes/shaders/wrong.frag" }
     ShaderEffect { id: missing; y: 240; x: 30; width: 20; height: 20; fragmentShader: "/scenes/shaders/none.frag" }
 
     function statuses() {
         return [tinted, swapped, shown, squeezed, wrong, missing].map((effect) => effect.status)
+    }
+    function baked() {
+        return [fetched.status, fetched.log]
     }
     function logs() {
         return [tinted.log, wrong.log, missing.log]
