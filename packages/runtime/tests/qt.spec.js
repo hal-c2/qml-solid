@@ -281,6 +281,8 @@ test("a locale says how its people write dates and numbers", async ({ page }) =>
         () => Number.fromLocaleString(en, "abc"),
         // A number where a locale goes is no locale: Qt writes the short form.
         () => d.toLocaleDateString(Locale.LongFormat),
+        // And given nothing, the long one.
+        () => d.toLocaleDateString(),
         () => d.toLocaleString(de, "dd MMM"),
         () => {
           const read = Date.fromLocaleString(en, "1/5/24 7:08 AM", Locale.ShortFormat);
@@ -316,6 +318,7 @@ test("a locale says how its people write dates and numbers", async ({ page }) =>
     1234.5,
     "THROW Locale: Number.fromLocaleString(): Invalid format",
     "1/5/24",
+    "Friday, January 5, 2024",
     "05 Jan.",
     "1924,0,5,7,8",
     "C",
