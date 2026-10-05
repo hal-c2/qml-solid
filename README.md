@@ -150,6 +150,13 @@ an enclosing file are all known when the file is compiled. A name nothing
 declares is a compile error where it is used. `qmlc --alone` compiles a file by
 itself: unknown types are taken to be components.
 
+A file the build keeps in the program is named by where it is in there:
+`qrc:/qt/qml/Thermostat/images/icon.png`. `qmlc` reads what the project's
+`CMakeLists.txt` says those are (the `RESOURCES` of `qt_add_qml_module`, the
+`FILES` of `qt_add_resources`), and a module that writes such a name, or the
+start of one it puts together as the program runs, says where a browser finds
+the file. The program still reads the name it wrote.
+
 A file is a function that makes its root object:
 
 ```js

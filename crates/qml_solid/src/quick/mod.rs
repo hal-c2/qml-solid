@@ -8,6 +8,7 @@
 mod lower;
 mod names;
 mod paths;
+mod resources;
 mod scope;
 pub(crate) mod script;
 pub(crate) mod texts;
@@ -102,6 +103,11 @@ fn lower_from<'a>(
     if uses.handles.iter().any(|handle| handle.starts_with("$scope")) {
         uses.kernel.insert("$context");
     }
+    // The files of the program the module names, it says where they are.
+    let kept = resources::named(&program, project);
+    if !kept.is_empty() {
+        uses.kernel.insert("$resource");
+    }
     if !errors.is_empty() {
         return Err(errors);
     }
@@ -152,6 +158,11 @@ fn lower_from<'a>(
         return Err(errors);
     }
     imports.extend(tables);
+    for (address, path) in &kept {
+        let path = types::relative(&options.name, path);
+        let url = b.member(b.new_(b.id("URL"), [b.string(&path), b.import_meta_url()]), "href");
+        imports.push(b.statement(b.call(b.id("$resource"), [b.string(address), url])));
+    }
     imports.extend(made);
     for (index, import) in imports.into_iter().enumerate() {
         program.body.insert(index, import);

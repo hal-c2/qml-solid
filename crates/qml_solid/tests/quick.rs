@@ -1135,6 +1135,53 @@ Item {
 }
 
 #[test]
+fn a_file_the_program_keeps_is_where_the_module_naming_it_says() {
+    // `qrc:/…`: a file the build puts into the program. What names one says
+    // where a browser finds it, and goes on naming it as it did.
+    let source = r#"import QtQuick
+Item {
+    property string kind: "close"
+    Image { source: "qrc:/qt/qml/Palette/icons/qt.png" }
+    Image { source: `qrc:/qt/qml/Palette/icons/dark/${kind}.svg` }
+    // What C++ opens as a file is named so.
+    property string table: ":/data/medals.csv"
+    Image { source: "qrc:/qt/qml/Palette/icons/nothing.png" }
+}"#;
+    let mut project = Project::new();
+    project.add("views/Main", source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    for (address, path) in [
+        ("qrc:/qt/qml/Palette/icons/qt.png", "icons/qt.png"),
+        ("qrc:/qt/qml/Palette/icons/qt.png.license", "icons/qt.png.license"),
+        ("qrc:/qt/qml/Palette/icons/dark/close.svg", "icons/dark/close.svg"),
+        ("qrc:/qt/qml/Palette/icons/dark/user.svg", "icons/dark/user.svg"),
+        ("qrc:/qt/qml/Palette/icons/dark/shade.png", "icons/dark/shade.png"),
+        ("qrc:/qt/qml/Palette/icons/light/close.svg", "icons/light/close.svg"),
+        ("qrc:/data/medals.csv", "../data/medals.csv"),
+    ] {
+        project.add_resource(address, path);
+    }
+    let options = Options { name: "views/Main".to_string(), project: Some(project), ..Options::default() };
+    let code = lowered_source(source, &options).unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, r#"import { $object, $resource, $string, $url } from "qml-solid/object";"#);
+    // By where it is from the file.
+    assert_contains(&code, r#"$resource("qrc:/qt/qml/Palette/icons/qt.png", new URL("../icons/qt.png", import.meta.url).href);"#);
+    assert_contains(&code, r#"$resource("qrc:/data/medals.csv", new URL("../../data/medals.csv", import.meta.url).href);"#);
+    // A name put together as the program runs may be any that starts and
+    // ends so.
+    assert_contains(&code, r#"$resource("qrc:/qt/qml/Palette/icons/dark/close.svg", new URL("../icons/dark/close.svg", import.meta.url).href);"#);
+    assert_contains(&code, r#"$resource("qrc:/qt/qml/Palette/icons/dark/user.svg", "#);
+    // Only what is named: not what is next to it, nor what starts as a
+    // whole name does.
+    assert_lacks(&code, "light/close.svg");
+    assert_lacks(&code, "shade.png");
+    assert_lacks(&code, "qt.png.license");
+    // The program still names them as it did, and one the build does not
+    // keep is nowhere.
+    assert_contains(&code, r#"source={"qrc:/qt/qml/Palette/icons/qt.png"}"#);
+    assert_lacks(&code, r#"$resource("qrc:/qt/qml/Palette/icons/nothing.png""#);
+}
+
+#[test]
 fn a_file_of_a_module_of_qt_has_the_types_of_that_module() {
     // A style of Qt Quick Controls is QML in a module of Qt's: what the
     // module has that is not a file, the file has without an import.

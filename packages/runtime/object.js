@@ -1627,6 +1627,11 @@ export const chosen = new Map();
 // and where the browser has them; `located` is what a type loads a source by.
 export const resources = new Map();
 
+// What a module that names one says: the file `address` is, is at `url`.
+export function $resource(address, url) {
+  resources.set(address, url);
+}
+
 export function located(url) {
   if (!/^(qrc)?:\//.test(url)) return url;
   return resources.get(url.replace(/^(qrc)?:\/+/, "qrc:/")) ?? url;
