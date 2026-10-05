@@ -124,9 +124,15 @@ function patched(url) {
       // A picture from elsewhere that may be shown and not read.
       return record.settle(ERROR);
     }
-    record.nine = { ...read(pixels, width, height), picture: element };
     record.width = Math.max(width - 2, 0);
     record.height = Math.max(height - 2, 0);
+    // What is painted is the picture without its frame, which is then
+    // nothing a piece at its edge is smoothed with.
+    const inside = document.createElement("canvas");
+    inside.width = record.width;
+    inside.height = record.height;
+    if (record.width > 0 && record.height > 0) inside.getContext("2d").drawImage(element, -1, -1);
+    record.nine = { ...read(pixels, width, height), picture: inside };
     record.settle(READY);
   };
   element.onerror = () => record.settle(ERROR);
@@ -145,37 +151,48 @@ function marked(source) {
   return dot !== -1 && file.slice(dot + 1).toLowerCase() === "9.png";
 }
 
+// The first pixel of the screen that is past an edge: a pixel is of what
+// its middle is in. One whose middle is on the edge is of what is after
+// the edge, unless it is `before`.
+function past(edge, before) {
+  const pixel = Math.ceil(edge - 0.5);
+  return before && pixel + 0.5 === edge ? pixel + 1 : pixel;
+}
+
+// Whether a pixel whose middle is on the edge between two pieces is of the
+// one before: Qt's painter (OpenGL's) reads the picture there at the cut
+// as a part of it, in the single precision a graphics card counts in, and
+// takes the pixel that falls in.
+const before = (cut, size) => Math.fround(cut / size) * size < cut;
+
+// The pixels of the screen each cut of a stretched picture is at. At its
+// far edge OpenGL, which counts upwards, paints the pixel whose middle is
+// on the bottom edge and not the one on the right edge.
+function edges(cuts, size, ratio, down) {
+  const last = cuts.at.length - 1;
+  return spread(cuts, size).map((edge, index) => past(edge * ratio, index === last ? down : before(cuts.at[index], cuts.at[last])));
+}
+
 // Each piece where it is in the stretched picture, on whole pixels of the
 // screen, so that two that meet leave no seam.
 function draw(canvas, context, { nine, width, height, smooth }) {
   const ratio = window.devicePixelRatio || 1;
-  canvas.width = Math.max(Math.round(width * ratio), 0);
-  canvas.height = Math.max(Math.round(height * ratio), 0);
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
+  const { across, down } = nine;
+  const xs = edges(across, width, ratio, false);
+  const ys = edges(down, height, ratio, true);
+  canvas.width = Math.max(xs.at(-1), 0);
+  canvas.height = Math.max(ys.at(-1), 0);
+  canvas.style.width = `${canvas.width / ratio}px`;
+  canvas.style.height = `${canvas.height / ratio}px`;
   if (!canvas.width || !canvas.height) return;
   context.imageSmoothingEnabled = smooth;
-  const { across, down } = nine;
-  const xs = spread(across, width).map((x) => Math.round(x * ratio));
-  const ys = spread(down, height).map((y) => Math.round(y * ratio));
   for (let row = 0; row < ys.length - 1; row++) {
     const tall = down.at[row + 1] - down.at[row];
     if (tall <= 0 || ys[row + 1] <= ys[row]) continue;
     for (let column = 0; column < xs.length - 1; column++) {
       const wide = across.at[column + 1] - across.at[column];
       if (wide <= 0 || xs[column + 1] <= xs[column]) continue;
-      // The frame is not part of what the cuts are counted in.
-      context.drawImage(
-        nine.picture,
-        across.at[column] + 1,
-        down.at[row] + 1,
-        wide,
-        tall,
-        xs[column],
-        ys[row],
-        xs[column + 1] - xs[column],
-        ys[row + 1] - ys[row],
-      );
+      context.drawImage(nine.picture, across.at[column], down.at[row], wide, tall, xs[column], ys[row], xs[column + 1] - xs[column], ys[row + 1] - ys[row]);
     }
   }
 }
@@ -227,6 +244,9 @@ export const NinePatchImage = defineType("NinePatchImage", Image, {
     };
     effect(
       () => {
+        // The marks are read when the picture is there, asked for or not:
+        // they are what a later picture with none leaves said.
+        self.$marks();
         const record = self.$image.record();
         if (!record || record.status() !== READY || !record.nine) return null;
         return { nine: record.nine, width: self.width, height: self.height, smooth: Boolean(self.smooth) };
