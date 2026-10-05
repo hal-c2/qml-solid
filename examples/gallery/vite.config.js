@@ -55,6 +55,13 @@ function controls(importer) {
   return conf && existsSync(conf) ? conf : undefined;
 }
 
+// What the compiler is told of the example a file is of: that its main.cpp
+// has paths taken from the file they are written in, as Qt 5 took them.
+function args(file) {
+  const example = readManifest().find(({ directory }) => file.startsWith(directory + sep));
+  return example?.qt.env?.QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT === "1" ? ["--urls-on-assignment"] : [];
+}
+
 // The QML that stands in for the C++ of the example a file is of, or is
 // itself one of the files that do.
 function standins(file) {
@@ -84,7 +91,7 @@ function tolerant(plugin) {
 
 export default defineConfig({
   base: "./",
-  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), style, controls, standins }))],
+  plugins: [examples(), tolerant(qml({ qmlc: process.env.QMLC ?? path("../../target/debug/qmlc"), args, style, controls, standins }))],
   resolve: {
     // Qt's examples have no app behind them: nothing to find here.
     alias: { "qml-solid/host": path("./host.js") },

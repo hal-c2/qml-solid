@@ -264,6 +264,12 @@ impl<'p> Types<'p> {
     /// What `name` is on an object of the type: something a component in its
     /// chain declares, or a member of the Qt type the chain ends in.
     pub(crate) fn member(&self, kind: &Kind, name: &str) -> Option<Member> {
+        self.member_through(kind, name, 0)
+    }
+
+    /// `aliases` is how many aliases led here: one may be of another, and
+    /// what is written wrong may be of itself.
+    fn member_through(&self, kind: &Kind, name: &str, aliases: usize) -> Option<Member> {
         let mut kind = kind.clone();
         // A component whose root is itself, by whatever detour, has no root.
         for _ in 0..64 {
@@ -272,11 +278,63 @@ impl<'p> Types<'p> {
                 Kind::Component(key) => {
                     let shape = self.project.shape(&key)?;
                     if let Some(member) = shape_member(shape, name) {
-                        return Some(member);
+                        // An alias is the property it is an alias of: a path
+                        // given to `property alias source: image.source` is
+                        // a path (`home` says which file it is taken from).
+                        let aliased = shape.properties.get(name).and_then(|declaration| {
+                            let (of, path) = declaration.alias.as_ref()?;
+                            let (first, rest) = path.split_first()?;
+                            if aliases == 16 {
+                                return None;
+                            }
+                            let types = Types { project: self.project, file: &key.file };
+                            let parts: Vec<&str> = of.iter().map(String::as_str).collect();
+                            let Member::Property(mut property) =
+                                types.member_through(&types.find(&parts)?.kind, first, aliases + 1)?
+                            else {
+                                return None;
+                            };
+                            for name in rest {
+                                property = qt_property(property.value?.property(name)?);
+                            }
+                            Some(Member::Property(property))
+                        });
+                        return Some(aliased.unwrap_or(member));
                     }
                     kind = self.root(&key, shape)?;
                 }
             }
+        }
+        None
+    }
+
+    /// The file a path given to the property `name` of an object of the type
+    /// is taken from, where that is not the file the object is written in:
+    /// the one a component declares the property in, which is where it uses
+    /// it, and for an alias the one that has the object it is an alias of.
+    /// Qt keeps the path as it is written, and what loads it takes it from
+    /// the file it is itself written in.
+    pub(crate) fn home(&self, kind: &Kind, name: &str) -> Option<String> {
+        self.home_through(kind, name, 0)
+    }
+
+    fn home_through(&self, kind: &Kind, name: &str, aliases: usize) -> Option<String> {
+        let mut kind = kind.clone();
+        for _ in 0..64 {
+            let Kind::Component(key) = kind else { return None };
+            let shape = self.project.shape(&key)?;
+            if let Some(declaration) = shape.properties.get(name) {
+                let Some((of, path)) = &declaration.alias else { return Some(key.file) };
+                let first = path.first()?;
+                if aliases == 16 {
+                    return None;
+                }
+                let types = Types { project: self.project, file: &key.file };
+                let parts: Vec<&str> = of.iter().map(String::as_str).collect();
+                let target = types.find(&parts)?.kind;
+                return types.home_through(&target, first, aliases + 1).or(Some(key.file));
+            }
+            kind = self.root(&key, shape)?;
         }
         None
     }

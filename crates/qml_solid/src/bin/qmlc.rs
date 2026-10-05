@@ -232,6 +232,7 @@ fn main() -> ExitCode {
             "--host" => options.host_module = value("--host"),
             "--runtime" => options.runtime_module = value("--runtime"),
             "--alone" => alone = true,
+            "--urls-on-assignment" => options.urls_on_assignment = true,
             "--types" => types = Some(native_types as fn(&str) -> _),
             "--qml-types" => types = Some(written_types),
             "--component-extension" => options.component_extension = value("--component-extension"),

@@ -112,6 +112,15 @@ of Qt's is not installed: `QtQuick3D.Helpers: OrbitCameraController is QML of
 Qt's own, and Qt's QtQuick3D.Helpers is not installed here`. The gallery tells
 of such an example and does not hold it to what it rendered before.
 
+A path in QML is relative to a file: the one that has the object that loads
+it. `Image { source: "a.png" }` is next to the file that says so, and so is
+the `source` of a component that is an Image; a path given to a property a
+component declares (`property url shown`, `property alias source:
+image.source`) is next to the component's file, where it is used. A program
+whose main.cpp sets `QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT` has them all next
+to the file they are written in: `qmlc --urls-on-assignment`, which the
+plugin's `args` may give by the file compiled.
+
 ## Components
 
 QML lets an instance set any property of a component's root object, handle its

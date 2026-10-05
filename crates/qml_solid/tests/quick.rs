@@ -326,6 +326,46 @@ Item {
 }
 
 #[test]
+fn a_path_is_taken_from_the_file_of_what_uses_it() {
+    let files = [
+        (
+            "Sample",
+            r#"import QtQuick
+import "parts"
+Item {
+    Picture { source: "a.png"; sourceSize.width: 10 }
+    Held { shown: "b.png" }
+    Shot { source: "c.png" }
+    Image { source: "d.png" }
+}"#,
+        ),
+        ("parts/Picture", "import QtQuick\nItem { property alias source: image.source; property alias sourceSize: image.sourceSize; Image { id: image } }"),
+        ("parts/Held", "import QtQuick\nItem { id: root; property url shown; Image { source: root.shown } }"),
+        ("parts/Shot", "import QtQuick\nImage {}"),
+    ];
+    // An alias is what it is an alias of, a path or a group; the path is
+    // taken from the file that has the object, and one given to a property
+    // a component declares from the component's.
+    let code = lowered_in(&files, "Sample").unwrap();
+    assert_contains(&code, r#"new URL("parts/a.png", import.meta.url)"#);
+    assert_contains(&code, r#"new URL("parts/b.png", import.meta.url)"#);
+    assert_contains(&code, r#"new URL("c.png", import.meta.url)"#);
+    assert_contains(&code, r#"new URL("d.png", import.meta.url)"#);
+    assert_contains(&code, "sourceSize$width={10}");
+
+    // `QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT`: from the file it is written in.
+    let mut project = Project::new();
+    for (file, source) in files {
+        project.add(file, source).unwrap();
+    }
+    let options =
+        Options { name: "Sample".to_string(), project: Some(project), urls_on_assignment: true, ..Options::default() };
+    let code = lowered_source(files[0].1, &options).unwrap();
+    assert_contains(&code, r#"new URL("a.png", import.meta.url)"#);
+    assert_contains(&code, r#"new URL("b.png", import.meta.url)"#);
+}
+
+#[test]
 fn an_alias_is_a_path_to_the_object_that_has_the_property() {
     let code = lowered(
         r#"import QtQuick

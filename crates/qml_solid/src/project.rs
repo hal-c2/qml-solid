@@ -99,6 +99,9 @@ pub(crate) struct Declaration {
     /// `int`, `var`, `alias`, `Component`, `Item`.
     pub type_name: String,
     pub is_list: bool,
+    /// What an alias is an alias of: the type of the object it names, as
+    /// written, and the property of that object, where it names one.
+    pub alias: Option<(Vec<String>, Vec<String>)>,
 }
 
 /// What a component declares: the names an instance may set that are the
@@ -413,11 +416,13 @@ fn shape(summary: &mut Summary, inline: Option<&str>, root: &QmlObject<'_>) {
         ids: HashSet::new(),
         mentions: HashSet::new(),
     };
-    let mut names = Names { ids: HashSet::new(), declared: HashSet::new(), mentions: HashSet::new() };
+    let mut names =
+        Names { ids: HashSet::new(), typed: HashMap::new(), declared: HashSet::new(), mentions: HashSet::new() };
     names.object(root);
     shape.mentions =
         names.mentions.into_iter().filter(|name| !names.ids.contains(name) && !names.declared.contains(name)).collect();
     shape.ids = names.ids;
+    let typed = names.typed;
     for member in &root.members {
         match member {
             QmlMember::Property(property) => {
@@ -427,9 +432,18 @@ fn shape(summary: &mut Summary, inline: Option<&str>, root: &QmlObject<'_>) {
                 }
                 shape.has_default |= property.is_default;
                 if let Some(type_name) = &property.type_name {
+                    let alias = match &property.value {
+                        Some(QmlBindingValue::Expression(expression)) if type_name.name.to_string() == "alias" => {
+                            dotted(expression).and_then(|path| {
+                                let (id, rest) = path.split_first()?;
+                                Some((typed.get(id)?.clone(), rest.to_vec()))
+                            })
+                        }
+                        _ => None,
+                    };
                     shape.properties.insert(
                         name,
-                        Declaration { type_name: type_name.name.to_string(), is_list: type_name.is_list },
+                        Declaration { type_name: type_name.name.to_string(), is_list: type_name.is_list, alias },
                     );
                 }
             }
@@ -457,10 +471,25 @@ fn shape(summary: &mut Summary, inline: Option<&str>, root: &QmlObject<'_>) {
     inline_shapes(summary, root);
 }
 
+/// `image.source`: the names of a path that is written with nothing else.
+fn dotted(expression: &Expression<'_>) -> Option<Vec<String>> {
+    match expression {
+        Expression::Identifier(id) => Some(vec![id.name.to_string()]),
+        Expression::StaticMemberExpression(member) => {
+            let mut path = dotted(&member.object)?;
+            path.push(member.property.name.to_string());
+            Some(path)
+        }
+        _ => None,
+    }
+}
+
 /// The ids of a component's objects and the names its scripts use. An inline
 /// component is one of its own.
 struct Names {
     ids: HashSet<String>,
+    /// The type each id is the id of, as written.
+    typed: HashMap<String, Vec<String>>,
     /// What any of its objects declares.
     declared: HashSet<String>,
     mentions: HashSet<String>,
@@ -489,6 +518,8 @@ impl Names {
                     ..
                 }) if name.as_simple() == Some("id") => {
                     self.ids.insert(id.name.to_string());
+                    self.typed
+                        .insert(id.name.to_string(), object.type_name.parts.iter().map(|part| (*part).to_string()).collect());
                 }
                 QmlMember::Binding(QmlBinding { value, .. })
                 | QmlMember::Property(QmlPropertyDeclaration { value: Some(value), .. }) => match value {
