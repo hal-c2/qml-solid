@@ -141,13 +141,18 @@ function leave(parent, item) {
   }
 }
 
-function initialize(self, element) {
-  const item = element.item;
-  if (!item || element.init) return;
+// As big as the view, where it says nothing of how big it is.
+function fit(self, element, item) {
   element.widthValid = sized(item, "width");
   if (!element.widthValid) slot(item, "width").write(self.width);
   element.heightValid = sized(item, "height");
   if (!element.heightValid) slot(item, "height").write(self.height);
+}
+
+function initialize(self, element) {
+  const item = element.item;
+  if (!item || element.init) return;
+  if (!element.begun) fit(self, element, item);
   const parent = item.parent;
   if (parent !== self) {
     departing(item);
@@ -173,7 +178,19 @@ function load(self, element) {
       element.init = true;
       return false;
     }
-    const made = instantiate(component, element.properties ?? NOTHING, self, self.$owner);
+    // An item the view makes is as big as the view and has what the call
+    // gave it before it is told that it is complete, as in Qt: its
+    // `Component.onCompleted` reads what it was pushed with.
+    const begun = (data) => {
+      const object = component(data);
+      if (!isItem(object)) return object;
+      fit(self, element, object);
+      if (element.properties) give(object, element.properties);
+      element.properties = undefined;
+      element.begun = true;
+      return object;
+    };
+    const made = instantiate(begun, element.properties ?? NOTHING, self, self.$owner);
     if (!isItem(made.object)) {
       made.dispose();
       element.init = true;
