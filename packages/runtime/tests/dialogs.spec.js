@@ -608,3 +608,33 @@ test("a message dialog needs no press to be shown", async ({ page }) => {
     1,
   ]);
 });
+
+// As photosurface does: the folder a dialog gives is the folder of a model.
+test("a FolderListModel shows what is in a folder the user picked", async ({ page }) => {
+  await page.addInitScript(() => {
+    // A picture two pixels wide.
+    const png = Uint8Array.from(
+      atob("iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR4nGP4z8DwH4QBEfcD/ePF9e8AAAAASUVORK5CYII="),
+      (char) => char.charCodeAt(0),
+    );
+    const file = (name) => ({ kind: "file", name, getFile: async () => new File([png], name, { lastModified: 1700000000000 }) });
+    window.showDirectoryPicker = async () => ({
+      kind: "directory",
+      name: "Pictures",
+      async *values() {
+        yield file("b.png");
+        yield file("notes.txt");
+        yield file("a.png");
+      },
+    });
+  });
+  await open(page, "pickedfolder");
+  // The browser asks only of a page the user is using.
+  await page.mouse.click(10, 10);
+  await page.evaluate(() => window.scene.dialog.open());
+  await page.waitForFunction(() => window.scene.model.count === 2 && window.scene.shown().every(([, ready]) => ready));
+  expect(await page.evaluate(() => window.scene.shown())).toEqual([
+    ["a.png", true, 2, 71, "Pictures/a.png", 1700000000000],
+    ["b.png", true, 2, 71, "Pictures/b.png", 1700000000000],
+  ]);
+});
