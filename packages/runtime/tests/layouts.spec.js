@@ -567,3 +567,17 @@ test("a Repeater in a layout has no cell, and an item with no size has one", asy
     [0, 1, 2, 3, 4],
   ]);
 });
+
+// The answers are Qt's own, from the same scene run by `qml6`: each proxy's
+// implicit height, its height and its implicit width.
+test("a LayoutItemProxy is implicitly as big as it or its target said last", async ({ page }) => {
+  await open(page, "proxysize");
+  expect(await page.evaluate(() => window.scene.read())).toEqual([
+    "200/200/40 100/100/40 100/100/40 200/200/40 100/100/40 200/200/40 100/100/40 200/200/0 100/100/40 true",
+    200,
+    77,
+    210,
+    140,
+    140,
+  ]);
+});

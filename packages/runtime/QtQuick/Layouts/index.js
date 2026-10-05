@@ -533,14 +533,45 @@ function drop(proxy, target) {
   if (heir) take(heir, target);
 }
 
+// Whether what a proxy was given as its implicit size is what it has once
+// everything is made. Qt works a program's bindings out one after another:
+// those of what is declared later first, an object's own in the order they
+// are written. Only a binding written after `target` is worked out after the
+// proxy has its target, and it stays what the proxy has if the target's own
+// size is not written again after it: by a binding of an item declared
+// before the proxy, or by the item itself, as a Text is as big as its text
+// once it is complete.
+function ahead(self, target, name) {
+  const props = self.$props;
+  if (!Object.getOwnPropertyDescriptor(props, name)?.get) return false;
+  const keys = Object.keys(props);
+  if (keys.indexOf(name) < keys.indexOf("target")) return false;
+  const theirs = slot(target, name);
+  if (!theirs.explicit()) return false;
+  return !theirs.bound || self.$early;
+}
+
+// A proxy is implicitly as big as its target. Qt writes the target's size
+// over the proxy's own when the proxy is given the target and whenever the
+// target's changes, and a binding of the proxy's own writes over that
+// whenever it comes to something else: the proxy has what was written last.
+const implied = (name) => (self, own) => {
+  const target = self.target;
+  const theirs = target?.[name] ?? 0;
+  if (!target || !slot(self, name).explicit()) return target ? theirs : own();
+  const mine = own();
+  const seen = (self.$implied[name] ??= { target, theirs, mine, own: ahead(self, target, name) });
+  if (seen.target !== target || seen.theirs !== theirs) seen.own = false;
+  else if (seen.mine !== mine) seen.own = true;
+  Object.assign(seen, { target, theirs, mine });
+  return seen.own ? mine : theirs;
+};
+
 // Stands in a layout for an item that is declared elsewhere, so that
 // several layouts can place the same item: the one that is shown has it.
 export const LayoutItemProxy = defineType("LayoutItemProxy", Item, {
   properties: { target: null, implicitWidth: 0, implicitHeight: 0 },
-  resolve: {
-    implicitWidth: (self) => self.target?.implicitWidth ?? 0,
-    implicitHeight: (self) => self.target?.implicitHeight ?? 0,
-  },
+  resolve: { implicitWidth: implied("implicitWidth"), implicitHeight: implied("implicitHeight") },
   methods: {
     // The target, when this is the proxy that has it.
     effectiveTarget() {
@@ -551,7 +582,11 @@ export const LayoutItemProxy = defineType("LayoutItemProxy", Item, {
       return this.target ?? null;
     },
   },
-  setup(self) {
+  setup(self, props) {
+    self.$implied = {};
+    // Whether it is declared before the item it stands for.
+    const told = Object.getOwnPropertyDescriptor(props, "target");
+    self.$early = Boolean(told && !told.get && told.value && !told.value.$type);
     let current = null;
     const leave = () => {
       const proxies = current.$proxies;
