@@ -313,6 +313,7 @@ function measured(spec, text) {
 // character, the last one too, and the word spacing after every space.
 export function measure(spec, text) {
   if (text === "") return 0;
+  if (text.includes("\t")) return tabbed(spec, text);
   let width = measured(spec, text);
   if (spec.letterSpacing) width += spec.letterSpacing * text.length;
   if (spec.wordSpacing) {
@@ -321,10 +322,35 @@ export function measure(spec, text) {
   return width;
 }
 
+// A tab goes on to the next of the stops there are along a line, every 80
+// pixels unless the text says how far apart (`spec.tab`): from one it is on,
+// to the one after. `text` is taken to start where its line does.
+const TAB = 80;
+function tabbed(spec, text) {
+  const apart = spec.tab > 0 ? spec.tab : TAB;
+  const pieces = text.split("\t");
+  let at = 0;
+  for (let index = 0; index < pieces.length; index++) {
+    at += advance(spec, pieces[index]);
+    if (index + 1 < pieces.length) at = (Math.floor(at / apart) + 1) * apart;
+  }
+  return at;
+}
+
+// What `text` takes of the room there is when it is cut to fit: as Qt counts
+// it, a tab is as wide as the stops are apart, wherever in the line it is.
+function taking(spec, text) {
+  if (!text.includes("\t")) return measure(spec, text);
+  const apart = spec.tab > 0 ? spec.tab : TAB;
+  let width = 0;
+  for (const piece of text.split("\t")) width += advance(spec, piece) + apart;
+  return width - apart;
+}
+
 // The same, kept: a label, a word. Long strings are few and each belongs to
 // one object, which keeps its own layout.
 export function advance(spec, text) {
-  if (text.length > 64) return measure(spec, text);
+  if (text.length > 64 || text.includes("\t")) return measure(spec, text);
   let known = widths.get(spec.face);
   if (!known) widths.set(spec.face, (known = new Map()));
   let width = known.get(text);
@@ -427,16 +453,16 @@ export function elided(spec, text, mode, width) {
   if (room < 0) return "";
   const length = text.length;
   if (mode === 1) {
-    const kept = longest(length - 1, (count) => measure(spec, text.slice(0, count)) < room);
+    const kept = longest(length - 1, (count) => taking(spec, text.slice(0, count)) < room);
     return text.slice(0, kept) + ELLIPSIS;
   }
   if (mode === 0) {
-    const kept = longest(length - 1, (count) => measure(spec, text.slice(length - count)) < room);
+    const kept = longest(length - 1, (count) => taking(spec, text.slice(length - count)) < room);
     return ELLIPSIS + text.slice(length - kept);
   }
   const kept = longest(
     (length - 1) >> 1,
-    (count) => measure(spec, text.slice(0, count)) + measure(spec, text.slice(length - count)) < room,
+    (count) => taking(spec, text.slice(0, count)) + taking(spec, text.slice(length - count)) < room,
   );
   return text.slice(0, kept) + ELLIPSIS + text.slice(length - kept);
 }
