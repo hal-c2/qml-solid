@@ -1062,6 +1062,15 @@ export function whenComplete(work) {
   waiting.push(() => runWithOwner(owner, work));
 }
 
+// Runs `work` once they exist and before anything that waits for that: what
+// an object makes of itself as it is completed (a Loader its item) is there
+// for whatever looks at it then, the layout it is in for one.
+export function whenMade(work) {
+  if (!holding) return work();
+  const owner = getOwner();
+  holding.push(() => runWithOwner(owner, work));
+}
+
 // A render effect that waits likewise: `compute` reads properties, `apply`
 // writes what it returned to the DOM.
 export function effect(compute, apply) {

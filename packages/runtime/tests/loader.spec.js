@@ -163,3 +163,34 @@ plain("a source that cannot be loaded is an error the console tells of", async (
   expect(warnings[1]).toBe("Loader: cannot load no such module");
   expect(warnings).toHaveLength(2);
 });
+
+// What Qt 6.11 answers for the scene, as it is made and once `late` loads.
+const QT_IN_LAYOUT = [
+  [
+    [15, 15, 124, 96, 124, 64],
+    [0, 18, 60, 60, 60, 60],
+    [0, 0, 60, 60, 60, 60],
+    [60, 16, 64, 64, 0, 0],
+    null,
+    [0, 0, 90, 126, 90, 126],
+    [0, 18, 60, 60, 60, 60],
+    [0, 0, 60, 60, 60, 60],
+  ],
+  [
+    [15, 15, 124, 96, 124, 64],
+    [0, 18, 60, 60, 60, 60],
+    [0, 0, 60, 60, 60, 60],
+    [60, 16, 64, 64, 60, 60],
+    [0, 0, 64, 64, 60, 60],
+    [0, 0, 90, 126, 90, 126],
+    [0, 18, 60, 60, 60, 60],
+    [0, 0, 60, 60, 60, 60],
+  ],
+];
+
+test("what a Loader loads as it is made is there before its layout looks at it", async ({ page }) => {
+  await open(page, "loaderlayout");
+  expect(await page.evaluate(() => window.scene.answers())).toEqual(QT_IN_LAYOUT[0]);
+  await page.evaluate(() => window.scene.step(0));
+  expect(await page.evaluate(() => window.scene.answers())).toEqual(QT_IN_LAYOUT[1]);
+});
