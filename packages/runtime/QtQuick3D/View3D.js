@@ -14,7 +14,7 @@
 // picture is drawn in the item whatever `renderMode` says, and of the ways
 // of smoothing edges there is one.
 import { untrack } from "solid-js";
-import { defineType, effect, inside as within, slot } from "../object.js";
+import { defineType, effect, inside as within, QtObject, settle, slot } from "../object.js";
 import { Vector2d, Vector3d } from "../QtQml/values.js";
 import { Item } from "../QtQuick/Item.js";
 import * as math from "./math.js";
@@ -167,7 +167,7 @@ export const View3D = defineType("View3D", Item, {
       return this.$scene;
     },
     get renderStats() {
-      return null;
+      return this.$stats;
     },
     get effectiveTextureSize() {
       return { width: this.width, height: this.height };
@@ -228,10 +228,14 @@ export const View3D = defineType("View3D", Item, {
     // one for a frame: when what changed it is done, and not for each thing
     // of several that a frame's animations and timers set.
     let due = null;
+    const stats = (self.$stats = within(null, () => RenderStats({})));
+    const frame = counted(stats);
     const drawn = () => {
       const scene = due;
       due = null;
+      const began = performance.now();
       draw(scene, canvas, paper);
+      frame(began, performance.now());
     };
 
     effect(
@@ -264,5 +268,72 @@ export const View3D = defineType("View3D", Item, {
     );
   },
 });
+
+// What a view says of how fast it draws. The times are of the frame drawn
+// last and are told five times a second; how many frames a second had and
+// the longest of them are told once the second is over, so both are nothing
+// until then, as they are in Qt. What Qt counts only when
+// `extendedDataCollectionEnabled` is on is not counted.
+export const RenderStats = defineType("RenderStats", QtObject, {
+  properties: {
+    fps: 0,
+    frameTime: 0,
+    renderTime: 0,
+    renderPrepareTime: 0,
+    syncTime: 0,
+    maxFrameTime: 0,
+    extendedDataCollectionEnabled: false,
+    drawCallCount: 0,
+    drawVertexCount: 0,
+    imageDataSize: 0,
+    meshDataSize: 0,
+    renderPassCount: 0,
+    renderPassDetails: "",
+    textureDetails: "",
+    meshDetails: "",
+    pipelineCount: 0,
+    materialGenerationTime: 0,
+    effectGenerationTime: 0,
+    pipelineCreationTime: 0,
+    vmemAllocCount: 0,
+    vmemUsedBytes: 0,
+    graphicsApiName: "OpenGL",
+    lastCompletedGpuTime: 0,
+  },
+  methods: { releaseCachedResources() {} },
+});
+
+const TOLD = 200;
+const SECOND = 1000;
+
+// What a frame drawn from `began` until `ended` makes of `stats`.
+function counted(stats) {
+  let last = performance.now();
+  let frames = 0;
+  let longest = 0;
+  let second = 0;
+  let since = 0;
+  return (began, ended) => {
+    const took = ended - last;
+    last = ended;
+    frames++;
+    longest = Math.max(longest, took);
+    second += took;
+    since += took;
+    const told = {};
+    if (since >= TOLD) {
+      since -= TOLD;
+      Object.assign(told, { frameTime: took, renderTime: ended - began });
+    }
+    if (second >= SECOND) {
+      second -= SECOND;
+      Object.assign(told, { fps: frames, maxFrameTime: longest });
+      frames = longest = 0;
+    }
+    let any = false;
+    for (const key in told) if (slot(stats, key).write(told[key])) any = true;
+    if (any) settle();
+  };
+}
 
 const PLAIN = { clear: [0, 0, 0, 0], probe: null, sky: false, blur: 0, samples: 0, tonemap: 1, depth: true };
