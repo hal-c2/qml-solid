@@ -227,11 +227,22 @@ export const View3D = defineType("View3D", Item, {
     // The picture is drawn once for all that changed together, as Qt draws
     // one for a frame: when what changed it is done, and not for each thing
     // of several that a frame's animations and timers set.
+    //
+    // Drawing holds the page up, where Qt draws on a thread of its own: so
+    // a picture that took long is not drawn again until as long has gone
+    // by, and the page has half its time for everything else, what it
+    // fetches and what is pressed among it. What changes meanwhile is in
+    // the picture that is drawn then.
     let due = null;
+    let rested = 0;
     const drawn = () => {
+      const from = performance.now();
+      if (from < rested) return void setTimeout(drawn, rested - from);
       const scene = due;
       due = null;
       draw(scene, canvas, paper);
+      const took = performance.now() - from;
+      rested = took > SLOW ? from + took + Math.min(took, REST) : 0;
     };
 
     effect(
@@ -264,5 +275,10 @@ export const View3D = defineType("View3D", Item, {
     );
   },
 });
+
+// A picture is slow that takes longer than this to draw, in milliseconds,
+// and the longest the page is left to itself after one.
+const SLOW = 50;
+const REST = 1000;
 
 const PLAIN = { clear: [0, 0, 0, 0], probe: null, sky: false, blur: 0, samples: 0, tonemap: 1, depth: true };
