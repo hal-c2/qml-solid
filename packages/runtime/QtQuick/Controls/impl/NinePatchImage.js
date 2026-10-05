@@ -8,6 +8,7 @@
 // The marks are read as Qt reads them (`qquickninepatchimage.cpp`), and
 // the picture is painted on a canvas, piece by piece. Any other picture is
 // an Image's.
+import { createSignal } from "solid-js";
 import { defineType, derived, effect } from "../../../object.js";
 import { lazy, rules } from "../../compute.js";
 import { Image, picture } from "../../Image.js";
@@ -146,7 +147,7 @@ function marked(source) {
 
 // Each piece where it is in the stretched picture, on whole pixels of the
 // screen, so that two that meet leave no seam.
-function paint(canvas, context, { nine, width, height, smooth }) {
+function draw(canvas, context, { nine, width, height, smooth }) {
   const ratio = window.devicePixelRatio || 1;
   canvas.width = Math.max(Math.round(width * ratio), 0);
   canvas.height = Math.max(Math.round(height * ratio), 0);
@@ -216,6 +217,14 @@ export const NinePatchImage = defineType("NinePatchImage", Image, {
     const canvas = document.createElement("canvas");
     self.$face.append(canvas);
     const context = canvas.getContext("2d");
+    // What a shader that is given the item draws with: the canvas, as it
+    // was last painted, and only while it is what the item shows.
+    const [painted, paint] = createSignal(null, { ownedWrite: true, equals: false });
+    self.$canvas = {
+      get element() {
+        return painted();
+      },
+    };
     effect(
       () => {
         const record = self.$image.record();
@@ -225,7 +234,8 @@ export const NinePatchImage = defineType("NinePatchImage", Image, {
       (next) => {
         self.$face.classList.toggle("qq-nine", Boolean(next));
         canvas.style.display = next ? "" : "none";
-        if (next) paint(canvas, context, next);
+        if (next) draw(canvas, context, next);
+        paint(next ? canvas : null);
       },
     );
   },

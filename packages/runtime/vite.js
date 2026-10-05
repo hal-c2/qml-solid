@@ -255,20 +255,21 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
   // when the installation has them there, otherwise read out of the plugin
   // when the QML names any, or what the runtime has of the module does: the
   // QML of the Imagine style asks `Imagine` where its pictures are. An `@2x`
-  // one is for a screen that is not asked about yet.
-  const kept = (module, about) => {
-    const folder = `${KEPT}/${module}/images`;
-    let directory = join(home(module), "images");
+  // one is for a screen that is not asked about yet. Its shaders likewise:
+  // those are baked, and inside the plugin.
+  const kept = (module, about, kind) => {
+    const folder = `${KEPT}/${module}/${kind}`;
+    let directory = join(home(module), kind);
     if (!existsSync(directory)) {
       const native = natives()[`./${module}`];
       const texts = [...about.types.values()].map((file) => join(home(module), file));
       const named = [...texts, ...(native ? [join(runtime, native)] : [])].some((file) => readFileSync(file, "utf8").includes(folder));
       if (!named) return [];
       const { bins, version } = found();
-      directory = join(cache, version || "qt", module, "images");
+      directory = join(cache, version || "qt", module, kind);
       if (!existsSync(directory)) {
         const failed = extract(join(bins || "", "qml"), module.replaceAll("/", "."), folder, directory);
-        if (failed) console.warn(`qml-solid: the pictures of ${module} could not be read out of Qt: ${failed}`);
+        if (failed) console.warn(`qml-solid: the ${kind} of ${module} could not be read out of Qt: ${failed}`);
       }
     }
     return readdirSync(directory)
@@ -434,7 +435,7 @@ export default function qml({ qmlc = "qmlc", args = [], qt, style, controls, sta
           for (const [name, file] of about.types) {
             lines.push(`export { default as ${name} } from ${JSON.stringify(join(home(module), file) + carry)};`);
           }
-          const pictures = kept(module, about);
+          const pictures = [...kept(module, about, "images"), ...kept(module, about, "shaders").filter(([, file]) => file.endsWith(BAKED))];
           if (pictures.length > 0) {
             lines.push(`import { resources as $resources } from ${kernel};`);
             pictures.forEach(([url, file], index) => {
