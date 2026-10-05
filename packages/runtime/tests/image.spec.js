@@ -91,6 +91,35 @@ test("a picture gives its item the sizes Qt gives it", async ({ page }) => {
   expect(frame).toEqual([1, 1, 100, 60, 30, 30, 30, 30]);
 });
 
+test("a drawing is as big as QtSvg makes the file", async ({ page }) => {
+  await open(page, "drawings");
+  await page.waitForFunction(() => !window.scene.loading());
+  // Qt 6.11: status, implicit size and sourceSize of each.
+  expect(await page.evaluate(() => window.scene.sizes())).toEqual({
+    // `1in` by `0.5in`: an inch is 90.
+    a: [1, 90, 45, 90, 45],
+    // `10mm` by `2cm`, cut down to whole numbers.
+    b: [1, 35, 70, 35, 70],
+    // `50%` by `200%` of a `viewBox` 40.6 by 20.5.
+    c: [1, 20, 41, 20, 41],
+    // A width and no height: the `viewBox`, rounded.
+    d: [1, 41, 21, 41, 21],
+    // `12pt` by `2pc` count as they are written.
+    e: [1, 12, 2, 12, 2],
+    // 33.7 by 10.2.
+    f: [1, 33, 10, 33, 10],
+    // `2em` is no size: the `viewBox`.
+    h: [1, 10, 30, 10, 30],
+    // Only a `viewBox`.
+    box: [1, 41, 21, 41, 21],
+  });
+  // Asked for at a width, and in an item wider than it.
+  expect(await page.evaluate(() => window.scene.scaled())).toEqual([
+    [100, 51, 100, 51, 100, 0, 100, 51],
+    [120, 21, 41, 21, 41, 21, 120, 21],
+  ]);
+});
+
 test("each fill mode puts the picture where Qt paints it", async ({ page }) => {
   await pictures(page);
   expect(await face(page, "stretch")).toEqual({ box: [0, 0, 100, 100], size: [100, 100], at: [0, 0], repeat: "no-repeat" });

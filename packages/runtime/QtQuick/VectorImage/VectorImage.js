@@ -8,13 +8,9 @@
 // shows. Here that one item is there, scaled the same, and in it the browser
 // draws the file.
 //
-// The size is the one QtSvg makes of the file, which is not the browser's:
-// - `width` and `height`, cut down to whole numbers. An inch is 90 of them,
-//   and `mm` and `cm` go by that; `pt` and `pc` count as they are written.
-//   A percentage is of the `viewBox`.
-// - where either is missing, nothing, or in `em` or `ex`: the `viewBox`,
-//   rounded.
-// - the `viewBox` is stretched over that size, each way on its own.
+// The size is the one QtSvg makes of the file, which is not the browser's
+// (`measured`, which Image goes by too), and the `viewBox` is stretched over
+// that size, each way on its own.
 //
 // Not here:
 // - the items Qt makes: the one child has none, so there is no Shape whose
@@ -32,7 +28,7 @@
 import { untrack } from "solid-js";
 import { defineType, derived, effect, group, inside, located } from "../../object.js";
 import { lazy, rules } from "../compute.js";
-import { picture, shared } from "../Image.js";
+import { measured, picture, shared } from "../Image.js";
 import { Item } from "../Item.js";
 import { Scale } from "../transforms.js";
 
@@ -49,33 +45,12 @@ const FIT = 1;
 const CROP = 2;
 const STRETCH = 3;
 
-// How many of QtSvg's units one of each is: it takes an inch for 90.
-const UNITS = { "": 1, px: 1, pt: 1, pc: 1, mm: 3.543307, cm: 35.43307, in: 90, em: 0, ex: 0, "%": 1 };
-const LENGTH = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*(px|pt|pc|mm|cm|in|em|ex|%)?\s*$/i;
-
-// A side of the drawing as the file says it: how long, and whether that is a
-// percentage.
-function side(text) {
-  const [, number, unit = ""] = LENGTH.exec(text ?? "") ?? [];
-  if (number === undefined) return [0, false];
-  return [Math.trunc(Number(number) * UNITS[unit.toLowerCase()]), unit === "%"];
-}
-
-function box(text) {
-  const numbers = (text ?? "").trim().split(/[\s,]+/).map(Number);
-  return numbers.length === 4 && numbers.every(Number.isFinite) && numbers[2] > 0 && numbers[3] > 0 ? numbers : null;
-}
-
 // The file as the browser is to draw it: of Qt's size, its `viewBox`
 // stretched over it.
 function sized(root) {
-  const view = box(root.getAttribute("viewBox"));
-  const [wide, wideOf] = side(root.getAttribute("width"));
-  const [tall, tallOf] = side(root.getAttribute("height"));
-  const said = wide > 0 && tall > 0;
-  if (!view && (!said || wideOf || tallOf)) return null;
-  const width = !said ? Math.round(view[2]) : wideOf ? Math.round(0.01 * wide * view[2]) : wide;
-  const height = !said ? Math.round(view[3]) : tallOf ? Math.round(0.01 * tall * view[3]) : tall;
+  const size = measured(root);
+  if (!size) return null;
+  const { width, height, view } = size;
   root.setAttribute("width", width);
   root.setAttribute("height", height);
   root.setAttribute("viewBox", (view ?? [0, 0, width, height]).join(" "));
