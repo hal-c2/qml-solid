@@ -233,3 +233,18 @@ test("what createObject gives an object, it has before it is complete", async ({
   expect(await page.evaluate(() => window.scene.make())).toEqual([-40, -40, 3, 40]);
   await expect.poll(() => page.evaluate(() => window.scene.where())).toBe(80);
 });
+
+// This throws, as Qt warns, which the scenes' `test` takes for a failure.
+plain("what a handler throws is told of, and whoever emitted the signal goes on", async ({ page }) => {
+  const thrown = [];
+  page.on("pageerror", (error) => thrown.push(error.message));
+  await open(page, "thrown");
+  // Qt 6.11: the function connected to the signal hears of it, and the
+  // function that emitted it does what comes after.
+  expect(await page.evaluate(() => window.scene.poke())).toEqual([1, 2]);
+  expect(thrown).toEqual([
+    "Cannot read properties of null (reading 'gone')",
+    "Cannot read properties of null (reading 'here')",
+    "Cannot read properties of null (reading 'there')",
+  ]);
+});

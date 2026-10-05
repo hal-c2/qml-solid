@@ -977,14 +977,25 @@ export function replace(self, handler, run) {
   self[handler[2].toLowerCase() + handler.slice(3)].watch?.();
 }
 
+// What a handler throws stops that handler and is told of, as Qt warns of
+// it: whoever emitted the signal goes on, and so do the handlers after it.
+function heard(handler, args = []) {
+  try {
+    handler(...args);
+  } catch (error) {
+    reportError(error);
+  }
+}
+
 // A signal is the function that emits it: `clicked(mouse)` runs the handler
 // the object was given (`onClicked`) and whatever was connected since.
 export function signal(given) {
   const listeners = new Set();
   const emit = (...args) =>
     soon(() => {
-      given?.()?.(...args);
-      for (const listener of [...listeners]) listener(...args);
+      const handler = given?.();
+      if (handler) heard(handler, args);
+      for (const listener of [...listeners]) heard(listener, args);
     });
   emit.connect = (listener) => void listeners.add(listener);
   emit.disconnect = (listener) => void listeners.delete(listener);
@@ -1350,7 +1361,7 @@ function create(Type, props) {
       });
     }
     const completed = props.Component$onCompleted;
-    if (completed) completions.push(() => untrack(completed));
+    if (completed) completions.push(() => heard(() => untrack(completed)));
     // An object a property holds is made with the rest, whoever reads it:
     // a state entered from the start may change what is in it.
     if (props.$made) {
@@ -1415,7 +1426,7 @@ export function onChange(self, name, handler, first) {
           // have changed and left it as it was.
           if (same(value, last)) return;
           last = value;
-          after(handler);
+          after(() => heard(handler));
         },
       ),
     );
