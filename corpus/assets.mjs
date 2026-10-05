@@ -8,28 +8,41 @@
 //   corpus/assets.mjs ID...      # download and unpack those of each
 //
 // `assets` in `corpus/examples.json` says where an example's are downloaded
-// from and where its build puts them. The cache is QML_SOLID_ASSETS, or
-// `qml-solid/assets` in the user's cache directory.
+// from and where its build puts them (`places`). An example that downloads
+// them itself, as it starts, asks for them one by one where a browser is
+// concerned: `addresses` says at which addresses, and what is kept is given
+// for them where there is to be no network. `without` names what is in the
+// archive and nothing of the example reads. The cache is QML_SOLID_ASSETS,
+// or `qml-solid/assets` in the user's cache directory.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 const cache = process.env.QML_SOLID_ASSETS ?? join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "qml-solid", "assets");
 
-// Where an example's assets are kept, and where each directory of them is
-// in the example as built: `[in the example, in the cache]`. Null for an
-// example that has none, or whose assets are not here.
+// Where an example's assets are kept, where each directory of them is in
+// the example as built (`places`: `[in the example, in the cache]`) and at
+// which address the example asks for it (`addresses`: `[address, in the
+// cache]`). Null for an example that has none, or whose assets are not here.
 export function assetsOf(example) {
   if (!example.assets) return null;
   const directory = join(cache, example.id);
-  const places = Object.entries(example.assets.places).map(([to, from]) => [to, join(directory, from)]);
-  return places.every(([, from]) => existsSync(from)) ? { directory, places } : null;
+  const kept = (pairs = {}) => Object.entries(pairs).map(([to, from]) => [to, join(directory, from)]);
+  const places = kept(example.assets.places);
+  const addresses = kept(example.assets.addresses);
+  return [...places, ...addresses].every(([, from]) => existsSync(from)) ? { directory, places, addresses } : null;
 }
 
 async function download(example) {
   const directory = join(cache, example.id);
+  if (assetsOf(example)) {
+    console.log(`${example.id}: ${directory}`);
+    return;
+  }
   const archive = join(directory, basename(new URL(example.assets.url).pathname));
   mkdirSync(directory, { recursive: true });
   if (!existsSync(archive)) {
@@ -37,18 +50,19 @@ async function download(example) {
     const answer = await fetch(example.assets.url);
     if (!answer.ok) throw new Error(`${example.assets.url}: ${answer.status} ${answer.statusText}`);
     // Whole or not at all: half an archive is not one to unpack next time.
-    writeFileSync(`${archive}.part`, Buffer.from(await answer.arrayBuffer()));
+    await pipeline(Readable.fromWeb(answer.body), createWriteStream(`${archive}.part`));
     renameSync(`${archive}.part`, archive);
   }
+  const without = example.assets.without ?? [];
   const unpacked = [
-    ["unzip", ["-o", "-q", archive, "-d", directory]],
-    ["bsdtar", ["-xf", archive, "-C", directory]],
+    ["unzip", ["-o", "-q", archive, "-d", directory, ...(without.length ? ["-x", ...without] : [])]],
+    ["bsdtar", ["-xf", archive, "-C", directory, ...without.flatMap((name) => ["--exclude", name])]],
   ].some(([tool, args]) => spawnSync(tool, args, { stdio: "inherit" }).status === 0);
   if (!unpacked) throw new Error(`${archive} could not be unpacked: neither unzip nor bsdtar did`);
-  if (!assetsOf(example)) {
-    rmSync(archive);
-    throw new Error(`${archive} has not got ${Object.values(example.assets.places).join(", ")}`);
-  }
+  const places = Object.values({ ...example.assets.places, ...example.assets.addresses });
+  // Unpacked, the archive is the same again: it is not kept twice.
+  rmSync(archive);
+  if (!assetsOf(example)) throw new Error(`${archive} has not got ${places.join(", ")}`);
   console.log(`${example.id}: ${directory}`);
 }
 

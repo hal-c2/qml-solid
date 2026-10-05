@@ -119,6 +119,10 @@ and `mise run assets ID` fetches them into `~/.cache/qml-solid/assets` (or
 `QML_SOLID_ASSETS`): the gallery serves them from there as if they were in the
 example, and `mise run reference` puts them where the build would. An example
 without them still renders, with what it has, and is not held to Qt's picture.
+One that downloads them itself as it starts (car-configurator) asks a browser
+for them one by one, at the address they are kept at: with a network it has
+them from there, and the gallery's test, which has none, is given what was
+fetched.
 
 A path in QML is relative to a file: the one that has the object that loads
 it. `Image { source: "a.png" }` is next to the file that says so, and so is

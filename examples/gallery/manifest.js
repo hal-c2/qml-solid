@@ -38,6 +38,10 @@ export function readManifest() {
       // (`mise run assets`): each directory of it, where the build puts it
       // and where it is.
       fetched: (assetsOf(example)?.places ?? []).map(([to, from]) => [join(directory, to), from]),
+      // And what the example downloads itself, fetched likewise: the address
+      // it asks for each directory at, where that is, and where the gallery
+      // serves it.
+      served: (assetsOf(example)?.addresses ?? []).map(([address, from], index) => [address, from, `/@assets/${example.id}/${index}/`]),
     };
   });
 }

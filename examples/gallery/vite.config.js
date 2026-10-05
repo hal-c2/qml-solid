@@ -73,22 +73,33 @@ function standins(file) {
 
 // What an example's build downloads and puts among its files is not among
 // them in the corpus: a file asked for there that is not there is served from
-// where it has been fetched to.
+// where it has been fetched to. What an example downloads itself is served
+// from there too, for a page that is to ask nobody else: to any page, as the
+// place it is downloaded from serves it.
 function assets() {
   const fetched = () => readManifest().flatMap((example) => example.fetched);
+  const served = () => readManifest().flatMap((example) => example.served);
+  const kept = (directory, rest) => `/@fs${join(directory, decodeURIComponent(rest)).split(sep).map(encodeURIComponent).join("/")}`;
   return {
     name: "gallery-assets",
-    config: () => ({ server: { fs: { allow: fetched().map(([, from]) => from) } } }),
+    config: () => ({ server: { fs: { allow: [...fetched(), ...served()].map(([, from]) => from) } } }),
     configureServer(server) {
-      server.middlewares.use((request, _response, next) => {
+      server.middlewares.use((request, response, next) => {
         const [asked, query = ""] = request.url.split("?");
-        if (asked.startsWith("/@fs/")) {
+        const address = served().find(([, , local]) => asked.startsWith(local));
+        if (address) {
+          const rest = asked.slice(address[2].length);
+          response.setHeader("Access-Control-Allow-Origin", "*");
+          if (!existsSync(join(address[1], decodeURIComponent(rest)))) {
+            response.statusCode = 404;
+            response.end();
+            return;
+          }
+          request.url = kept(address[1], rest);
+        } else if (asked.startsWith("/@fs/")) {
           const file = decodeURIComponent(asked.slice("/@fs".length));
           const place = fetched().find(([to]) => file.startsWith(to + sep));
-          if (place && !existsSync(file)) {
-            const kept = join(place[1], file.slice(place[0].length + 1));
-            request.url = `/@fs${kept.split(sep).map(encodeURIComponent).join("/")}${query && "?" + query}`;
-          }
+          if (place && !existsSync(file)) request.url = `${kept(place[1], file.slice(place[0].length + 1))}${query && "?" + query}`;
         }
         next();
       });
