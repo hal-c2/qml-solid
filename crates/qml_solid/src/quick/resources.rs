@@ -32,8 +32,8 @@ impl Named<'_> {
     /// `written` is the name of a file, or how the name of one starts: what
     /// is put together when the program runs
     /// (`"qrc:/qt/qml/Thermostat/images/" + name + ".png"`) may be any of
-    /// the files that start so.
-    fn name(&mut self, written: &str) {
+    /// the files that start so. `end` is how it ends, where that is known.
+    fn name(&mut self, written: &str, end: &str) {
         // `:/images/icon.png` and `qrc:///images/icon.png` are the same.
         let Some(rest) = written.strip_prefix("qrc:").or_else(|| written.strip_prefix(':')) else { return };
         if !rest.starts_with('/') {
@@ -41,19 +41,24 @@ impl Named<'_> {
         }
         let address = format!("qrc:/{}", rest.trim_start_matches('/'));
         for (address, path) in self.project.resources(&address) {
-            self.found.insert(address.clone(), path.clone());
+            if address.ends_with(end) {
+                self.found.insert(address.clone(), path.clone());
+            }
         }
     }
 }
 
 impl<'a> Visit<'a> for Named<'_> {
     fn visit_string_literal(&mut self, literal: &StringLiteral<'a>) {
-        self.name(literal.value.as_str());
+        self.name(literal.value.as_str(), "");
     }
 
     fn visit_template_literal(&mut self, literal: &TemplateLiteral<'a>) {
-        if let Some(first) = literal.quasis.first() {
-            self.name(first.value.raw.as_str());
+        // `qrc:/qt/qml/Thermostat/images/${name}.png`
+        if let [first, .., last] = literal.quasis.as_slice() {
+            self.name(first.value.raw.as_str(), last.value.raw.as_str());
+        } else if let Some(only) = literal.quasis.first() {
+            self.name(only.value.raw.as_str(), "");
         }
         walk::walk_template_literal(self, literal);
     }

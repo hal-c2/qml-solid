@@ -1154,6 +1154,7 @@ Item {
         ("qrc:/qt/qml/Palette/icons/qt.png.license", "icons/qt.png.license"),
         ("qrc:/qt/qml/Palette/icons/dark/close.svg", "icons/dark/close.svg"),
         ("qrc:/qt/qml/Palette/icons/dark/user.svg", "icons/dark/user.svg"),
+        ("qrc:/qt/qml/Palette/icons/dark/shade.png", "icons/dark/shade.png"),
         ("qrc:/qt/qml/Palette/icons/light/close.svg", "icons/light/close.svg"),
         ("qrc:/data/medals.csv", "../data/medals.csv"),
     ] {
@@ -1165,12 +1166,14 @@ Item {
     // By where it is from the file.
     assert_contains(&code, r#"$resource("qrc:/qt/qml/Palette/icons/qt.png", new URL("../icons/qt.png", import.meta.url).href);"#);
     assert_contains(&code, r#"$resource("qrc:/data/medals.csv", new URL("../../data/medals.csv", import.meta.url).href);"#);
-    // A name put together as the program runs may be any that starts so.
+    // A name put together as the program runs may be any that starts and
+    // ends so.
     assert_contains(&code, r#"$resource("qrc:/qt/qml/Palette/icons/dark/close.svg", new URL("../icons/dark/close.svg", import.meta.url).href);"#);
     assert_contains(&code, r#"$resource("qrc:/qt/qml/Palette/icons/dark/user.svg", "#);
     // Only what is named: not what is next to it, nor what starts as a
     // whole name does.
     assert_lacks(&code, "light/close.svg");
+    assert_lacks(&code, "shade.png");
     assert_lacks(&code, "qt.png.license");
     // The program still names them as it did, and one the build does not
     // keep is nowhere.

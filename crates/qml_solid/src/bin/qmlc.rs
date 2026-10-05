@@ -57,6 +57,31 @@ fn project_root(path: &Path) -> PathBuf {
         .to_path_buf()
 }
 
+/// The project the one at `root` is built as a part of, if any: the nearest
+/// directory above whose build takes it in (`add_subdirectory(QtExampleStyle)`).
+fn including(root: &Path) -> Option<&Path> {
+    root.ancestors().skip(1).find(|above| {
+        let Ok(part) = root.strip_prefix(above) else { return false };
+        let part = part.to_string_lossy();
+        std::fs::read_to_string(above.join("CMakeLists.txt")).is_ok_and(|text| {
+            text.lines().filter_map(|line| line.trim_start().strip_prefix("add_subdirectory(")).any(|rest| {
+                let named = rest.split([')', ' ']).next().unwrap_or(rest).trim_matches('"');
+                named.trim_end_matches('/') == part
+            })
+        })
+    })
+}
+
+/// The whole program the project at `root` is of: what is built with it is
+/// in the same program, and the files that one keeps are there for all of it.
+fn program_root(root: &Path) -> &Path {
+    let mut whole = root;
+    while let Some(above) = including(whole) {
+        whole = above;
+    }
+    whole
+}
+
 /// The files under `root` that say what a module is.
 fn descriptions(root: &Path, found: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(root) else { return };
@@ -127,17 +152,9 @@ fn modules(project: &mut Project, root: &Path, base: &Path, standing: bool) {
         let modules = if description.ends_with("qmldir") {
             discover::qmldir(&text).into_iter().collect()
         } else {
-            for resource in discover::kept(&text) {
-                let Ok(file) = directory.join(&resource.path).canonicalize() else { continue };
-                project.add_resource(&resource.address, &relative(base, &file));
-            }
             discover::cmake(&text)
         };
         for module in modules {
-            for resource in &module.resources {
-                let Ok(file) = directory.join(resource).canonicalize() else { continue };
-                project.add_resource(&module.address(resource), &relative(base, &file));
-            }
             for ty in module.types {
                 let Ok(file) = directory.join(&ty.path).canonicalize() else { continue };
                 let path = relative(base, &file);
@@ -157,6 +174,25 @@ fn modules(project: &mut Project, root: &Path, base: &Path, standing: bool) {
     }
 }
 
+/// Adds the files the builds under `root` keep in the program, each by the
+/// path from `base`: the ones that go with a module and the ones kept by
+/// themselves.
+fn kept(project: &mut Project, root: &Path, base: &Path) {
+    let mut found = Vec::new();
+    descriptions(root, &mut found);
+    for description in found.iter().filter(|description| description.ends_with("CMakeLists.txt")) {
+        let Ok(text) = std::fs::read_to_string(description) else { continue };
+        let directory = description.parent().unwrap_or(root);
+        let modules = discover::cmake(&text);
+        let with = modules.iter().flat_map(|module| module.resources.iter().map(|resource| (module.address(resource), resource.clone())));
+        let alone = discover::kept(&text).into_iter().map(|resource| (resource.address, resource.path));
+        for (address, path) in with.chain(alone) {
+            let Ok(file) = directory.join(&path).canonicalize() else { continue };
+            project.add_resource(&address, &relative(base, &file));
+        }
+    }
+}
+
 /// The QML files `path` is compiled with: the ones next to it, which is
 /// where the components it names are and where it is used, and the ones in
 /// the directories any of them imports. One that does not parse is left out
@@ -171,6 +207,8 @@ fn project(path: &Path, project_root: Option<&Path>, with: &[PathBuf]) -> Projec
         let project_root = project_root.map_or_else(|| self::project_root(&path), Path::to_path_buf);
         if let Ok(project_root) = project_root.canonicalize() {
             modules(&mut project, &project_root, &base, false);
+            // A program's files are one lot, whichever part names one.
+            kept(&mut project, program_root(&project_root), &base);
         }
         for more in with.iter().filter_map(|more| more.canonicalize().ok()) {
             modules(&mut project, &more, &base, true);
