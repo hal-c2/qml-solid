@@ -115,7 +115,8 @@ test("a change of state on the way starts from where things are", async ({ page 
   await advance(page, 100);
   expect(await log(page)).toEqual(["any true", "completed b 200 60", "any false"]);
   await set(page, "unit", 20);
-  expect(await shown(page)).toEqual(["b", 200, 60, 160, 70, 2, 0]);
+  // The opacity is `unit / 10`: twice all of it is all of it.
+  expect(await shown(page)).toEqual(["b", 200, 60, 160, 70, 1, 0]);
 });
 
 test("what a state does not restore stays, and the rest goes back", async ({ page }) => {

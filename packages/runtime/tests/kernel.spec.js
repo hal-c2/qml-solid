@@ -219,3 +219,33 @@ test("an item given NaN for where it is or how big stays as it was", async ({ pa
   ]);
   expect(await page.evaluate(() => window.scene.bound.$node.style.transform)).toBe("translate(3px, 2px)");
 });
+
+// samegame shows its "New Game" button by `opacity: over && (arcade || two)`:
+// a yes-or-no for a number.
+test("an item's own properties make what they are given the number or the yes-or-no they are", async ({ page }) => {
+  await open(page, "itemkinds");
+  const made = await page.evaluate(() => {
+    const { scene } = window;
+    return [false, true, 0, 3, 0.5, "0.5", "", "abc", null, NaN, -2].map((value) => {
+      scene.given = value;
+      return JSON.stringify([scene.read(scene.bound), scene.assigned(value)]);
+    });
+  });
+  const no = [0, 0, 0, 0, false, false, false];
+  const yes = [1, 1, 1, 1, true, true, true];
+  const half = [0.5, 0.5, 0.5, 0.5, true, true, true];
+  // No more than all of an opacity, and no less than none of it.
+  const three = [1, 3, 3, 3, true, true, true];
+  const less = [0, -2, -2, -2, true, true, true];
+  const none = [null, null, null, null, true, true, true];
+  const nan = [null, null, null, null, false, false, false];
+  expect(made).toEqual([no, yes, no, three, half, half, no, none, no, nan, less].map((row) => JSON.stringify([row, row])));
+  // Nothing is not theirs to be given.
+  const double = "Cannot assign [undefined] to double";
+  const bool = "Cannot assign [undefined] to bool";
+  expect(await page.evaluate(() => window.scene.assigned(undefined))).toEqual([double, double, double, double, bool, bool, bool]);
+  expect(await page.evaluate(() => window.scene.read(window.scene.plain))).toEqual(less);
+  // And an item is drawn as what it is.
+  await page.evaluate(() => (window.scene.given = false));
+  expect(await page.evaluate(() => window.scene.bound.$node.style.opacity)).toBe("0");
+});

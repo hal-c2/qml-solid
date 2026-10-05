@@ -135,6 +135,14 @@ function real(value) {
 }
 real.type = "double";
 
+// A share of the whole, as an opacity is: no less than none of it and no
+// more than all.
+function share(value) {
+  const made = real(value);
+  return made === REFUSED ? made : made < 0 ? 0 : made > 1 ? 1 : made;
+}
+share.type = "double";
+
 const bool = (value) => Boolean(value);
 bool.type = "bool";
 
@@ -223,7 +231,7 @@ function named(value) {
 
 // For a type that says how a property of its own is typed:
 // `typed(kinds.int, -1)`.
-export const kinds = { int, real, bool, string, color: tint, place };
+export const kinds = { int, real, share, bool, string, color: tint, place };
 
 // What the compiler declares a property of a file as.
 export const $int = typed(int, 0);
