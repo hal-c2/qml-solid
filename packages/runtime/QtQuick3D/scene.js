@@ -6,9 +6,8 @@
 //
 // Not here: shadows, a sky box that is a cube of six
 // pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, a material's
-// own probe, what a ReflectionProbe would have the models round it mirror,
-// and the distances a model draws the entries of its table between
-// (`instancingLodMin` and `instancingLodMax`). Of
+// own probe, and the distances a model draws the entries of its table
+// between (`instancingLodMin` and `instancingLodMax`). Of
 // a material's pictures: a height map moves nothing, nothing is let through
 // (`transmissionFactor` and its maps), a specular map and a translucency map
 // are not read, a picture is read whole where Qt can read one channel of it
@@ -793,9 +792,18 @@ export const Fog = defineType("Fog", Object3D, {
 // A reflection probe: a place the scene is looked at from all round, for
 // the models near it that take reflections to mirror.
 //
-// What it is asked for is held and nothing is looked at: a model mirrors
-// what its scene's light probe shows, as in Qt one does with no reflection
-// probe near it.
+// A model takes the reflections of the probe whose box it is in, of those
+// the nearest, in place of what its scene's light probe would light it by.
+// The box is as big as `boxSize` about where the probe is, moved by
+// `boxOffset`; what is mirrored is what is seen from where the probe is.
+//
+// Not here: the faces of the cube are all looked through for every picture
+// that is to have them, whatever `timeSlicing` says, a picture given in the
+// cube's place (`texture`) is not looked at, and nothing is shown for
+// `debugView`.
+const ACROSS = [128, 256, 512, 1024, 2048];
+const FirstFrame = 0;
+
 export const ReflectionProbe = defineType("ReflectionProbe", Node, {
   properties: {
     quality: 1,
@@ -808,9 +816,40 @@ export const ReflectionProbe = defineType("ReflectionProbe", Node, {
     debugView: false,
     texture: null,
   },
-  enums: { VeryLow: 0, Low: 1, Medium: 2, High: 3, VeryHigh: 4, FirstFrame: 0, EveryFrame: 1, None: 0, AllFacesAtOnce: 1, IndividualFaces: 2 },
+  enums: { VeryLow: 0, Low: 1, Medium: 2, High: 3, VeryHigh: 4, FirstFrame, EveryFrame: 1, None: 0, AllFacesAtOnce: 1, IndividualFaces: 2 },
   methods: {
-    scheduleUpdate() {},
+    // Looked through again for the next picture, where it is looked through
+    // once only.
+    scheduleUpdate() {
+      this.$asked[1]((turn) => turn + 1);
+    },
+  },
+  setup(self) {
+    self.$asked = createSignal(0, WRITABLE);
+    // What the renderer looks from and for which models: where the probe
+    // is, the corners of its box, the colour of what nothing is seen of
+    // (which is put in the cube as it is, and not as a colour of the
+    // screen's is), how far across each side of the cube is, and whether
+    // it is looked through once (`turn` says which time) or for every
+    // picture.
+    self.$mirror = () => {
+      const at = self.$world().slice(12, 15);
+      const { boxSize: size, boxOffset: offset } = self;
+      const middle = [at[0] + offset.x, at[1] + offset.y, at[2] + offset.z];
+      const half = [size.x / 2, size.y / 2, size.z / 2];
+      const { r, g, b, a } = color(self.clearColor);
+      return {
+        key: self,
+        at,
+        min: middle.map((value, axis) => value - half[axis]),
+        max: middle.map((value, axis) => value + half[axis]),
+        clear: [r, g, b, a],
+        parallax: Boolean(self.parallaxCorrection),
+        across: ACROSS[self.quality] ?? ACROSS[1],
+        once: self.refreshMode === FirstFrame,
+        turn: self.$asked[0](),
+      };
+    };
   },
 });
 

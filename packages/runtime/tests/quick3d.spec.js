@@ -1616,6 +1616,107 @@ test("a ReflectionProbe says of itself what Qt's says", async ({ page }) => {
   });
 });
 
+// Where a ball that mirrors is looked at: its middle, to the right, left,
+// top and bottom of it, between right and top, by its rim, and past it.
+const SPOTS = [[50, 50], [78, 50], [22, 50], [50, 22], [50, 78], [70, 30], [50, 13], [5, 5]];
+const spotted = (views) => views.flatMap((colours, view) => colours.flatMap((colour, spot) => (colour ? [[[(view % 4) * 100 + SPOTS[spot][0], Math.floor(view / 4) * 100 + SPOTS[spot][1]], colour]] : [])));
+const BLACK = [0, 0, 0];
+const RED = [255, 0, 0];
+const GREEN = [0, 255, 0];
+const BLUE = [0, 0, 255];
+const YELLOW = [255, 255, 0];
+const BROWN = [128, 64, 30];
+const BEHIND = [30, 64, 96];
+
+// Every number here is what Qt 6.11 paints of the same scene.
+test("a model mirrors what is round a ReflectionProbe, as Qt has it mirror", async ({ page }) => {
+  await open(page, "mirrors3d");
+  const mirror = [BROWN, RED, GREEN, BLUE, YELLOW, BLACK, BLACK, BEHIND];
+  const points = spotted([
+    // A ball of metal between four walls, one behind the camera: each wall
+    // where the ball faces it, and nothing between them.
+    mirror,
+    // One that is not to mirror does not.
+    [BLACK, BLACK, BLACK, BLACK, BLACK, BLACK, BLACK, BEHIND],
+    // Where nothing is seen is the probe's own colour, taken as it is and
+    // not as a colour of the scene is.
+    [BROWN, RED, GREEN, BLUE, YELLOW, [188, 188, 188], [188, 188, 188], BEHIND],
+    // The box of a probe says who mirrors by it, not what is seen: one the
+    // ball is not all in, and one moved off whose box still meets the ball,
+    // which sees the left wall no longer past the ball itself.
+    mirror,
+    [BROWN, RED, BLACK, BLUE, YELLOW, BLACK, BLACK, BEHIND],
+    // A rougher ball mirrors a blur.
+    [[65, 46, 23], [159, 22, 23], [27, 161, 21], [23, 24, 159], [159, 159, 0], [80, 0, 76], [20, 23, 73], BEHIND],
+    // What is not to be mirrored is not.
+    [BROWN, BLACK, GREEN, BLUE, YELLOW, BLACK, BLACK, BEHIND],
+    // What a probe sees is from where it is: as if round the ball, unless
+    // it is to be put right by the probe's box.
+    [BROWN, RED, BLACK, BLACK, BLACK, RED, BLACK, BEHIND],
+    [BROWN, RED, BLACK, BLUE, YELLOW, RED, BLACK, BEHIND],
+    // One that is no metal takes its light from all round the probe.
+    [[83, 72, 48], [123, 41, 34], [52, 119, 34], [53, 44, 111], [124, 119, 0], [97, 12, 95], [57, 53, 127], BEHIND],
+    // A smaller picture shows the same.
+    mirror,
+    // And the ball's own colour is on what it mirrors.
+    [[62, 27, 9], [133, 0, 0], [0, 132, 0], [0, 0, 132], [133, 133, 0], BLACK, BLACK, BEHIND],
+  ]);
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
+// And here.
+test("a ReflectionProbe sees the scene as it is lit, and the nearest whose box a model is in is its probe", async ({ page }) => {
+  await open(page, "mirrored3d");
+  const mirror = [BROWN, RED, GREEN, BLUE, YELLOW, BLACK, BLACK, BEHIND];
+  const points = spotted([
+    // The surroundings are seen where they are what is behind the scene,
+    // and light nothing that mirrors by a probe either way. (What is behind
+    // the first ball is not looked at: this camera sees a few pixels of the
+    // surroundings spread over the view, and those not quite as Qt has
+    // them.)
+    [BROWN, RED, GREEN, BLUE, YELLOW, GREEN, [96, 160, 0], null],
+    mirror,
+    // Walls a light is on are seen as it lights them: only the bottom one
+    // faces this light.
+    [BLACK, BLACK, BLACK, BLACK, [219, 219, 8], BLACK, BLACK, BEHIND],
+    // A DefaultMaterial: dull, with a shine added, and with a rough one.
+    [[84, 73, 49], [124, 42, 34], [53, 121, 35], [53, 45, 113], [125, 121, 0], [98, 12, 97], [58, 54, 128], BEHIND],
+    [[150, 96, 59], [255, 42, 34], [53, 255, 35], [53, 45, 255], YELLOW, [98, 12, 97], [58, 54, 128], BEHIND],
+    // Of two probes the ball is in the box of, the one whose box has its
+    // middle nearer the ball's: the second one's colour is grey.
+    mirror,
+    [BROWN, RED, GREEN, BLUE, YELLOW, [188, 188, 188], [188, 188, 188], BEHIND],
+    // A box that does not meet the ball gives it nothing to mirror; one
+    // moved back onto it from where the probe is does.
+    [BLACK, BLACK, BLACK, BLACK, BLACK, BLACK, BLACK, BEHIND],
+    [BROWN, RED, BLACK, BLACK, BLACK, RED, BLACK, BEHIND],
+    // What is mirrored is brought to the screen as the rest is.
+    [[55, 13, 3], RED, GREEN, BLUE, YELLOW, BLACK, BLACK, [3, 13, 30]],
+    [[109, 55, 25], [186, 0, 0], [0, 186, 0], [0, 0, 186], [186, 186, 0], [150, 150, 150], [150, 150, 150], [25, 55, 83]],
+    [[101, 81, 53], [188, 45, 35], [53, 188, 38], [56, 45, 183], [188, 186, 0], [118, 14, 111], [60, 54, 136], BEHIND],
+  ]);
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
+// And here.
+test("a ReflectionProbe that looks once looks again when it is asked to", async ({ page }) => {
+  await open(page, "once3d");
+  const sees = async (once, every) => {
+    const points = [
+      [[78, 50], once],
+      [[22, 50], GREEN],
+      [[178, 50], every],
+      [[122, 50], GREEN],
+    ];
+    near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+  };
+  await sees(RED, RED);
+  await page.evaluate(() => window.scene.whiten());
+  await sees(RED, [255, 255, 255]);
+  await page.evaluate(() => window.scene.ask());
+  await sees([255, 255, 255], [255, 255, 255]);
+});
+
 test("a vector's members are set one by one, and assigning it as one unbinds them", async ({ page }) => {
   const told = { old: [0, 0.5, 0], turned: [0, -70, 0], placed: [-50, 0, 0], x: -50 };
   const states = [

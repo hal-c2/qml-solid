@@ -32,6 +32,13 @@
 // first: the scene without what something is seen through, in linear light,
 // and how far each place of it is.
 //
+// A model that takes reflections and is in the box of a reflection probe
+// mirrors the scene as it is seen from the probe: which is drawn for it
+// first, through each side of a cube, as it is lit and in linear light, and
+// the cube blurred for what is rough, as that of a light probe is but over
+// fewer ways. Such a model takes of the cube what it would have taken of
+// the light probe, and of that nothing.
+//
 // An environment's effects are run over the picture once the scene is
 // drawn, one after another: the scene is drawn in linear light for them, as
 // under an ExtendedSceneEnvironment, each pass of each draws a rectangle
@@ -40,9 +47,11 @@
 // into a picture of fractions they are not run.
 //
 // Not here: a probe that is a canvas is folded once, as it is when first
-// drawn, and a material's own probe is not looked at. Of what an effect may
-// read besides the picture, only how far each place of it is: which is how
-// far what nothing is seen through is.
+// drawn, and a material's own probe is not looked at. What a CustomMaterial
+// draws mirrors nothing by a reflection probe, and what nodes draw by
+// themselves is not in what one sees. Of what an effect may read besides
+// the picture, only how far each place of it is: which is how far what
+// nothing is seen through is.
 import * as math from "./math.js";
 import { Triangles } from "./mesh.js";
 import { customised, effected } from "./shaders.js";
@@ -250,6 +259,15 @@ uniform vec2 u_lightCone[LIGHTS];
 uniform samplerCube u_probe;
 uniform vec4 u_probing;
 uniform mat3 u_probeTurn;
+// What is round a reflection probe, as a cube like that of the
+// surroundings: whether there is one, and whether what is read of it is
+// put right for where the surface is; where the probe looked from, and the
+// corners of its box.
+uniform samplerCube u_mirror;
+uniform vec2 u_mirroring;
+uniform vec3 u_mirrorAt;
+uniform vec3 u_mirrorMin;
+uniform vec3 u_mirrorMax;
 // How what a surface gives back of its surroundings as it is turned from
 // the eye is scaled and shifted.
 uniform vec2 u_edge;
@@ -300,6 +318,39 @@ vec3 mirrored(vec3 N, vec3 V, vec3 F, float roughness) {
     float a004 = min(r.x * r.x, exp2(-9.28 * clamp(dot(N, V), 0.0, 1.0))) * r.x + r.y;
     vec2 brdf = vec2(-1.04, 1.04) * a004 + r.zw;
     return exposed(read * (F * brdf.x + brdf.y));
+}
+
+// The way the cube of a reflection probe is read for what lies a way from
+// a surface: that way, or, put right, the way from where the probe looked
+// to where a line that way from the surface leaves the probe's box.
+vec3 righted(vec3 way) {
+    if (u_mirroring.y < 0.5) return way;
+    vec3 furthest = max((u_mirrorMax - v_position) / way, (u_mirrorMin - v_position) / way);
+    return v_position + way * min(min(furthest.x, furthest.y), furthest.z) - u_mirrorAt;
+}
+
+// What a surface takes of that cube, as it would of the surroundings': from
+// all round, and what each of the two kinds of material gives back. It is
+// neither dimmed below a horizon nor brought under one.
+vec3 aroundHere(vec3 N) {
+    return textureLod(u_mirror, righted(N), 5.0).rgb;
+}
+
+vec3 glossyHere(vec3 N, vec3 V, float rough) {
+    float sigma = smoothstep(0.0, 1.0, clamp(rough, 0.0001, 1.0));
+    vec3 way = reflect(-V, N);
+    float NdotL = clamp(dot(way, N), 0.0, 0.999995);
+    float k = sigma * 0.31830988618;
+    float seen = clamp((NdotL / (NdotL * (1.0 - k) + k) + (1.0 - k * k)) * 0.5, 0.0, 1.0);
+    return seen * textureLod(u_mirror, righted(way), sigma * 4.0).rgb;
+}
+
+vec3 mirroredHere(vec3 N, vec3 V, vec3 F, float roughness) {
+    vec3 read = textureLod(u_mirror, righted(normalize(reflect(-V, N))), clamp(roughness * 5.0, 0.0, 4.0)).rgb;
+    vec4 r = roughness * vec4(-1.0, -0.0275, -0.572, 0.022) + vec4(1.0, 0.0425, 1.04, -0.04);
+    float a004 = min(r.x * r.x, exp2(-9.28 * clamp(dot(N, V), 0.0, 1.0))) * r.x + r.y;
+    vec2 brdf = vec2(-1.04, 1.04) * a004 + r.zw;
+    return read * (F * brdf.x + brdf.y);
 }
 
 bool has(int which) {
@@ -518,7 +569,18 @@ void main() {
         // What a light gives a surface all round is less where less of the
         // light reaches it.
         diffuse *= reached;
-        if (u_probing.x > 0.5 && u_probing.w >= 0.005) {
+        if (u_mirroring.x > 0.5) {
+            // What is round a reflection probe is in place of the
+            // surroundings, and is not less where less light reaches.
+            if (u_principled) {
+                diffuse += base.rgb * (1.0 - amount) * aroundHere(N);
+                shine += tint * mirroredHere(N, V, amount, roughness);
+                if (coats) coating += mirroredHere(coated, V, vec3(bent), coatRoughness);
+            } else {
+                diffuse += base.rgb * aroundHere(N);
+                shine += amount * u_tint * glossyHere(N, V, roughness);
+            }
+        } else if (u_probing.x > 0.5 && u_probing.w >= 0.005) {
             if (u_principled) {
                 diffuse += base.rgb * (1.0 - amount) * around(N) * reached;
                 shine += tint * mirrored(N, V, amount, roughness) * reached;
@@ -603,6 +665,11 @@ const UNIFORMS = [
   "u_probe",
   "u_probing",
   "u_probeTurn",
+  "u_mirror",
+  "u_mirroring",
+  "u_mirrorAt",
+  "u_mirrorMin",
+  "u_mirrorMax",
   "u_edge",
   "u_fog",
   "u_fogDepth",
@@ -657,13 +724,14 @@ void main() {
 // One side of one level of the blurred cube: what a surface of one
 // roughness facing this way gives back of the surroundings, or what a rough
 // one takes from all round, summed over as many ways as Qt sums it over.
-// Qt's `environmentmapprefilter.frag`.
+// Qt's `environmentmapprefilter.frag`. A light probe is summed over a
+// thousand ways and more at each level.
 const WAYS = 1024;
 const BLUR = `#version 300 es
 precision highp float;
-const int WAYS = ${WAYS};
 const float PI = 3.14159265359;
 uniform samplerCube u_from;
+uniform int u_ways;
 uniform float u_roughness;
 uniform float u_resolution;
 uniform bool u_round;
@@ -702,8 +770,8 @@ void main() {
     mat3 about = frame(N);
     vec3 color = vec3(0.0);
     float weight = 0.0;
-    for (int index = 0; index < WAYS; index++) {
-        vec2 xi = vec2(float(index) / float(WAYS), radicalInverse(uint(index)));
+    for (int index = 0; index < u_ways; index++) {
+        vec2 xi = vec2(float(index) / float(u_ways), radicalInverse(uint(index)));
         float cosine;
         float sine;
         float chance;
@@ -719,7 +787,7 @@ void main() {
         }
         float phi = 2.0 * PI * xi.x;
         vec3 H = about * normalize(vec3(sine * cos(phi), sine * sin(phi), cosine));
-        float level = 0.5 * log2(6.0 * u_resolution * u_resolution / (float(WAYS) * chance));
+        float level = 0.5 * log2(6.0 * u_resolution * u_resolution / (float(u_ways) * chance));
         if (u_round) color += textureLod(u_from, H, level).rgb;
         else {
             vec3 L = normalize(reflect(-N, H));
@@ -730,7 +798,33 @@ void main() {
             }
         }
     }
-    fragColor = vec4(weight != 0.0 ? color / weight : color / float(WAYS), 1.0);
+    fragColor = vec4(weight != 0.0 ? color / weight : color / float(u_ways), 1.0);
+}
+`;
+
+// The same of what is round a reflection probe, which is made over while
+// the scene moves, and so summed over few ways, the same ones for every
+// place of a level (`few` finds them). Qt's `reflectionprobeprefilter.frag`.
+const FEW = 16;
+const GLOSS = `#version 300 es
+precision highp float;
+uniform samplerCube u_from;
+uniform vec4 u_few[${FEW}];
+uniform int u_count;
+out vec4 fragColor;
+${SIDE}
+void main() {
+    vec3 N = normalize(outward());
+    vec3 tangent = normalize(cross(abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0), N));
+    mat3 about = mat3(tangent, cross(N, tangent), N);
+    vec3 color = vec3(0.0);
+    float weight = 0.0;
+    for (int index = 0; index < u_count; index++) {
+        vec4 way = u_few[index];
+        color += textureLod(u_from, about * way.xyz, way.w).rgb * way.z;
+        weight += way.z;
+    }
+    fragColor = vec4(color / weight, 1.0);
 }
 `;
 
@@ -935,15 +1029,18 @@ function context() {
   gl.uniform1i(at.u_map, 0);
   gl.uniform1i(at.u_bones, 1);
   gl.uniform1i(at.u_probe, PROBE);
+  gl.uniform1i(at.u_mirror, MIRROR);
   SAMPLERS.forEach((name, index) => name && gl.uniform1i(at[name], UNITS[index]));
   // A cube there is always, for a program that could read one: of nothing,
-  // where the scene has no surroundings.
+  // where the scene has no surroundings, or nothing mirrors by a probe.
   nothing = gl.createTexture();
   gl.activeTexture(gl.TEXTURE0 + PROBE);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, nothing);
   for (let side = 0; side < 6; side++) gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + side, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.activeTexture(gl.TEXTURE0 + MIRROR);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, nothing);
   gl.activeTexture(gl.TEXTURE0);
   // A picture's first row is its bottom one to a mesh, as it is to Qt.
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -975,6 +1072,8 @@ const UNITS = [0, 2, 3, 4, 5, 6, 7, 2, 8, 9, 10];
 // from is while it is made.
 const PROBE = 11;
 const MAKING = 12;
+// And where the cube of a reflection probe is read.
+const MIRROR = 16;
 let nothing;
 
 // A shape as OpenGL holds it: its corners as the mesh file has them, each
@@ -1076,6 +1175,7 @@ function cube(size, levels) {
 let fold;
 let blur;
 let sky;
+const BLURRING = ["u_from", "u_ways", "u_roughness", "u_resolution", "u_round", "u_side"];
 
 function covering() {
   gl.bindVertexArray(null);
@@ -1083,6 +1183,96 @@ function covering() {
   gl.disable(gl.BLEND);
   gl.disable(gl.CULL_FACE);
   gl.depthMask(false);
+}
+
+// Each side of one level of a cube, drawn by the pass that is at work into
+// the frame that is.
+function sides(onto, level, across, at) {
+  gl.viewport(0, 0, across, across);
+  for (let side = 0; side < 6; side++) {
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + side, onto, level);
+    gl.uniform1i(at.u_side, side);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+}
+
+// One cube blurred into another of so many levels: the first as it is, the
+// last what a surface takes of it from all round, and those between what
+// surfaces of more and more roughness give back of it.
+function blurred(from, into, size, levels) {
+  gl.activeTexture(gl.TEXTURE0 + MAKING);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, from);
+  gl.useProgram(blur.program);
+  gl.uniform1i(blur.at.u_from, MAKING);
+  gl.uniform1i(blur.at.u_ways, WAYS);
+  gl.uniform1f(blur.at.u_resolution, size);
+  for (let level = 0; level < levels; level++) {
+    gl.uniform1f(blur.at.u_roughness, level / (levels - 2));
+    gl.uniform1i(blur.at.u_round, level === levels - 1 ? 1 : 0);
+    sides(into, level, size >> level, blur.at);
+  }
+}
+
+// The ways a surface of one roughness that faces along z gives back what is
+// round it, as Qt picks them for a reflection probe: the first sixteen of
+// the hundred and more it tries that come back from in front of the
+// surface, each with the level of the cube it reads, which is the higher
+// the more of the cube the way stands for.
+function few(roughness, resolution) {
+  const alpha = roughness ** 4;
+  const texel = (4 * Math.PI) / (6 * resolution * resolution);
+  const found = [];
+  for (let index = 0; index < FEW * 8 && found.length < FEW * 4; index++) {
+    // Each bit of the count, the other way round, behind the point.
+    let turned = 0;
+    for (let bits = index, bit = 0.5; bits; bits >>= 1, bit /= 2) if (bits & 1) turned += bit;
+    const phi = (2 * Math.PI * index) / FEW;
+    const cosine = Math.sqrt((1 - turned) / (1 + (alpha - 1) * turned));
+    const sine = Math.sqrt(1 - cosine * cosine);
+    const back = 2 * cosine * cosine - 1;
+    // One that comes back along the surface counts for nothing, and Qt's
+    // sums leave it just behind.
+    if (back <= 1e-6) continue;
+    const spread = alpha / (Math.PI * (cosine * cosine * (alpha - 1) + 1) ** 2);
+    const stood = 1 / (FEW * (spread / 4 + 0.0001) + 0.0001);
+    found.push(2 * cosine * sine * Math.cos(phi), 2 * cosine * sine * Math.sin(phi), back, roughness === 0 ? 0 : 0.5 * Math.log2(stood / texel));
+  }
+  return found;
+}
+
+// What is round a reflection probe blurred into a cube of so many levels,
+// as `blurred` blurs a light probe: but the levels of a roughness summed
+// over those few ways, and the last over a quarter as many as a side is
+// across, each read of the cube as it is and not of its smaller levels.
+let gloss;
+let whole;
+function glossed(from, into, size, levels) {
+  gl.activeTexture(gl.TEXTURE0 + MAKING);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, from);
+  gl.useProgram(gloss.program);
+  gl.uniform1i(gloss.at.u_from, MAKING);
+  for (let level = 0; level < levels - 1; level++) {
+    const ways = few(level / (levels - 2), size);
+    gl.uniform4fv(gloss.at["u_few[0]"], ways);
+    gl.uniform1i(gloss.at.u_count, ways.length / 4);
+    sides(into, level, size >> level, gloss.at);
+  }
+  gl.useProgram(blur.program);
+  gl.uniform1i(blur.at.u_from, MAKING);
+  gl.uniform1i(blur.at.u_ways, size / 4);
+  gl.uniform1f(blur.at.u_resolution, size);
+  gl.uniform1f(blur.at.u_roughness, 0);
+  gl.uniform1i(blur.at.u_round, 1);
+  if (!whole) {
+    whole = gl.createSampler();
+    gl.samplerParameteri(whole, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.samplerParameteri(whole, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.samplerParameteri(whole, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.samplerParameteri(whole, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+  gl.bindSampler(MAKING, whole);
+  sides(into, levels - 1, size >> (levels - 1), blur.at);
+  gl.bindSampler(MAKING, null);
 }
 
 // The picture of a light probe as the cube that is read when a scene is lit
@@ -1098,7 +1288,7 @@ function probed(map) {
   let made = probes.get(from);
   if (made !== undefined) return made;
   fold ??= program(COVER, FOLD, ["u_from", "u_screen", "u_side"]);
-  blur ??= program(COVER, BLUR, ["u_from", "u_roughness", "u_resolution", "u_round", "u_side"]);
+  blur ??= program(COVER, BLUR, BLURRING);
   if (!fold || !blur) {
     probes.set(from, null);
     return null;
@@ -1109,14 +1299,6 @@ function probed(map) {
   covering();
   const frame = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
-  const sides = (onto, level, across, at) => {
-    gl.viewport(0, 0, across, across);
-    for (let side = 0; side < 6; side++) {
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + side, onto, level);
-      gl.uniform1i(at.u_side, side);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-    }
-  };
 
   // The picture, folded: read between its pixels, and not past its edges.
   const folded = cube(size, Math.floor(Math.log2(size)) + 1);
@@ -1134,15 +1316,7 @@ function probed(map) {
 
   // And blurred, level by level.
   const cubed = cube(size, levels);
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, folded);
-  gl.useProgram(blur.program);
-  gl.uniform1i(blur.at.u_from, MAKING);
-  gl.uniform1f(blur.at.u_resolution, size);
-  for (let level = 0; level < levels; level++) {
-    gl.uniform1f(blur.at.u_roughness, level / (levels - 2));
-    gl.uniform1i(blur.at.u_round, level === levels - 1 ? 1 : 0);
-    sides(cubed, level, size >> level, blur.at);
-  }
+  blurred(folded, cubed, size, levels);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.deleteFramebuffer(frame);
@@ -1395,7 +1569,7 @@ const MORE = ["u_view", "u_projection", "u_seen", "u_unprojected", "u_looking", 
 const SCREEN = 13;
 const DEPTH = 14;
 const WHITE = 15;
-const OWN = 16;
+const OWN = 17;
 
 // Qt's numbers for how what is drawn is put over what is there, as OpenGL
 // has them. The first is for none.
@@ -1438,6 +1612,7 @@ function tailor(source) {
     gl.uniform1i(made.at.u_map, 0);
     gl.uniform1i(made.at.u_bones, 1);
     gl.uniform1i(made.at.u_probe, PROBE);
+    gl.uniform1i(made.at.u_mirror, MIRROR);
     SAMPLERS.forEach((name, index) => name && gl.uniform1i(made.at[name], UNITS[index]));
     gl.uniform1i(made.at.u_screen, SCREEN);
     gl.uniform1i(made.at.u_depth, DEPTH);
@@ -1550,6 +1725,21 @@ function drawn(piece) {
   gl.uniform1i(at.u_shiny, material.shiny === false ? 0 : 1);
   gl.uniform1i(at.u_glint, material.glint ? 1 : 0);
   gl.uniform2fv(at.u_edge, material.edge ?? [1, 0]);
+  // What is round the reflection probe it is near, where it is near one.
+  const { mirror } = piece;
+  const round = (mirror && cubes.get(mirror.key)?.cube) || nothing;
+  gl.uniform2f(at.u_mirroring, round === nothing ? 0 : 1, mirror?.parallax ? 1 : 0);
+  if (round !== nothing) {
+    gl.uniform3fv(at.u_mirrorAt, mirror.at);
+    gl.uniform3fv(at.u_mirrorMin, mirror.min);
+    gl.uniform3fv(at.u_mirrorMax, mirror.max);
+  }
+  if (round !== reflecting) {
+    reflecting = round;
+    gl.activeTexture(gl.TEXTURE0 + MIRROR);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, round);
+    gl.activeTexture(gl.TEXTURE0);
+  }
   const reads = new Float32Array(MAPS.length * 3);
   const places = new Float32Array(MAPS.length * 9);
   MAPS.forEach((name, index) => {
@@ -1766,8 +1956,208 @@ const sheer = (material, opacity) =>
     ? material.custom.through
     : material.blended || material.blend !== 0 || opacity * material.opacity < 1 || Boolean(material.maps?.opacity) || (!material.solid && (material.color[3] < 1 || Boolean(material.map?.sheer)));
 
+// What every program is told for a picture seen by an eye (`eye` is where
+// the camera is and how it is turned) through `projection`.
+function said(environment, probe, eye, projection, tonemap, near, far) {
+  const view = math.inverse(eye) ?? math.IDENTITY;
+  return {
+    probing: [probe ? 1 : 0, probe ? probe.levels - 1 : 0, environment.probe?.horizon ?? -1, environment.probe?.exposure ?? 0],
+    probeTurn: environment.probe?.turn ?? UNTURNED,
+    eye: eye.slice(12, 15),
+    fog: environment.fog?.color ?? NONE,
+    fogDepth: environment.fog?.depth ?? NONE,
+    fogHeight: environment.fog?.height ?? NONE,
+    fogLet: environment.fog?.through ?? NONE.slice(0, 2),
+    far,
+    tonemap,
+    view,
+    projection,
+    seen: math.multiply(projection, view),
+    unprojected: math.inverse(projection) ?? math.IDENTITY,
+    looking: [-eye[8], -eye[9], -eye[10]],
+    clips: [near, far],
+  };
+}
+
+// The reflection probe a part of a shape mirrors by: one whose box the
+// part's own meets, and of those the one whose middle is nearest the
+// middle of the part's. The part's box is its two corners where the shape
+// is put, as Qt has it.
+function near(probes, placed, { min, max }) {
+  const least = math.point(placed, ...min);
+  const most = math.point(placed, ...max);
+  let chosen = null;
+  let nearest = Infinity;
+  for (const probe of probes) {
+    if (least.some((value, axis) => probe.min[axis] > most[axis] || value > probe.max[axis])) continue;
+    const distance = Math.hypot(...least.map((value, axis) => (value + most[axis] - probe.min[axis] - probe.max[axis]) / 2));
+    if (distance < nearest) {
+      chosen = probe;
+      nearest = distance;
+    }
+  }
+  return chosen;
+}
+
+// What there is to draw, as `told` has it seen: each part of each shape
+// with a material is a thing to draw. A shape with fewer materials than
+// parts has the last for the rest; one with none is not drawn. What nothing
+// is seen through is `solid`, the nearest first; what something is,
+// `clear`, the farthest first. What a reflection probe sees (`mirrored`) is
+// the shapes that are for mirroring, and none of them mirrors anything.
+function listed(scene, { view, seen, looking }, mirrored) {
+  const solid = [];
+  const clear = [];
+  const probes = mirrored ? [] : (scene.probes ?? []);
+  for (const model of scene.models) {
+    if (mirrored && !model.mirrored) continue;
+    const { shape, materials, opacity, bones } = model;
+    const lights = model.lights ?? scene.lights;
+    let { instances } = model;
+    if (instances && !instances.count) continue;
+    // A bent shape is where its joints put it, wherever its model is. One
+    // drawn by a table is where each entry puts it, which the corners
+    // work out: here it is as its model is within the entry.
+    const world = bones ? math.IDENTITY : (instances?.local ?? model.world);
+    const all = instances ? seen : math.multiply(seen, world);
+    const placed = instances ? math.multiply(instances.above, world) : world;
+    if (instances?.sorted) {
+      const way = math.normalized(math.point(math.inverse(model.world) ?? math.IDENTITY, ...looking));
+      instances = { ...instances, data: farthestFirst(instances.data, instances.count, way), fresh: true };
+    }
+    shape.subsets.forEach((subset, index) => {
+      const material = materials[Math.min(index, materials.length - 1)];
+      if (!material || material.waiting) return;
+      const middle = math.point(placed, ...subset.min.map((least, axis) => (least + subset.max[axis]) / 2));
+      // How far in front of the eye it is: the eye looks down its own z.
+      const distance = -math.point(view, ...middle)[2];
+      const through = sheer(material, opacity) || Boolean(instances?.sheer);
+      const mirror = model.mirrors && probes.length ? near(probes, placed, subset) : null;
+      (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, lights, instances, placed, sheer: through, mirror });
+    });
+  }
+  // What nodes draw by themselves (`paints`), each with a program of its
+  // own, is among what is seen through: as far away as the node is.
+  if (!mirrored) for (const paint of scene.paints ?? []) clear.push({ paint, distance: -math.point(view, ...paint.at)[2] });
+  solid.sort((a, b) => a.distance - b.distance);
+  clear.sort((a, b) => b.distance - a.distance);
+  return { solid, clear };
+}
+
+// Draws what was listed, into what is drawn into, as `told` has it seen.
+function pieces(solid, clear, environment, told) {
+  if (environment.depth) gl.enable(gl.DEPTH_TEST);
+  else gl.disable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LEQUAL);
+  // What is behind the scene was drawn without saying how far it is.
+  gl.depthMask(true);
+  gl.disable(gl.BLEND);
+  for (const piece of solid) part(piece);
+  gl.enable(gl.BLEND);
+  gl.depthMask(false);
+  for (const piece of clear) {
+    if (piece.paint) {
+      const own = gl.getParameter(gl.CURRENT_PROGRAM);
+      piece.paint({ gl, view: told.view, projection: told.projection, tonemap: told.tonemap, bound });
+      gl.useProgram(own);
+      continue;
+    }
+    // What is drawn is already times its own alpha.
+    const { blend } = piece.material;
+    if (blend === 1) gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+    else if (blend === 2) gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ONE, gl.ONE);
+    else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    part(piece);
+  }
+  gl.depthMask(true);
+  gl.bindVertexArray(null);
+}
+
+// The six sides of a cube as a camera looks through each: which way is to
+// its right, which is up, and which is behind it. OpenGL's order, and its
+// way up for each.
+const LOOKS = [
+  [0, 0, -1, 0, -1, 0, -1, 0, 0],
+  [0, 0, 1, 0, -1, 0, 1, 0, 0],
+  [1, 0, 0, 0, 0, 1, 0, -1, 0],
+  [1, 0, 0, 0, 0, -1, 0, 1, 0],
+  [1, 0, 0, 0, -1, 0, 0, 0, -1],
+  [-1, 0, 0, 0, -1, 0, 0, 0, 1],
+];
+
+// What is round a reflection probe, as the cube the models near it read:
+// the scene as its lights light it, in linear light, seen from where the
+// probe is through each side of a cube, over the probe's own colour for
+// what nothing is seen of, or over the surroundings where those are what is
+// behind the scene, with no tone mapping; and that blurred level by level
+// (`glossed`). Qt looks from one to ten thousand away.
+//
+// A probe that is looked through once is looked through again when it is
+// asked to be, and when more of the scene is here than was.
+const cubes = new WeakMap();
+let reflecting;
+function reflected(probe, scene, environment, surroundings) {
+  blur ??= program(COVER, BLUR, BLURRING);
+  gloss ??= program(COVER, GLOSS, ["u_from", "u_few[0]", "u_count", "u_side"]);
+  if (!blur || !gloss) return;
+  const { across } = probe;
+  let held = cubes.get(probe.key);
+  if (held && held.across !== across) {
+    gl.deleteTexture(held.raw);
+    gl.deleteTexture(held.cube);
+    gl.deleteRenderbuffer(held.depth);
+    gl.deleteFramebuffer(held.frame);
+    gl.deleteFramebuffer(held.blurring);
+    held = null;
+    reflecting = undefined;
+  }
+  const projection = math.perspective(90, 1, 1, 10000);
+  const through = LOOKS.map((look) => {
+    const eye = [look[0], look[1], look[2], 0, look[3], look[4], look[5], 0, look[6], look[7], look[8], 0, ...probe.at, 1];
+    const told = said(environment, surroundings, eye, projection, 0, 1, 10000);
+    return { told, eye, ...listed(scene, told, true) };
+  });
+  const there = `${probe.turn} ${surroundings && environment.sky ? 1 : 0} ${through[0].solid.length + through[0].clear.length}`;
+  if (held && probe.once && held.there === there) return;
+  if (!held) {
+    held = { across, raw: cube(across, Math.floor(Math.log2(across)) + 1), cube: cube(across, LEVELS), depth: gl.createRenderbuffer(), frame: gl.createFramebuffer(), blurring: gl.createFramebuffer() };
+    gl.bindRenderbuffer(gl.RENDERBUFFER, held.depth);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, across, across);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, held.frame);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, held.depth);
+    cubes.set(probe.key, held);
+  }
+  held.there = there;
+  // Nothing is behind what reads what is behind it, in what a probe sees.
+  pictured(SCREEN, flat(0, 0, 0, 255));
+  pictured(DEPTH, flat(0, 0, 0, 255));
+  through.forEach(({ told, eye, solid, clear }, side) => {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, held.frame);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + side, held.raw, 0);
+    gl.viewport(0, 0, across, across);
+    gl.depthMask(true);
+    gl.clearColor(...probe.clear);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (surroundings && environment.sky) backdrop(surroundings, environment, projection, eye, 0);
+    telling = told;
+    tell();
+    shining = null;
+    pieces(solid, clear, environment, told);
+  });
+  covering();
+  gl.activeTexture(gl.TEXTURE0 + MAKING);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, held.raw);
+  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, held.blurring);
+  glossed(held.raw, held.cube, across, LEVELS);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.depthMask(true);
+  gl.useProgram(shaded.program);
+}
+
 // Draws `scene` (`{ width, height, environment, projection, camera, models,
-// lights }`) and hands the picture to `paper`, the context of `canvas`.
+// lights, probes }`) and hands the picture to `paper`, the context of
+// `canvas`.
 export function draw(scene, canvas, paper) {
   const ratio = window.devicePixelRatio || 1;
   const width = Math.round(scene.width * ratio);
@@ -1807,65 +2197,21 @@ export function draw(scene, canvas, paper) {
     // The eye sees from where the camera is and the way it is turned,
     // however big it is.
     const eye = math.unscaled(scene.camera);
-    const view = math.inverse(eye) ?? math.IDENTITY;
-    const seen = math.multiply(scene.projection, view);
     if (probe && environment.sky) backdrop(probe, environment, scene.projection, eye, tonemap);
-    const told = {
-      probing: [probe ? 1 : 0, probe ? probe.levels - 1 : 0, environment.probe?.horizon ?? -1, environment.probe?.exposure ?? 0],
-      probeTurn: environment.probe?.turn ?? UNTURNED,
-      eye: eye.slice(12, 15),
-      fog: environment.fog?.color ?? NONE,
-      fogDepth: environment.fog?.depth ?? NONE,
-      fogHeight: environment.fog?.height ?? NONE,
-      fogLet: environment.fog?.through ?? NONE.slice(0, 2),
-      far: scene.far ?? 0,
-      tonemap,
-      view,
-      projection: scene.projection,
-      seen,
-      unprojected: math.inverse(scene.projection) ?? math.IDENTITY,
-      looking: [-eye[8], -eye[9], -eye[10]],
-      clips: [scene.near ?? 0, scene.far ?? 0],
-    };
+    const told = said(environment, probe, eye, scene.projection, tonemap, scene.near ?? 0, scene.far ?? 0);
+    const { solid, clear } = listed(scene, told, false);
+
+    // What is round each reflection probe that something mirrors by is
+    // drawn for it first.
+    const mirrors = new Set([...solid, ...clear].map(({ mirror }) => mirror).filter(Boolean));
+    if (mirrors.size) {
+      for (const mirror of mirrors) reflected(mirror, scene, environment, probe);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (late ? linear.frame : null));
+      gl.viewport(0, 0, width, height);
+    }
     telling = told;
     tell();
     shining = null;
-
-    // Each part of each shape with a material is a thing to draw. A shape
-    // with fewer materials than parts has the last for the rest; one with
-    // none is not drawn.
-    const solid = [];
-    const clear = [];
-    for (const model of scene.models) {
-      const { shape, materials, opacity, bones } = model;
-      const lights = model.lights ?? scene.lights;
-      let { instances } = model;
-      if (instances && !instances.count) continue;
-      // A bent shape is where its joints put it, wherever its model is. One
-      // drawn by a table is where each entry puts it, which the corners
-      // work out: here it is as its model is within the entry.
-      const world = bones ? math.IDENTITY : (instances?.local ?? model.world);
-      const all = instances ? seen : math.multiply(seen, world);
-      const placed = instances ? math.multiply(instances.above, world) : world;
-      if (instances?.sorted) {
-        const way = math.normalized(math.point(math.inverse(model.world) ?? math.IDENTITY, -eye[8], -eye[9], -eye[10]));
-        instances = { ...instances, data: farthestFirst(instances.data, instances.count, way), fresh: true };
-      }
-      shape.subsets.forEach((subset, index) => {
-        const material = materials[Math.min(index, materials.length - 1)];
-        if (!material || material.waiting) return;
-        const middle = math.point(placed, ...subset.min.map((least, axis) => (least + subset.max[axis]) / 2));
-        // How far in front of the eye it is: the eye looks down its own z.
-        const distance = -math.point(view, ...middle)[2];
-        const through = sheer(material, opacity) || Boolean(instances?.sheer);
-        (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, lights, instances, placed, sheer: through });
-      });
-    }
-    // What nodes draw by themselves (`paints`), each with a program of its
-    // own, is among what is seen through: as far away as the node is.
-    for (const paint of scene.paints ?? []) clear.push({ paint, distance: -math.point(view, ...paint.at)[2] });
-    solid.sort((a, b) => a.distance - b.distance);
-    clear.sort((a, b) => b.distance - a.distance);
 
     // What is behind what reads it is drawn for it first, as it is in
     // linear light: what nothing is seen through, over what is behind the
@@ -1905,31 +2251,7 @@ export function draw(scene, canvas, paper) {
       shining = null;
     }
 
-    if (environment.depth) gl.enable(gl.DEPTH_TEST);
-    else gl.disable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LEQUAL);
-    // What is behind the scene was drawn without saying how far it is.
-    gl.depthMask(true);
-    gl.disable(gl.BLEND);
-    for (const piece of solid) part(piece);
-    gl.enable(gl.BLEND);
-    gl.depthMask(false);
-    for (const piece of clear) {
-      if (piece.paint) {
-        const own = gl.getParameter(gl.CURRENT_PROGRAM);
-        piece.paint({ gl, view, projection: scene.projection, tonemap, bound });
-        gl.useProgram(own);
-        continue;
-      }
-      // What is drawn is already times its own alpha.
-      const { blend } = piece.material;
-      if (blend === 1) gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
-      else if (blend === 2) gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ONE, gl.ONE);
-      else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      part(piece);
-    }
-    gl.depthMask(true);
-    gl.bindVertexArray(null);
+    pieces(solid, clear, environment, told);
   }
 
   if (frame) {

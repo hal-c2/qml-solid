@@ -28,19 +28,34 @@ sheet.replaceSync(`.qq-view3d { position: absolute; left: 0; top: 0; width: 100%
 document.adoptedStyleSheets.push(sheet);
 
 // What a view draws: the shapes and lights among the nodes that are shown,
-// and the first camera there is.
+// the places some of the shapes mirror the others from, and the first
+// camera there is.
 function found(self) {
   const models = [];
   const lights = [];
   const paints = [];
+  const probes = [];
   let camera = null;
   const walk = (node, above) => {
     if (!node.visible) return;
     const opacity = above * node.opacity;
     if (node.$model) {
       const shape = node.$shape();
-      if (shape) models.push({ node, shape, world: node.$world(), bones: node.$bones(), instances: node.$instances(), materials: node.$materials().map((material) => material?.$material?.() ?? null), opacity });
+      if (shape) {
+        models.push({
+          node,
+          shape,
+          world: node.$world(),
+          bones: node.$bones(),
+          instances: node.$instances(),
+          materials: node.$materials().map((material) => material?.$material?.() ?? null),
+          opacity,
+          mirrors: Boolean(node.receivesReflections),
+          mirrored: Boolean(node.castsReflections),
+        });
+      }
     } else if (node.$light) lights.push(node.$light());
+    else if (node.$mirror) probes.push(node.$mirror());
     else if (node.$camera) camera ??= node;
     // What a node draws by itself.
     const paint = node.$paint?.(opacity);
@@ -54,7 +69,7 @@ function found(self) {
   if (lights.some((light) => light.scope)) {
     for (const model of models) model.lights = lights.filter((light) => !light.scope || under(model.node, light.scope));
   }
-  return { models, lights, paints, camera };
+  return { models, lights, paints, probes, camera };
 }
 
 function under(node, scope) {
@@ -222,7 +237,7 @@ export const View3D = defineType("View3D", Item, {
     effect(
       () => {
         const { width, height } = self;
-        const { models, lights, paints, camera: any } = found(self);
+        const { models, lights, paints, probes, camera: any } = found(self);
         const camera = self.camera ?? any;
         return {
           width,
@@ -231,6 +246,7 @@ export const View3D = defineType("View3D", Item, {
           models,
           lights,
           paints,
+          probes,
           eye: camera?.$world() ?? null,
           projection: camera?.$projection(width, height) ?? null,
           far: camera?.clipFar ?? 0,
