@@ -5,7 +5,7 @@ use oxc_allocator::Allocator;
 use oxc_parser::{Parser, qml::ast::*};
 use oxc_span::SourceType;
 
-use crate::model::{Property, Signal};
+use crate::model::{Enum, Property, Signal};
 
 #[derive(Debug, Default)]
 pub struct QmlFile {
@@ -15,6 +15,8 @@ pub struct QmlFile {
     pub root: String,
     pub is_singleton: bool,
     pub default_property: Option<String>,
+    /// The enums the root declares, whose keys are on the type's name.
+    pub enums: Vec<Enum>,
     /// With the type names as written, to be looked up in `imports`.
     pub properties: Vec<Property>,
     pub signals: Vec<Signal>,
@@ -71,6 +73,13 @@ pub fn read(source: &str) -> Result<QmlFile, String> {
                     .iter()
                     .map(|param| param.name.name.to_string())
                     .collect(),
+            }),
+            QmlMember::Enum(declaration) => file.enums.push(Enum {
+                name: declaration.name.name.to_string(),
+                alias: None,
+                is_flag: false,
+                // The file says what number each is, to whatever compiles it.
+                keys: declaration.members.iter().map(|member| (member.name.name.to_string(), None)).collect(),
             }),
             QmlMember::Function(function) => {
                 file.methods.extend(function.id.as_ref().map(|id| id.name.to_string()));

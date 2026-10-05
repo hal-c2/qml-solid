@@ -848,6 +848,33 @@ Item {
 }
 
 #[test]
+fn an_enum_a_qml_file_of_qts_declares_is_keys_on_the_type() {
+    let files = [
+        (
+            "Sample",
+            r#"import QtQuick
+import QtQuick3D
+import QtQuick3D.Helpers as Helpers
+import QtQuick3D.Helpers
+View3D {
+    property int level: ExtendedSceneEnvironment.GlowLevel.One | Helpers.ExtendedSceneEnvironment.GlowLevel.Two
+    property int mode: Swatch.Blend.Screen
+    environment: ExtendedSceneEnvironment {
+        glowBlendMode: ExtendedSceneEnvironment.GlowBlendMode.Screen
+    }
+}"#,
+        ),
+        ("Swatch", "import QtQuick\nItem {\n    enum Blend { Additive, Screen }\n}"),
+    ];
+    let code = lowered_in(&files, "Sample").unwrap_or_else(|errors| panic!("{errors:?}"));
+    assert_contains(&code, "level={ExtendedSceneEnvironment.One | Helpers.ExtendedSceneEnvironment.Two}");
+    // A key with the name of a type that attaches is a key all the same.
+    assert_contains(&code, "glowBlendMode={ExtendedSceneEnvironment.Screen}");
+    assert_contains(&code, "const Swatch$Screen = Swatch.Screen;");
+    assert_lacks(&code, "attached");
+}
+
+#[test]
 fn a_component_has_what_the_type_of_its_root_has() {
     let files = [
         (
