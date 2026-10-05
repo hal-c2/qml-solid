@@ -1744,6 +1744,79 @@ test("a CustomMaterial is drawn by its own shaders, handed what Qt hands them", 
   near(await painted(page, later), later.map(([, colour]) => colour), "", 3);
 });
 
+// The views of the scenes of effects are 100 by 75, four to a row, and
+// these the places looked at in each: the surroundings, the nearer shape
+// and the further one first. A place not looked at is null.
+const PLACES = [[5, 5], [30, 37], [80, 27], [60, 37], [95, 70], [25, 5], [75, 5], [25, 70], [75, 70], [52, 20], [52, 55]];
+const placed = (views) => views.flatMap((colours, view) => colours.flatMap((colour, place) => (colour ? [[[(view % 4) * 100 + PLACES[place][0], Math.floor(view / 4) * 75 + PLACES[place][1]], colour]] : [])));
+
+// Every number here is what Qt 6.11 paints of the same scene.
+test("an Effect is run over the picture of a scene, as Qt runs one", async ({ page }) => {
+  await open(page, "effects3d");
+  const points = placed([
+    // No effect, and one that leaves the picture as it is.
+    [[30, 64, 96], [255, 128, 64], [128, 192, 255], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96]],
+    [[30, 64, 96], [255, 128, 64], [128, 192, 255], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96]],
+    // What it reads is in linear light, and what it leaves is brought to
+    // the screen after: half of it is not half as bright.
+    [[19, 44, 69], [187, 93, 44], [93, 140, 187], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69]],
+    // A place in the picture: its first row is its bottom one.
+    [[66, 247, 0], [150, 187, 0], [232, 208, 0], [204, 187, 0], [250, 69, 0], [138, 247, 0], [225, 247, 0], [138, 69, 0], [225, 69, 0], [191, 221, 0], [191, 139, 0]],
+    // The effect's own properties: a colour in linear light on the left,
+    // and a real, vectors of two and three and a bool on the right.
+    [[50, 102, 153], [50, 102, 153], [161, 140, 203], [138, 44, 111], [138, 44, 111], [50, 102, 153], [138, 44, 111], [50, 102, 153], [138, 44, 111], [138, 44, 111], [138, 44, 111]],
+    // How big the picture is, and what is drawn into.
+    [[187, 164, 187], [187, 164, 187], [187, 164, 187], [187, 164, 187], [187, 164, 187], [187, 164, 187], [187, 164, 187], [187, 164, 187], [187, 164, 187], [187, 164, 187], [187, 164, 187]],
+    // A rectangle its corners make smaller, black round it, reading where
+    // they say.
+    [[0, 0, 0], [30, 64, 96], [0, 0, 0], [219, 187, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [195, 250, 0], [195, 39, 0]],
+    // A picture of its own, upright, by either word for a place in it.
+    [[0, 255, 0], [0, 0, 255], [0, 0, 255], [255, 0, 0], [0, 0, 255], [0, 0, 255], [0, 0, 255], [0, 0, 255], [0, 0, 255], [255, 0, 0], [255, 0, 0]],
+    // Through a picture of its own a quarter the size, of whole numbers
+    // and not smoothed.
+    [[28, 64, 96], [255, 128, 64], [128, 191, 255], [28, 64, 96], [28, 64, 96], [28, 64, 96], [28, 64, 96], [28, 64, 96], [28, 64, 96], [28, 64, 96], [28, 64, 96]],
+    // Into one half the size: how big what is read is stays what it was.
+    [[188, 165, 137], [188, 165, 137], [188, 165, 137], [188, 165, 137], [188, 165, 137], [188, 165, 137], [188, 165, 137], [188, 165, 137], [188, 165, 137], [188, 165, 137], [188, 165, 137]],
+    // The picture it was given beside one it made, read by name, with a
+    // property set for the pass.
+    [[30, 64, 96], [255, 128, 64], [93, 140, 225], [21, 42, 151], [21, 42, 151], [30, 64, 96], [21, 42, 151], [30, 64, 96], [21, 42, 151], [21, 42, 151], [21, 42, 151]],
+    // Two, one after the other: half as bright, then left for right.
+    [[19, 44, 69], [19, 44, 69], [187, 93, 44], [187, 93, 44], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [19, 44, 69], [187, 93, 44], [187, 93, 44]],
+    // How far each place is, and how far the camera sees.
+    [[255, 89, 243], [187, 89, 243], [137, 89, 243], [255, 89, 243], [255, 89, 243], [255, 89, 243], [255, 89, 243], [255, 89, 243], [255, 89, 243], [255, 89, 243], [255, 89, 243]],
+    // Tone mapped another way: without an effect, and after one.
+    [[25, 55, 83], [186, 109, 55], [109, 152, 186], [25, 55, 83], [25, 55, 83], [25, 55, 83], [25, 55, 83], [25, 55, 83], [25, 55, 83], [25, 55, 83], [25, 55, 83]],
+    [[15, 38, 60], [150, 80, 38], [80, 118, 150], [15, 38, 60], [15, 38, 60], [15, 38, 60], [15, 38, 60], [15, 38, 60], [15, 38, 60], [15, 38, 60], [15, 38, 60]],
+    // What it leaves seen through: what is behind the view shows. The
+    // row its two halves meet in is one or the other.
+    [[255, 255, 255], [255, 255, 255], [255, 255, 255], null, [35, 92, 85], [255, 255, 255], [255, 255, 255], [35, 92, 85], [35, 92, 85], [255, 255, 255], [35, 92, 85]],
+  ]);
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
+// And here.
+test("the passes of an Effect read and draw into what Qt has them", async ({ page }) => {
+  await open(page, "passes3d");
+  const points = placed([
+    // What a pass reads in place of the picture, the next does not.
+    [[30, 64, 96], [255, 128, 64], [128, 192, 255], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96]],
+    // How big what is read is, where that is a smaller picture.
+    [[137, 121, 187], [137, 121, 187], [137, 121, 187], [137, 121, 187], [137, 121, 187], [137, 121, 187], [137, 121, 187], [137, 121, 187], [137, 121, 187], [137, 121, 187], [137, 121, 187]],
+    // Half of 75 rows is 38, and 0.35 of them 26.
+    [[231, 0, 0], [231, 0, 0], [231, 0, 0], [231, 0, 0], [231, 0, 0], [231, 0, 0], [231, 0, 0], [231, 0, 0], [231, 0, 0], [231, 0, 0], [231, 0, 0]],
+    [[203, 0, 0], [203, 0, 0], [203, 0, 0], [203, 0, 0], [203, 0, 0], [203, 0, 0], [203, 0, 0], [203, 0, 0], [203, 0, 0], [203, 0, 0], [203, 0, 0]],
+    // What a pass sets a property to, the next does not have.
+    [[30, 64, 163], [255, 128, 149], [128, 192, 255], [30, 64, 163], [30, 64, 163], [30, 64, 163], [30, 64, 163], [30, 64, 163], [30, 64, 163], [30, 64, 163], [30, 64, 163]],
+    // Past its edges the picture is as at them.
+    [[30, 64, 96], [255, 128, 64], [30, 64, 96], [128, 192, 255], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96], [30, 64, 96]],
+    // Nothing behind the scene: nothing is there in the picture either.
+    [[0, 0, 0], [255, 255, 255], [255, 255, 255], null, [16, 48, 16], [0, 0, 0], [0, 0, 0], [16, 48, 16], [16, 48, 16], [0, 0, 0], [16, 48, 16]],
+  ]);
+  // Read past its right edge, the picture is not there again.
+  points.push([[192, 112], [30, 64, 96]]);
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
 test("Quaternion makes the turns Qt's makes", async ({ page }) => {
   await open(page, "quaternion3d");
   near(await page.evaluate(() => window.scene.read()), {

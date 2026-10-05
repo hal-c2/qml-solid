@@ -7,8 +7,7 @@
 // Not here: shadows, a sky box that is a cube of six
 // pictures (`skyBoxCubeMap`), a light probe in a `.ktx` file, a material's
 // own probe, what a ReflectionProbe would have the models round it mirror,
-// an environment's `effects`, which are held and not run, and
-// the distances a model draws the entries of its table between
+// and the distances a model draws the entries of its table between
 // (`instancingLodMin` and `instancingLodMax`). Of
 // a material's pictures: a height map moves nothing, nothing is let through
 // (`transmissionFactor` and its maps), a specular map and a translucency map
@@ -908,6 +907,11 @@ export const SceneEnvironment = defineType("SceneEnvironment", Object3D, {
         tonemap: self.tonemapMode,
         depth: self.depthTestEnabled,
         fog: self.fog?.$fog?.() ?? null,
+        // What is run over the picture once it is drawn (`effects.js`),
+        // each when all it reads is here.
+        effects: list(self.effects)
+          .map((each) => each?.$passes?.())
+          .filter((each) => each && !each.waiting && each.passes.length),
       };
     };
   },

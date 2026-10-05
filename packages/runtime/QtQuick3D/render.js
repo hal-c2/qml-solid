@@ -32,11 +32,20 @@
 // first: the scene without what something is seen through, in linear light,
 // and how far each place of it is.
 //
+// An environment's effects are run over the picture once the scene is
+// drawn, one after another: the scene is drawn in linear light for them, as
+// under an ExtendedSceneEnvironment, each pass of each draws a rectangle
+// over the whole of what it draws into with the effect's shaders, and what
+// the last leaves is brought to the screen. Where a browser cannot draw
+// into a picture of fractions they are not run.
+//
 // Not here: a probe that is a canvas is folded once, as it is when first
-// drawn, and a material's own probe is not looked at.
+// drawn, and a material's own probe is not looked at. Of what an effect may
+// read besides the picture, only how far each place of it is: which is how
+// far what nothing is seen through is.
 import * as math from "./math.js";
 import { Triangles } from "./mesh.js";
-import { customised } from "./shaders.js";
+import { customised, effected } from "./shaders.js";
 
 // As many lights as Qt lets a surface have.
 const LIGHTS = 15;
@@ -1206,7 +1215,7 @@ function smoothed(width, height, samples, format) {
 let linear = null;
 function unscreened(width, height) {
   if (!gl.getExtension("EXT_color_buffer_float")) return null;
-  linear ??= { frame: gl.createFramebuffer(), color: gl.createTexture(), depth: gl.createRenderbuffer() };
+  linear ??= { frame: gl.createFramebuffer(), color: gl.createTexture(), depth: gl.createTexture() };
   if (linear.width !== width || linear.height !== height) {
     Object.assign(linear, { width, height });
     gl.bindTexture(gl.TEXTURE_2D, linear.color);
@@ -1215,25 +1224,30 @@ function unscreened(width, height) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    // How far each place of it is can be read too, by an effect.
+    gl.bindTexture(gl.TEXTURE_2D, linear.depth);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, linear.depth);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, width, height);
     gl.bindFramebuffer(gl.FRAMEBUFFER, linear.frame);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, linear.color, 0);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, linear.depth);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, linear.depth, 0);
   }
   return linear.frame;
 }
 
-// That picture brought to the screen, as the environment says.
+// Such a picture brought to the screen, as the environment says.
 let graded = null;
-function finished(grade) {
+function finished(grade, from) {
   graded ??= program(OVER, GRADE, ["u_from", "u_tonemap", "u_grade", "u_fine", "u_adjust", "u_vignette", "u_vignetting"]);
   if (!graded) return;
   covering();
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.useProgram(graded.program);
-  gl.bindTexture(gl.TEXTURE_2D, linear.color);
+  gl.bindTexture(gl.TEXTURE_2D, from);
   gl.uniform1i(graded.at.u_from, 0);
   gl.uniform1i(graded.at.u_tonemap, grade.tonemap);
   gl.uniform4f(graded.at.u_grade, grade.exposure, grade.white, grade.sharpness, 0);
@@ -1570,6 +1584,173 @@ function drawn(piece) {
 }
 
 // Whether something is seen through what a material draws.
+// A picture to draw into, of a size and a kind: the one held, where that is
+// such a one.
+function sheet(held, width, height, format, filter, wrap) {
+  if (held?.width === width && held.height === height && held.format === format && held.filter === filter && held.wrap === wrap) return held;
+  if (held) {
+    gl.deleteTexture(held.texture);
+    gl.deleteFramebuffer(held.frame);
+  }
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, format, width, height);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  const frame = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+  return { texture, frame, width, height, format, filter, wrap };
+}
+
+// The program a pass of an Effect draws with, made once of its shaders:
+// null where they make none, which is said once.
+const SEEN = ["u_input", "u_depth", "u_inputSize", "u_outputSize", "u_frame", "u_clips", "u_projection", "u_unprojected"];
+const passing = new WeakMap();
+function passed(source) {
+  let made = passing.get(source);
+  if (made !== undefined) return made;
+  const { vertex, fragment } = effected(source);
+  const own = program(vertex, fragment, []);
+  made = null;
+  if (own) {
+    const where = (name) => gl.getUniformLocation(own.program, name);
+    made = { program: own.program, at: Object.fromEntries(SEEN.map((name) => [name, where(`qt_${name}`)])), own: new Map() };
+    gl.useProgram(made.program);
+    gl.uniform1i(made.at.u_input, 0);
+    gl.uniform1i(made.at.u_depth, DEPTH);
+    source.samplers.forEach((name, index) => gl.uniform1i(where(name), OWN + index));
+  }
+  passing.set(source, made);
+  return made;
+}
+
+// What a Buffer is drawn into as: Qt's numbers for the kind of picture it
+// is, for how it is read between its places and for how past its edges.
+// Fractions are kept as halves, and one number to a place as a fraction.
+const kinds = () => ({ 1: gl.RGBA8, 2: gl.RGBA16F, 3: gl.RGBA16F, 4: gl.R8, 5: gl.R16F, 6: gl.R16F, 7: gl.R16F });
+const kept = new WeakMap();
+function buffered({ of, format, filter, wrap, scale }, width, height) {
+  // Qt rounds the size: half of 75 rows is 38.
+  const made = sheet(kept.get(of), Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)), kinds()[format] ?? gl.RGBA16F, filter === 1 ? gl.NEAREST : gl.LINEAR, WRAPS[wrap] ?? gl.CLAMP_TO_EDGE);
+  kept.set(of, made);
+  return made;
+}
+
+// The effects of an environment, run over the picture `from` one after
+// another: what the last leaves, as a texture. Each pass draws a rectangle
+// over the whole of what it draws into, which is black before it: the
+// picture the next effect reads, or a Buffer of the effect's own. What it
+// reads is the picture the effect was given, unless it says a Buffer in its
+// place; and a Buffer, or that picture, by the name of one of the effect's
+// own pictures where it says so.
+let quad = null;
+let frames = 0;
+const turns = [null, null];
+function affected(effects, from, width, height, scene) {
+  if (!quad) {
+    quad = gl.createVertexArray();
+    gl.bindVertexArray(quad);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    // Each corner, and where in the picture it is: the first row of that
+    // is its bottom one.
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 0, 0, 0, 1, -1, 0, 1, 0, -1, 1, 0, 0, 1, 1, 1, 0, 1, 1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
+  }
+  covering();
+  gl.bindVertexArray(quad);
+  frames++;
+  const projection = scene.projection ?? math.IDENTITY;
+  const unprojected = math.inverse(projection) ?? math.IDENTITY;
+  pictured(DEPTH, effects.some(({ passes }) => passes.some(({ source }) => source.depth)) ? linear.depth : flat(0, 0, 0, 255));
+  let given = { texture: from, width, height };
+  let turn = 0;
+  let most = 0;
+  for (const { uniforms, passes } of effects) {
+    const out = (turns[turn] = sheet(turns[turn], width, height, gl.RGBA16F, gl.LINEAR, gl.CLAMP_TO_EDGE));
+    let wrote = false;
+    for (const { source, reads, set, output } of passes) {
+      const own = passed(source);
+      if (!own) continue;
+      const into = output ? buffered(output, width, height) : out;
+      gl.useProgram(own.program);
+      handed(own, uniforms);
+      handed(own, set);
+      most = Math.max(most, source.samplers.length);
+      let read = given;
+      for (const { buffer, sampler } of reads) {
+        const held = buffer ? kept.get(buffer.of) : given;
+        const unit = source.samplers.indexOf(sampler);
+        if (!held || held === into) continue;
+        if (!sampler) read = held;
+        else if (unit >= 0) pictured(OWN + unit, held.texture);
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, into.frame);
+      gl.viewport(0, 0, into.width, into.height);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.bindTexture(gl.TEXTURE_2D, read.texture);
+      gl.uniform2f(own.at.u_inputSize, read.width, read.height);
+      gl.uniform2f(own.at.u_outputSize, into.width, into.height);
+      gl.uniform1f(own.at.u_frame, frames);
+      gl.uniform2f(own.at.u_clips, scene.near ?? 0, scene.far ?? 0);
+      gl.uniformMatrix4fv(own.at.u_projection, false, projection);
+      gl.uniformMatrix4fv(own.at.u_unprojected, false, unprojected);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      if (into === out) wrote = true;
+    }
+    if (wrote) {
+      given = out;
+      turn = 1 - turn;
+    }
+  }
+  // Nothing drawn into is left where a shape's program would read it.
+  for (let unit = 0; unit < most; unit++) pictured(OWN + unit, null);
+  pictured(DEPTH, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  gl.bindVertexArray(null);
+  gl.viewport(0, 0, width, height);
+  gl.depthMask(true);
+  gl.useProgram(shaded.program);
+  return given.texture;
+}
+
+// A picture in linear light brought to the screen by the tone mapping
+// alone: what is seen through it is left as far seen through.
+const SHOWN = `#version 300 es
+precision highp float;
+uniform sampler2D u_from;
+in vec2 v_at;
+out vec4 fragColor;
+${TONES}
+void main() {
+    vec4 read = texture(u_from, v_at);
+    fragColor = vec4(tonemap(max(read.rgb, vec3(0.0))), read.a);
+}
+`;
+
+let showing = null;
+function shown(from, tonemap) {
+  showing ??= program(OVER, SHOWN, ["u_from", "u_tonemap"]);
+  if (!showing) return;
+  covering();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.useProgram(showing.program);
+  gl.bindTexture(gl.TEXTURE_2D, from);
+  gl.uniform1i(showing.at.u_from, 0);
+  gl.uniform1i(showing.at.u_tonemap, tonemap);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  gl.depthMask(true);
+  gl.useProgram(shaded.program);
+}
+
 const sheer = (material, opacity) =>
   material.custom
     ? material.custom.through
@@ -1592,12 +1773,15 @@ export function draw(scene, canvas, paper) {
   // What an effect brings to the screen afterwards is drawn in linear
   // light, into something that holds it.
   const grade = environment.grade && unscreened(width, height) ? environment.grade : null;
+  // And so is what effects are run over.
+  const effects = environment.effects?.length && unscreened(width, height) ? environment.effects : null;
+  const late = Boolean(grade || effects);
   // Left as it is drawn (-1): which is not the same as no tone mapping
   // being asked for (0), where what lights from all round is as bright as
   // its picture says.
-  const tonemap = grade && environment.tonemap !== 0 ? -1 : environment.tonemap;
-  const frame = smoothed(width, height, environment.samples, grade ? gl.RGBA16F : gl.RGBA8);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (grade ? linear.frame : null));
+  const tonemap = late && environment.tonemap !== 0 ? -1 : environment.tonemap;
+  const frame = smoothed(width, height, environment.samples, late ? gl.RGBA16F : gl.RGBA8);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (late ? linear.frame : null));
   gl.viewport(0, 0, width, height);
   gl.depthMask(true);
   // What is behind the scene is a colour of the screen's, which Qt brings
@@ -1697,7 +1881,7 @@ export function draw(scene, canvas, paper) {
       gl.depthMask(true);
       gl.disable(gl.BLEND);
       for (const piece of solid) part(piece);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (grade ? linear.frame : null));
+      gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (late ? linear.frame : null));
       const mipped = reading.some(({ material }) => material.custom.source.mips);
       gl.activeTexture(gl.TEXTURE0 + DEPTH);
       gl.bindTexture(gl.TEXTURE_2D, back.depth);
@@ -1723,7 +1907,7 @@ export function draw(scene, canvas, paper) {
     for (const piece of clear) {
       if (piece.paint) {
         const own = gl.getParameter(gl.CURRENT_PROGRAM);
-        piece.paint({ gl, view, projection: scene.projection, tonemap: environment.tonemap, bound });
+        piece.paint({ gl, view, projection: scene.projection, tonemap, bound });
         gl.useProgram(own);
         continue;
       }
@@ -1740,11 +1924,14 @@ export function draw(scene, canvas, paper) {
 
   if (frame) {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, frame);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, grade ? linear.frame : null);
-    gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, late ? linear.frame : null);
+    // With how far each place is, for an effect that reads it.
+    gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT | (effects ? gl.DEPTH_BUFFER_BIT : 0), gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
-  if (grade) finished(grade);
+  const picture = effects ? affected(effects, linear.color, width, height, scene) : late ? linear.color : null;
+  if (grade) finished(grade, picture);
+  else if (effects) shown(picture, environment.tonemap);
   // The picture leaves the surface for the canvas: nothing is copied.
   paper.transferFromImageBitmap(surface.transferToImageBitmap());
 }

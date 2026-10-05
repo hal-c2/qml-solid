@@ -29,6 +29,9 @@ const SceneEffectBase = defineType("SceneEffectBase", Effect, {
     environment: null,
   },
   setup(self) {
+    // Its shaders are Qt's own and are not run: what it does that is here
+    // the renderer does itself.
+    self.$passes = () => null;
     effect(
       () => self.environment,
       (environment) => {

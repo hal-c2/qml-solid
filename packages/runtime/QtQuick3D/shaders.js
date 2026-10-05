@@ -14,6 +14,10 @@
 // renderer's own has `qt_` before its name, which Qt keeps for itself, so
 // that a piece can call its own things what it likes.
 //
+// An Effect's shaders are such pieces too, of a shader that draws nothing
+// but a picture over the whole of another: theirs is a small one of its
+// own, with only what Qt hands an effect in it.
+//
 // Not here: what a piece is handed of a shape that bends by a skin
 // (`BONE_TRANSFORMS`) or that morphs, a picture of the light a scene was
 // baked with, of how its surfaces face or of how they move (`LIGHTMAP`,
@@ -348,5 +352,88 @@ export function customised(own, { vertex, fragment, shaded, declared }) {
   return {
     vertex: whole(head(own.vertex, CORNERS), declared, missing.join("\n"), corners.text, corner(corners.has, mentioned(vertex).has("POSITION"))),
     fragment: whole(head(own.fragment, PIXELS), declared, "", pixels.text, shaded ? lit(pixels.has) : unlit(pixels.has)),
+  };
+}
+
+// What both shaders of an effect begin with: the picture it is run over,
+// how far each thing in it is, the sizes of it and of what is drawn into,
+// and the camera's.
+const SEEN = `
+uniform highp sampler2D u_input;
+uniform highp sampler2D u_depth;
+uniform vec2 u_inputSize;
+uniform vec2 u_outputSize;
+uniform float u_frame;
+uniform vec2 u_clips;
+uniform mat4 u_projection;
+uniform mat4 u_unprojected;
+`;
+
+const begun = (text) => {
+  const reader = new Reader();
+  const head = prefixed(text);
+  reader.declare(head);
+  return { text: head, reader };
+};
+
+let over = null;
+const OVER = () =>
+  (over ??= {
+    vertex: begun(`#version 300 es
+precision highp float;
+precision highp int;
+layout(location = 0) in vec3 attr_pos;
+layout(location = 1) in vec2 attr_uv;
+out vec2 v_input;
+out vec2 v_texture;
+${SEEN}`),
+    fragment: begun(`#version 300 es
+precision highp float;
+precision highp int;
+in vec2 v_input;
+in vec2 v_texture;
+layout(location = 0) out vec4 fragColor;
+${SEEN}`),
+  });
+
+// The two shaders a pass of an Effect draws with: a rectangle over the
+// whole of what is drawn into, whose corners the first piece may move, and
+// the colour the second says of each place in it, which is that of the
+// picture there where it says none.
+export function effected({ vertex, fragment, declared }) {
+  const corners = worded(vertex, true, () => "inout vec3 VERTEX");
+  const pixels = worded(fragment, false, () => "");
+  const missing = pixels.handed.filter((read) => !corners.handed.some((written) => written.name === read.name)).map((read) => `out ${read.said};`);
+  const head = OVER();
+  return {
+    vertex: whole(
+      head.vertex,
+      declared,
+      missing.join("\n"),
+      corners.text,
+      `
+void main() {
+    customGlobals();
+    vec3 vertex = attr_pos;
+    v_input = attr_uv;
+    v_texture = attr_uv;
+    ${corners.has.has("MAIN") ? "customMain(vertex);" : ""}
+    gl_Position = vec4(vertex, 1.0);
+}
+`,
+    ),
+    fragment: whole(
+      head.fragment,
+      declared,
+      "",
+      pixels.text,
+      `
+void main() {
+    customGlobals();
+    fragColor = texture(u_input, v_input);
+    ${pixels.has.has("MAIN") ? "customMain();" : ""}
+}
+`,
+    ),
   };
 }
