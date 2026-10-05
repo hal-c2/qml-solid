@@ -672,3 +672,9 @@ base("creating a component from a file at run time is refused aloud", async ({ p
     "Qt.createQmlObject(): QML is compiled ahead of time; declare a Component instead",
   ]);
 });
+
+test("an XMLHttpRequest drops the headers no program may set, and says nothing", async ({ page }) => {
+  await open(page, "request");
+  await expect.poll(() => page.evaluate(() => window.scene.status)).toBe(200);
+  expect(await page.evaluate(() => window.scene.got)).toBe("what was asked for");
+});

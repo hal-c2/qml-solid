@@ -703,6 +703,7 @@ pub(crate) const QML_GLOBALS: &[&str] = &[
     "QT_TRANSLATE_NOOP",
     "print",
     "gc",
+    "XMLHttpRequest",
 ];
 
 pub(crate) const JS_GLOBALS: &[&str] = &[
@@ -763,7 +764,6 @@ pub(crate) const JS_GLOBALS: &[&str] = &[
     "Intl",
     "URL",
     "URLSearchParams",
-    "XMLHttpRequest",
 ];
 
 /// What `import "lib.js" as Lib` or `import QtQuick.Controls as C` is to the

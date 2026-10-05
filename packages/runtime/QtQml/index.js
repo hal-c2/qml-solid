@@ -19,5 +19,6 @@ export {
   QT_TRANSLATE_NOOP,
   QT_TRID_NOOP,
 } from "./Qt.js";
+export { XMLHttpRequest } from "./request.js";
 // What it has by importing `QtQml.Models`.
 export * from "./Models/index.js";

@@ -205,6 +205,23 @@ Item {
 }
 
 #[test]
+fn a_request_is_qmls_not_the_browsers() {
+    // QML's XMLHttpRequest says nothing of a header no program may set, and
+    // finds what a `qrc:` address names.
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    function ask(url) {
+        const request = new XMLHttpRequest()
+        request.open("GET", url)
+        request.send()
+    }
+}"#,
+    );
+    assert_contains(&code, r#"import { XMLHttpRequest } from "qml-solid/QtQml";"#);
+}
+
+#[test]
 fn what_a_type_attaches_is_read_of_another_object_too() {
     let code = lowered(
         r#"import QtQuick
