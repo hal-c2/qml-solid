@@ -1219,17 +1219,37 @@ test("a node told to face another keeps facing it, as Qt turns it", async ({ pag
   near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
 });
 
+// The clear colour twice, the sphere, two sides of the cube, the blue
+// rectangle alone and under the white one that is seen through, and that
+// one over the rectangle that Qt draws black.
+const EXTENDED = [[20, 20], [70, 110], [150, 100], [140, 80], [262, 40], [230, 40], [230, 120], [10, 100]];
+
+// The scene is opened anew for each thing asked of it, and is Qt's colours
+// at those places.
+async function extended(page, states) {
+  for (const [call, colours] of states) {
+    await open(page, "extended3d");
+    if (call) await page.evaluate(`window.scene.${call}`);
+    near(await painted(page, EXTENDED.map((point, index) => [point, colours[index]])), colours, call, 3);
+  }
+}
+
 test("an ExtendedSceneEnvironment brings a scene to the screen as Qt's does", async ({ page }) => {
-  // The clear colour twice, the sphere, two sides of the cube, the blue
-  // rectangle alone and under the white one that is seen through, and that
-  // one over the rectangle that Qt draws black.
-  const at = [[20, 20], [70, 110], [150, 100], [140, 80], [262, 40], [230, 40], [230, 120], [10, 100]];
-  const states = [
+  await extended(page, [
     // Things are laid over one another in linear light: the white one shows
     // 170 over black, where a SceneEnvironment (the last row) shows 102.
     ["", [[64, 80, 96], [183, 122, 61], [30, 101, 48], [73, 216, 109], [128, 144, 255], [192, 198, 255], [170, 170, 170], [64, 80, 96]]],
     // The exposure is taken before the tone mapping, of the clear colour too.
     ["brighter()", [[100, 124, 148], [255, 186, 96], [50, 155, 77], [113, 255, 166], [194, 218, 255], [255, 255, 255], [255, 255, 255], [100, 124, 148]]],
+    ["adjusted()", [[38, 45, 52], [114, 89, 63], [11, 41, 19], [75, 134, 90], [125, 131, 177], [176, 179, 202], [138, 138, 138], [38, 45, 52]]],
+    // The colour of a vignette is one of linear light.
+    ["vignetted()", [[16, 19, 29], [123, 82, 47], [24, 80, 43], [57, 167, 90], [55, 61, 114], [104, 106, 144], [111, 111, 117], [19, 23, 34]]],
+    ["plain()", [[64, 80, 96], [183, 122, 61], [29, 101, 48], [73, 215, 109], [128, 144, 255], [179, 188, 255], [102, 102, 102], [64, 80, 96]]],
+  ]);
+});
+
+test("an ExtendedSceneEnvironment maps the tones of a scene as Qt's does", async ({ page }) => {
+  await extended(page, [
     // With no tone mapping the numbers of linear light are shown as they are.
     ["toned(0, 1)", [[13, 21, 30], [121, 50, 12], [3, 34, 8], [17, 174, 39], [55, 71, 255], [135, 145, 255], [102, 102, 102], [13, 21, 30]]],
     ["toned(2, 1)", [[61, 86, 113], [219, 153, 56], [17, 121, 38], [74, 239, 133], [161, 181, 255], [226, 229, 255], [208, 208, 208], [61, 86, 113]]],
@@ -1238,16 +1258,10 @@ test("an ExtendedSceneEnvironment brings a scene to the screen as Qt's does", as
     ["toned(3, 2)", [[76, 94, 111], [185, 136, 73], [37, 116, 58], [86, 205, 123], [141, 155, 224], [191, 194, 224], [175, 175, 175], [76, 94, 111]]],
     ["toned(4, 1)", [[79, 102, 123], [214, 156, 76], [35, 130, 58], [92, 235, 140], [162, 179, 255], [220, 224, 255], [203, 203, 203], [79, 102, 123]]],
     ["toned(4, 2)", [[71, 91, 111], [193, 140, 67], [30, 117, 51], [82, 212, 126], [146, 162, 230], [199, 203, 230], [183, 183, 183], [71, 91, 111]]],
-    ["adjusted()", [[38, 45, 52], [114, 89, 63], [11, 41, 19], [75, 134, 90], [125, 131, 177], [176, 179, 202], [138, 138, 138], [38, 45, 52]]],
-    // The colour of a vignette is one of linear light.
-    ["vignetted()", [[16, 19, 29], [123, 82, 47], [24, 80, 43], [57, 167, 90], [55, 61, 114], [104, 106, 144], [111, 111, 117], [19, 23, 34]]],
-    ["plain()", [[64, 80, 96], [183, 122, 61], [29, 101, 48], [73, 215, 109], [128, 144, 255], [179, 188, 255], [102, 102, 102], [64, 80, 96]]],
-  ];
-  for (const [call, colours] of states) {
-    await open(page, "extended3d");
-    if (call) await page.evaluate(`window.scene.${call}`);
-    near(await painted(page, at.map((point, index) => [point, colours[index]])), colours, call, 3);
-  }
+  ]);
+});
+
+test("an ExtendedSceneEnvironment sharpens, smooths and dithers a scene as Qt's does", async ({ page }) => {
   // What is done to an edge: the top of the blue rectangle made sharper,
   // and the cube's side smoothed after it is drawn, or as it is drawn.
   const edges = [
@@ -1258,7 +1272,7 @@ test("an ExtendedSceneEnvironment brings a scene to the screen as Qt's does", as
   for (const [call, points] of edges) {
     await open(page, "extended3d");
     await page.evaluate(`window.scene.${call}`);
-    near(await painted(page, points), points.map(([, colour]) => colour), call, 6);
+    near(await painted(page, points, 6), points.map(([, colour]) => colour), call, 6);
   }
   // Dithering moves each number a little, and each by its own amount: the
   // side of the cube is 30, 101, 48 without it.
