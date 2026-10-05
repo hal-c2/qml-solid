@@ -122,6 +122,27 @@ test("a name a component does not have is found in whatever made it", async ({ p
   expect(await rect(page, "chip")).toEqual({ x: 0, y: 100, width: 50, height: 10 });
 });
 
+// Qt 6.11's: a binding's `this` is its object (and its target, in what a
+// state changes), a handler's the object it is written on.
+test("this is the object a binding or a handler is written on", async ({ page }) => {
+  await open(page, "thisobject");
+  expect(await page.evaluate(() => JSON.parse(JSON.stringify(window.scene.read())))).toEqual([
+    4,
+    20,
+    [11, 12],
+    "nundefined:true",
+    "nundefined:true",
+    14,
+    9,
+    "#ff0000",
+    10,
+    [
+      ["completed", true, 7],
+      ["handler", true, 7, 21],
+    ],
+  ]);
+});
+
 // What Qt 6.11 says of `scenes/faults.qml`.
 plain("a binding that cannot be evaluated leaves the property what it was, and says so", async ({ page }) => {
   const warnings = [];

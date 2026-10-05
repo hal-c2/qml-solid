@@ -1479,3 +1479,33 @@ Item {
     assert_contains(&code, r#"new URL("images/logo.v2", import.meta.url)"#);
     assert_contains(&code, r#"new URL("../logo", import.meta.url)"#);
 }
+
+#[test]
+fn this_is_the_object_a_binding_or_a_handler_is_written_on() {
+    let code = lowered(
+        r#"import QtQuick
+Item {
+    id: root
+    function grown() { return this.width + 1 }
+    Rectangle {
+        id: box
+        width: this.height * 2
+        border.width: this.height
+        property var each: [1, 2].map(n => this.height + n)
+        property var own: [1, 2].map(function () { return this })
+        MouseArea { onClicked: console.log(this.width); Component.onCompleted: this.width = 3 }
+        states: State { PropertyChanges { target: box; color: this.height > 3 ? "red" : "blue" } }
+    }
+}"#,
+    );
+    assert_contains(&code, "width={box.height * 2}");
+    assert_contains(&code, "border$width={box.height}");
+    assert_contains(&code, "[1, 2].map((n) => box.height + n)");
+    assert_contains(&code, "onClicked={(mouse) => console.log($1.width)}");
+    assert_contains(&code, "Component$onCompleted={() => $1.width = 3}");
+    // What a state changes is a binding of its target's.
+    assert_contains(&code, r#"() => box.height > 3 ? "red" : "blue""#);
+    // A function has its own: the object it is called on, or none.
+    assert_contains(&code, "return this.width + 1;");
+    assert_contains(&code, "return this;");
+}
