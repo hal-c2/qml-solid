@@ -48,6 +48,15 @@ async function opened(url) {
   return URL.createObjectURL(new Blob([drawing], { type: "image/svg+xml" }));
 }
 
+// A picture named as a drawing that is none. Qt goes by what is in a file;
+// a browser goes by what the file is served as, which goes by its name. It
+// is handed to the browser again as nothing in particular, to look into.
+async function unnamed(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: ${response.status}`);
+  return URL.createObjectURL(new Blob([await response.arrayBuffer()]));
+}
+
 function fetched(url) {
   const record = picture(url);
   const element = document.createElement("img");
@@ -56,10 +65,19 @@ function fetched(url) {
     record.height = element.naturalHeight;
     record.settle(READY);
   };
-  element.onerror = () => record.settle(ERROR);
+  const failed = () => record.settle(ERROR);
+  element.onerror = failed;
+  if (record.scalable && !url.startsWith("data:")) {
+    element.onerror = () => {
+      element.onerror = failed;
+      // No drawing, so nothing that is made at any size asked for.
+      record.scalable = false;
+      unnamed(url).then((address) => (element.src = record.url = address), failed);
+    };
+  }
   if (!PACKED.test(url)) element.src = url;
   // What is shown is what was opened.
-  else opened(url).then((address) => (element.src = record.url = address), element.onerror);
+  else opened(url).then((address) => (element.src = record.url = address), failed);
   return record;
 }
 

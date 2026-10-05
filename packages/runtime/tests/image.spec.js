@@ -48,6 +48,8 @@ const QT = {
   vector: [1, 1, 120, 60, 120, 60, 120, 60, 120, 0],
   drawn: [1, 1, 60, 30, 60, 30, 60, 30, 60, 30],
   packed: [1, 1, 60, 30, 60, 30, 60, 30, 60, 30],
+  misnamed: [1, 1, 40, 20, 40, 20, 40, 20, 40, 20],
+  misnamedWide: [1, 1, 40, 20, 40, 20, 40, 20, 120, 0],
   broken: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   none: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 };
@@ -310,6 +312,19 @@ test("a compressed drawing is opened and painted", async ({ page }) => {
     [380, 215],
   ]);
   expect(read).toEqual([BLUE, YELLOW]);
+});
+
+// The server says it is a drawing, going by its name; Qt goes by what is in
+// the file, and shows the picture.
+test("a picture under a drawing's name is painted as the picture it is", async ({ page }) => {
+  await pictures(page);
+  const read = await pixels(page, [
+    [365, 265],
+    [385, 265],
+    [365, 290],
+    [385, 290],
+  ]);
+  expect(read).toEqual([RED, BLUE, RED, BLUE]);
 });
 
 test("a picture that changes is loaded and laid out again", async ({ page }) => {

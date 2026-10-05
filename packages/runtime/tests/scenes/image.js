@@ -19,6 +19,8 @@
 //     Image { id: vector; y: 230; source: "/assets/disc.svg"; sourceSize.width: 120; asynchronous: true }
 //     Image { id: drawn; x: 130; y: 250; source: "/assets/disc.svg" }
 //     Image { id: packed; x: 330; y: 200; source: "/assets/disc.svgz" }
+//     Image { id: misnamed; x: 355; y: 250; source: "/assets/flagged.svg" }
+//     Image { id: misnamedWide; x: 355; y: 275; source: "/assets/flagged.svg"; sourceSize.width: 120 }
 //     Image { id: broken; source: "data:image/png;base64,AAAA" }
 //     Image { id: none }
 //     BorderImage {
@@ -62,6 +64,9 @@ export default function Pictures() {
     named(Image, "vector", { y: 230, source: disc, sourceSize$width: 120, asynchronous: true }),
     named(Image, "drawn", { x: 130, y: 250, source: disc }),
     named(Image, "packed", { x: 330, y: 200, source: "/assets/disc.svgz" }),
+    // flag.png under a drawing's name.
+    named(Image, "misnamed", { x: 355, y: 250, source: "/assets/flagged.svg" }),
+    named(Image, "misnamedWide", { x: 355, y: 275, source: "/assets/flagged.svg", sourceSize$width: 120 }),
     named(Image, "broken", { source: "data:image/png;base64,AAAA" }),
     named(Image, "none", {}),
     named(BorderImage, "frame", {
