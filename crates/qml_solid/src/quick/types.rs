@@ -313,7 +313,8 @@ impl<'p> Types<'p> {
     /// the one a component declares the property in, which is where it uses
     /// it, and for an alias the one that has the object it is an alias of.
     /// Qt keeps the path as it is written, and what loads it takes it from
-    /// the file it is itself written in.
+    /// the file it is itself written in. A type of Qt's, in C++, takes it from
+    /// the file that makes the object, and so does what stands in for one.
     pub(crate) fn home(&self, kind: &Kind, name: &str) -> Option<String> {
         self.home_through(kind, name, 0)
     }
@@ -324,7 +325,9 @@ impl<'p> Types<'p> {
             let Kind::Component(key) = kind else { return None };
             let shape = self.project.shape(&key)?;
             if let Some(declaration) = shape.properties.get(name) {
-                let Some((of, path)) = &declaration.alias else { return Some(key.file) };
+                let Some((of, path)) = &declaration.alias else {
+                    return (!self.project.stands_in(&key.file)).then_some(key.file);
+                };
                 let first = path.first()?;
                 if aliases == 16 {
                     return None;

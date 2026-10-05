@@ -31,6 +31,8 @@ pub struct Project {
     modules: HashMap<String, HashMap<String, String>>,
     /// The modules each file is a type of.
     memberships: HashMap<String, Vec<String>>,
+    /// The files that stand in for a type the program has in C++.
+    standins: HashSet<String>,
 }
 
 /// A file's component or one of its inline components.
@@ -228,6 +230,16 @@ impl Project {
         if !memberships.iter().any(|module| module == uri) {
             memberships.push(uri.to_string());
         }
+    }
+
+    /// Says `file` stands in for a type the program has in C++: what it is
+    /// given is taken as such a type takes it.
+    pub fn stand_in(&mut self, file: &str) {
+        self.standins.insert(file.to_string());
+    }
+
+    pub(crate) fn stands_in(&self, file: &str) -> bool {
+        self.standins.contains(file)
     }
 
     /// The modules `file` is a type of: it sees their other types as it sees

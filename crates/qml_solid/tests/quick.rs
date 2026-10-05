@@ -374,6 +374,18 @@ Item {
     let code = lowered_source(files[0].1, &options).unwrap();
     assert_contains(&code, r#"new URL("a.png", import.meta.url)"#);
     assert_contains(&code, r#"new URL("b.png", import.meta.url)"#);
+
+    // What stands in for a type in C++ takes it as that type does: from the
+    // file that makes the object.
+    let mut project = Project::new();
+    for (file, source) in files {
+        project.add(file, source).unwrap();
+    }
+    project.stand_in("parts/Held");
+    let options = Options { name: "Sample".to_string(), project: Some(project), ..Options::default() };
+    let code = lowered_source(files[0].1, &options).unwrap();
+    assert_contains(&code, r#"new URL("parts/a.png", import.meta.url)"#);
+    assert_contains(&code, r#"new URL("b.png", import.meta.url)"#);
 }
 
 #[test]

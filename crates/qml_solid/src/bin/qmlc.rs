@@ -115,8 +115,9 @@ fn relative(from: &Path, to: &Path) -> String {
 }
 
 /// Adds the modules of the project under `root`, their files by the path
-/// from `base`: the directory of the file being compiled.
-fn modules(project: &mut Project, root: &Path, base: &Path) {
+/// from `base`: the directory of the file being compiled. With `standing`
+/// they stand in for types the program has in C++.
+fn modules(project: &mut Project, root: &Path, base: &Path, standing: bool) {
     let mut found = Vec::new();
     descriptions(root, &mut found);
     found.sort();
@@ -140,6 +141,9 @@ fn modules(project: &mut Project, root: &Path, base: &Path) {
                     }
                 }
                 project.add_type(&module.uri, &ty.name, key);
+                if standing {
+                    project.stand_in(key);
+                }
             }
         }
     }
@@ -158,10 +162,10 @@ fn project(path: &Path, project_root: Option<&Path>, with: &[PathBuf]) -> Projec
     if let (Ok(base), Ok(path)) = (root.canonicalize(), path.canonicalize()) {
         let project_root = project_root.map_or_else(|| self::project_root(&path), Path::to_path_buf);
         if let Ok(project_root) = project_root.canonicalize() {
-            modules(&mut project, &project_root, &base);
+            modules(&mut project, &project_root, &base, false);
         }
         for more in with.iter().filter_map(|more| more.canonicalize().ok()) {
-            modules(&mut project, &more, &base);
+            modules(&mut project, &more, &base, true);
         }
     }
     // A file's key is its path from the compiled file's directory, without

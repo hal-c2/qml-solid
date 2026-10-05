@@ -127,7 +127,9 @@ component declares (`property url shown`, `property alias source:
 image.source`) is next to the component's file, where it is used. A program
 whose main.cpp sets `QML_COMPAT_RESOLVE_URLS_ON_ASSIGNMENT` has them all next
 to the file they are written in: `qmlc --urls-on-assignment`, which the
-plugin's `args` may give by the file compiled.
+plugin's `args` may give by the file compiled. QML that stands in for a type
+in C++ (`--with`) has a path as that type does: next to the file that makes
+the object.
 
 ## Components
 
