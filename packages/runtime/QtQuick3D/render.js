@@ -7,7 +7,8 @@
 // colour by how far the surface faces it, the shine of it by Qt's own sums,
 // and the whole brought from linear light to the screen's by Qt's tone
 // mapping. What nothing is seen through is drawn first, nearest first; what
-// something is, after, farthest first.
+// something is, after, farthest first; and between them what reads the
+// picture of what is behind it.
 //
 // A scene may be lit by its surroundings besides its lights: a picture of
 // everything round it (a light probe), which is folded into a cube and that
@@ -47,11 +48,13 @@
 // into a picture of fractions they are not run.
 //
 // Not here: a probe that is a canvas is folded once, as it is when first
-// drawn, and a material's own probe is not looked at. What a CustomMaterial
-// draws mirrors nothing by a reflection probe, and what nodes draw by
-// themselves is not in what one sees. Of what an effect may read besides
-// the picture, only how far each place of it is: which is how far what
-// nothing is seen through is.
+// drawn, and a material's own probe is not looked at. What nodes draw by
+// themselves is not in what a reflection probe sees. Of what an effect may
+// read besides the picture, only how far each place of it is: which is how
+// far what nothing is seen through is. Nothing says how far it is before
+// all else is drawn: a material that is to (`OpaquePrePassDepthDraw`) says
+// it as one that is not, and an environment's `depthPrePassEnabled` does
+// nothing.
 import * as math from "./math.js";
 import { Triangles } from "./mesh.js";
 import { customised, effected } from "./shaders.js";
@@ -1784,12 +1787,13 @@ function handed(own, uniforms) {
   }
 }
 
-// One part of a shape, with the material it is drawn with. A
+// One part of a shape, with the material it is drawn with, saying how far
+// it is where it hides what is drawn behind it afterwards. A
 // CustomMaterial's is drawn by its own program: put over what is there as
-// the material says and no other way, and saying how far it is where what
-// nothing is seen through says it, unless the material has it otherwise.
+// the material says and no other way.
 function part(piece) {
   const { custom } = piece.material;
+  gl.depthMask(piece.hides);
   if (!custom) return drawn(piece);
   const own = tailor(custom.source);
   if (!own) return;
@@ -1807,10 +1811,7 @@ function part(piece) {
     gl.enable(gl.BLEND);
     gl.blendFuncSeparate(...custom.blend.map((factor) => FACTORS[factor]));
   } else gl.disable(gl.BLEND);
-  gl.depthMask(piece.sheer ? custom.depth === 1 : custom.depth !== 2);
   drawn(piece);
-  if (piece.sheer) gl.enable(gl.BLEND);
-  gl.depthMask(!piece.sheer);
   own.shining = shining;
   shining = lit;
   at = shaded.at;
@@ -2156,15 +2157,27 @@ function near(probes, placed, { min, max }) {
 // with a material is a thing to draw. A shape with fewer materials than
 // parts has the last for the rest; one with none is not drawn. What nothing
 // is seen through is `solid`, the nearest first; what something is,
-// `clear`, the farthest first. What a reflection probe sees (`mirrored`) is
-// the shapes that are for mirroring, and none of them mirrors anything.
+// `clear`, the farthest first; and what reads the picture of what is behind
+// it is `reading`, the farthest first, whether anything is seen through it
+// or not. Each is as far as the middle of it is in front of the eye, and a
+// model's `depthBias` times itself farther, or nearer where it is below
+// nothing, as in Qt.
+//
+// A thing hides what is drawn behind it afterwards (`hides`) unless its
+// material is never to (`depthDrawMode` 2); one that something is seen
+// through, only where its material is always to (1).
+//
+// What a reflection probe sees (`mirrored`) is the shapes that are for
+// mirroring, and none of them mirrors anything.
 function listed(scene, { view, seen, looking }, mirrored) {
   const solid = [];
+  const reading = [];
   const clear = [];
   const probes = mirrored ? [] : (scene.probes ?? []);
   for (const model of scene.models) {
     if (mirrored && !model.mirrored) continue;
     const { shape, materials, opacity, bones, weights } = model;
+    const bias = model.bias ?? 0;
     const lights = model.lights ?? scene.lights;
     let { instances } = model;
     if (instances && !instances.count) continue;
@@ -2183,33 +2196,39 @@ function listed(scene, { view, seen, looking }, mirrored) {
       if (!material || material.waiting) return;
       const middle = math.point(placed, ...subset.min.map((least, axis) => (least + subset.max[axis]) / 2));
       // How far in front of the eye it is: the eye looks down its own z.
-      const distance = -math.point(view, ...middle)[2];
+      const distance = -math.point(view, ...middle)[2] + Math.sign(bias) * bias * bias;
       const through = sheer(material, opacity) || Boolean(instances?.sheer);
+      const reads = Boolean(material.custom?.source.screen);
+      const depth = material.custom ? material.custom.depth : material.depth;
+      const hides = through && !reads ? depth === 1 : depth !== 2;
       const mirror = model.mirrors && probes.length ? near(probes, placed, subset) : null;
-      (through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, weights, lights, instances, placed, sheer: through, mirror });
+      (reads ? reading : through ? clear : solid).push({ shape, subset, world, all, material, opacity, distance, bones, weights, lights, instances, placed, sheer: through, hides, mirror });
     });
   }
   // What nodes draw by themselves (`paints`), each with a program of its
   // own, is among what is seen through: as far away as the node is.
   if (!mirrored) for (const paint of scene.paints ?? []) clear.push({ paint, distance: -math.point(view, ...paint.at)[2] });
   solid.sort((a, b) => a.distance - b.distance);
+  reading.sort((a, b) => b.distance - a.distance);
   clear.sort((a, b) => b.distance - a.distance);
-  return { solid, clear };
+  return { solid, reading, clear };
 }
 
-// Draws what was listed, into what is drawn into, as `told` has it seen.
-function pieces(solid, clear, environment, told) {
+// Draws what was listed, into what is drawn into, as `told` has it seen:
+// what nothing is seen through, then what reads the picture of what is
+// behind it, then what something is seen through, as Qt does.
+function pieces({ solid, reading, clear }, environment, told) {
   if (environment.depth) gl.enable(gl.DEPTH_TEST);
   else gl.disable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
-  // What is behind the scene was drawn without saying how far it is.
-  gl.depthMask(true);
   gl.disable(gl.BLEND);
   for (const piece of solid) part(piece);
+  for (const piece of reading) part(piece);
   gl.enable(gl.BLEND);
-  gl.depthMask(false);
   for (const piece of clear) {
     if (piece.paint) {
+      // What a node draws by itself hides nothing.
+      gl.depthMask(false);
       const own = gl.getParameter(gl.CURRENT_PROGRAM);
       piece.paint({ gl, view: told.view, projection: told.projection, tonemap: told.tonemap, bound });
       gl.useProgram(own);
@@ -2221,6 +2240,7 @@ function pieces(solid, clear, environment, told) {
     else if (blend === 2) gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ONE, gl.ONE);
     else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     part(piece);
+    gl.enable(gl.BLEND);
   }
   gl.depthMask(true);
   gl.bindVertexArray(null);
@@ -2270,7 +2290,7 @@ function reflected(probe, scene, environment, surroundings) {
     const told = said(environment, surroundings, eye, projection, 0, 1, 10000);
     return { told, eye, ...listed(scene, told, true) };
   });
-  const there = `${probe.turn} ${surroundings && environment.sky ? 1 : 0} ${through[0].solid.length + through[0].clear.length}`;
+  const there = `${probe.turn} ${surroundings && environment.sky ? 1 : 0} ${through[0].solid.length + through[0].reading.length + through[0].clear.length}`;
   if (held && probe.once && held.there === there) return;
   if (!held) {
     held = { across, raw: cube(across, Math.floor(Math.log2(across)) + 1), cube: cube(across, LEVELS), depth: gl.createRenderbuffer(), frame: gl.createFramebuffer(), blurring: gl.createFramebuffer() };
@@ -2284,7 +2304,7 @@ function reflected(probe, scene, environment, surroundings) {
   // Nothing is behind what reads what is behind it, in what a probe sees.
   pictured(SCREEN, flat(0, 0, 0, 255));
   pictured(DEPTH, flat(0, 0, 0, 255));
-  through.forEach(({ told, eye, solid, clear }, side) => {
+  through.forEach(({ told, eye, ...all }, side) => {
     gl.bindFramebuffer(gl.FRAMEBUFFER, held.frame);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + side, held.raw, 0);
     gl.viewport(0, 0, across, across);
@@ -2295,7 +2315,7 @@ function reflected(probe, scene, environment, surroundings) {
     telling = told;
     tell();
     shining = null;
-    pieces(solid, clear, environment, told);
+    pieces(all, environment, told);
   });
   covering();
   gl.activeTexture(gl.TEXTURE0 + MAKING);
@@ -2353,11 +2373,13 @@ export function draw(scene, canvas, paper, ways = 0) {
     const eye = math.unscaled(scene.camera);
     if (probe && environment.sky) backdrop(probe, environment, scene.projection, eye, tonemap);
     const told = said(environment, probe, eye, scene.projection, tonemap, scene.near ?? 0, scene.far ?? 0);
-    const { solid, clear } = listed(scene, told, false);
+    const all = listed(scene, told, false);
+    const { solid } = all;
+    const each = [...solid, ...all.reading, ...all.clear];
 
     // What is round each reflection probe that something mirrors by is
     // drawn for it first.
-    const mirrors = new Set([...solid, ...clear].map(({ mirror }) => mirror).filter(Boolean));
+    const mirrors = new Set(each.map(({ mirror }) => mirror).filter(Boolean));
     if (mirrors.size) {
       for (const mirror of mirrors) reflected(mirror, scene, environment, probe);
       gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (late ? linear.frame : null));
@@ -2371,7 +2393,7 @@ export function draw(scene, canvas, paper, ways = 0) {
     // linear light: what nothing is seen through, over what is behind the
     // scene. Something that reads only how far that is, and is not seen
     // through, is itself of it, as in Qt.
-    const reading = [...solid, ...clear].filter(({ material }) => material?.custom?.source.screen || material?.custom?.source.depth);
+    const reading = each.filter(({ material }) => material?.custom?.source.screen || material?.custom?.source.depth);
     const back = reading.length ? behind(width, height) : null;
     if (back) {
       // Read while it is being drawn, there is nothing behind anything.
@@ -2388,9 +2410,9 @@ export function draw(scene, canvas, paper, ways = 0) {
       if (environment.depth) gl.enable(gl.DEPTH_TEST);
       else gl.disable(gl.DEPTH_TEST);
       gl.depthFunc(gl.LEQUAL);
-      gl.depthMask(true);
       gl.disable(gl.BLEND);
       for (const piece of solid) part(piece);
+      gl.depthMask(true);
       gl.bindFramebuffer(gl.FRAMEBUFFER, frame ?? (late ? linear.frame : null));
       const mipped = reading.some(({ material }) => material.custom.source.mips);
       gl.activeTexture(gl.TEXTURE0 + DEPTH);
@@ -2405,7 +2427,7 @@ export function draw(scene, canvas, paper, ways = 0) {
       shining = null;
     }
 
-    pieces(solid, clear, environment, told);
+    pieces(all, environment, told);
   }
 
   if (frame) {

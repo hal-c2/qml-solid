@@ -2058,6 +2058,89 @@ test("a shape goes towards the targets of its mesh as Qt's does", async ({ page 
   near(await painted(page, after), after.map(([, colour]) => colour), "after", 3);
 });
 
+test("what is said to be farther or to hide is drawn over as Qt's is", async ({ page }) => {
+  await open(page, "depthdrawn3d");
+  // Half of each over what is behind it: the blue square and the red alone,
+  // the red over the blue and the blue over the red.
+  const blue = [16, 16, 144];
+  const red = [144, 16, 16];
+  const redOver = [136, 8, 72];
+  const blueOver = [72, 8, 136];
+  // Of each pair: where the blue square alone is, where both are, and
+  // where the red alone is.
+  const pairs = [
+    // As they are, the red is drawn after the blue, which is farther.
+    [blue, redOver, red],
+    // Said to be 5 farther it is 25 farther, which is less than the 50
+    // between them; said to be 8 it is 64, and drawn first.
+    [blue, redOver, red],
+    [blue, blueOver, red],
+    // As the blue is drawn last when it is said to be 8 nearer.
+    [blue, blueOver, red],
+    // Drawn first and hiding what is behind it, the red leaves nothing of
+    // the blue where both are.
+    [blue, red, red],
+    // And hiding what is behind it where it is, it is drawn last and hides
+    // nothing.
+    [blue, redOver, red],
+    // Neither seen through, the nearer is drawn first: and is drawn over
+    // by the farther where it does not hide,
+    [[0, 0, 255], [0, 0, 255], [255, 0, 0]],
+    // as where neither hides,
+    [[0, 0, 255], [0, 0, 255], [255, 0, 0]],
+    // unless it is said to be farther than the other.
+    [[0, 0, 255], [255, 0, 0], [255, 0, 0]],
+    // What is seen through and hides is still seen through.
+    [blue, blueOver, red],
+  ];
+  const points = pairs.flatMap((colours, index) => {
+    const x = 40 + 80 * (index % 5);
+    const y = index < 5 ? 90 : 210;
+    return colours.map((colour, at) => [[x + 25 * (at - 1), y + 25 * (at - 1)], colour]);
+  });
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
+test("what reads the picture of what is behind it is drawn before all that is seen through", async ({ page }) => {
+  await open(page, "screenread3d");
+  // The wall as what reads it draws it, and half as bright; the blue square
+  // and the red, each half over the wall.
+  const read = [13, 3, 55];
+  const dim = [6, 1, 27];
+  const blue = [64, 32, 142];
+  const red = [191, 32, 15];
+  // What reads and is half there, over the wall.
+  const half = [78, 41, 50];
+  // Of each pair: where the farther square alone is, where both are, and
+  // where the nearer alone is.
+  const pairs = [
+    // Drawn first, it hides the blue behind it, which is drawn afterwards,
+    [blue, read, read],
+    // and the red before it is drawn over it.
+    [read, [134, 1, 28], red],
+    // Hiding nothing, it is drawn over by the blue.
+    [blue, [6, 1, 155], read],
+    // Of two that read the nearer is drawn last, and neither reads what
+    // the other drew.
+    [read, dim, dim],
+    // What nothing is seen through is in the picture it reads.
+    [[0, 255, 0], [255, 0, 0], read],
+    // Put over what is there by halves it hides as much,
+    [blue, half, half],
+    // and is drawn before a red one that is said to be farther and hides.
+    [half, [167, 20, 25], red],
+    // Among those that read, one said to be nearer is drawn later.
+    [read, read, dim],
+  ];
+  const points = pairs.flatMap((colours, index) => {
+    const x = 80 + 80 * (index % 4);
+    const y = index < 4 ? 90 : 210;
+    return colours.map((colour, at) => [[x + 25 * (at - 1), y + 25 * (at - 1)], colour]);
+  });
+  points.push([[5, 5], [128, 64, 30]]);
+  near(await painted(page, points), points.map(([, colour]) => colour), "", 3);
+});
+
 // The views of the scenes of effects are 100 by 75, four to a row, and
 // these the places looked at in each: the surroundings, the nearer shape
 // and the further one first. A place not looked at is null.
