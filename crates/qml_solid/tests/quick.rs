@@ -521,6 +521,8 @@ Item {
     property var other: Qt.createComponent("QtQuick", "Rectangle")
     property url icon: Qt.resolvedUrl("icons/a.png")
     property url where: Qt.resolvedUrl(page)
+    property string first: "pages/Home.qml"
+    Text { text: "pages/About.qml" }
     Loader { id: loader; source: "pages/" + root.page + ".qml" }
     function open(name) {
         loader.source = "pages/Home.qml"
@@ -551,6 +553,9 @@ Item {
     assert_contains(&code, r#"source={$url($files1("pages/" + root.page + ".qml"), import.meta.url)}"#);
     assert_contains(&code, "loader.source = $file($file2);");
     assert_contains(&code, "loader.source = $files1(`pages/${name}.qml`);");
+    // So is the text of a string, which holds the name and not the file.
+    assert_contains(&code, r#"first={"pages/Home.qml"}"#);
+    assert_contains(&code, r#"<Text text={"pages/About.qml"}>"#);
     // What names no file is what was written.
     assert_contains(&code, r#"console.log("Nowhere.qml", name + ".txt", "themes/" + name + ".qml", { "pages/Home.qml": 1 });"#);
     // Asked of Qt, it is a component whatever it names: all of them could be.

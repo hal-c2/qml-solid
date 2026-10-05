@@ -865,6 +865,12 @@ impl<'a, 's> Lower<'a, 's> {
             }
             QmlBindingValue::Expression(expression) if property.is_url => self.url(expression),
             QmlBindingValue::Expression(expression) if property.takes_key => self.key(expression),
+            // The name of a QML file is that file to whatever loads one; a
+            // string holds the name. As what was not written, it stays one.
+            QmlBindingValue::Expression(Expression::StringLiteral(mut literal)) if property.is_text => {
+                literal.span = Span::default();
+                Expression::StringLiteral(literal)
+            }
             QmlBindingValue::Expression(expression) => expression,
             // A block is the body of a function whose result is the value.
             QmlBindingValue::Statement(statement) => b.iife(self.worth(statement)),

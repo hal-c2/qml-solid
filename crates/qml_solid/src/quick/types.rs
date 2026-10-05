@@ -48,6 +48,8 @@ pub(crate) struct Property {
     pub is_component: bool,
     /// A path is taken from the file it is written in.
     pub is_url: bool,
+    /// What is written there is text, also where it reads as a path.
+    pub is_text: bool,
     /// What is written there is run when its time comes, and worth nothing
     /// until then: the `script` of a ScriptAction or a StateChangeScript.
     /// (What an AnchorChanges or a ParentChange is given is a script to Qt
@@ -448,6 +450,7 @@ pub(crate) fn qt_property(property: &'static qt::Property) -> Property {
     Property {
         is_component: property.is_component,
         is_url: property.type_name == "QUrl" && !property.is_list,
+        is_text: property.type_name == "QString" && !property.is_list,
         is_script: property.type_name == "QQmlScriptString" && property.name == "script",
         takes_key: property.takes_key(),
         is_list: property.is_list,
@@ -470,6 +473,7 @@ pub(crate) fn declared_property(type_name: &str, is_list: bool) -> Property {
     Property {
         is_component: type_name == "Component" && !is_list,
         is_url: type_name == "url" && !is_list,
+        is_text: type_name == "string" && !is_list,
         is_script: false,
         takes_key: type_name == "int" && !is_list,
         is_list,
