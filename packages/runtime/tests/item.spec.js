@@ -159,3 +159,21 @@ test("an item or a node given another parent is among that one's children and pl
     expect(await answers()).toEqual(expected);
   }
 });
+
+// What Qt 6.11 answers for the same scene, as it is and after each step: a
+// Repeater is a child too, of no size and at the origin.
+test("childrenRect is the rectangle an item's children take together", async ({ page }) => {
+  await open(page, "childrenrect");
+  const answers = () => page.evaluate(() => JSON.parse(JSON.stringify(window.scene.answers())));
+  const fitted = [[0, 0, 25.984375, 14], 25.984375, 14];
+  expect(await answers()).toEqual([[0, 0, 0, 0], [-5, 0, 90, 110], [0, 0, 44, 50], 50, ...fitted]);
+  const after = [
+    [[0, 0, 0, 0], [-5, 0, 90, 110], [0, 0, 44, 30], 30, ...fitted],
+    [[0, 0, 0, 0], [0, 0, 110, 110], [0, 0, 44, 30], 30, ...fitted],
+    [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 44, 30], 30, ...fitted],
+  ];
+  for (const [index, expected] of after.entries()) {
+    await page.evaluate((index) => window.scene.step(index), index);
+    expect(await answers()).toEqual(expected);
+  }
+});

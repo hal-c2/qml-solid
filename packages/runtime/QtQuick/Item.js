@@ -6,6 +6,7 @@
 // the result.
 import { createSignal, onCleanup, runWithOwner } from "solid-js";
 import { contents, defineType, derived, effect, flush, group, inside, parental, parented, QtObject, settle } from "../object.js";
+import { Rect } from "../QtQml/values.js";
 import { drawing, drawn } from "./drawn.js";
 import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus, under } from "./focus.js";
 import { methods as geometry } from "./geometry.js";
@@ -319,6 +320,23 @@ export const Item = defineType("Item", QtObject, {
     // The items inside this one: a list that changes as they come and go.
     get children() {
       return children(this);
+    },
+    // The rectangle they take together, seen or not; nothing at the origin
+    // when there are none.
+    get childrenRect() {
+      let left = Infinity;
+      let top = Infinity;
+      let right = -Infinity;
+      let bottom = -Infinity;
+      for (const child of children(this)) {
+        const { x, y } = child;
+        left = Math.min(left, x);
+        top = Math.min(top, y);
+        right = Math.max(right, x + child.width);
+        bottom = Math.max(bottom, y + child.height);
+      }
+      if (left === Infinity) return new Rect(0, 0, 0, 0);
+      return new Rect(left, top, Math.max(right - left, 0), Math.max(bottom - top, 0));
     },
     // Adds an item made after this one was: `Component.createObject(parent)`.
     $add(item) {
