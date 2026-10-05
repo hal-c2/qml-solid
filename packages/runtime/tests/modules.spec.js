@@ -107,3 +107,16 @@ test("QML of Qt's own is of the style of the program that came to it", async ({ 
   });
   expect(read).toEqual([60, 20]);
 });
+
+test("a file beside the program as it runs is where the program says", async ({ page }) => {
+  await open(page, "beside");
+  await page.waitForFunction(() => window.scene.sizes().every(([status]) => status === 1));
+  expect(await page.evaluate(() => window.scene.sizes())).toEqual([
+    [1, 40, 20],
+    [1, 90, 60],
+    [1, 50, 50],
+  ]);
+  expect(await page.evaluate(() => window.scene.names())).toEqual(["file:store/flag.png", "file:store/marks/mark.svg", "file:store/deep/alone.png"]);
+  // What is beside nothing the program told of, or says from where, is as it was.
+  expect(await page.evaluate(() => window.objects.elsewhere)).toEqual(["file:other/flag.png", "file:/store/flag.png", "store/flag.png"]);
+});

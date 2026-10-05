@@ -1632,9 +1632,23 @@ export function $resource(address, url) {
   resources.set(address, url);
 }
 
+// `file:pictures/one.png`, which does not say from where: a file beside the
+// program as it runs, in the directory it was started in. A program that
+// names one has put it there itself, downloaded or written, and what stands
+// in for that part of it says where the files of `directory` are instead.
+const places = [];
+export function beside(directory, url) {
+  const whole = (name) => (name.endsWith("/") ? name : `${name}/`);
+  places.push([whole(directory.replace(/^file:/, "")), whole(String(url))]);
+  // The directory furthest in is the one a file is of.
+  places.sort(([one], [other]) => other.length - one.length);
+}
+
 export function located(url) {
-  if (!/^(qrc)?:\//.test(url)) return url;
-  return resources.get(url.replace(/^(qrc)?:\/+/, "qrc:/")) ?? url;
+  if (/^(qrc)?:\//.test(url)) return resources.get(url.replace(/^(qrc)?:\/+/, "qrc:/")) ?? url;
+  const path = /^file:(?!\/)(.*)$/s.exec(url)?.[1];
+  const place = path === undefined ? undefined : places.find(([directory]) => path.startsWith(directory));
+  return place ? place[1] + path.slice(place[0].length) : url;
 }
 
 // What a scene still waits for, a file being read or a picture decoded, is

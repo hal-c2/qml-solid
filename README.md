@@ -157,6 +157,12 @@ A file the build keeps in the program is named by where it is in there:
 start of one it puts together as the program runs, says where a browser finds
 the file. The program still reads the name it wrote.
 
+A file the program has beside it as it runs is named without saying from
+where, `file:content/images/dust.png`: Qt looks in the directory the program
+was started in. The program put it there itself, so what stands in for that
+part of it says where a browser finds the directory:
+`beside("file:content/", url)` of `qml-solid/object`.
+
 A file is a function that makes its root object:
 
 ```js
