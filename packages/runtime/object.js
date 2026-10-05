@@ -81,7 +81,21 @@ export const group = (properties) => ({ [GROUP]: properties });
 // told of and leaves the property what it was.
 const TYPED = Symbol("typed");
 const REFUSED = Symbol("refused");
+// What a property is given and takes no notice of, silently: it stays what
+// it was, as an Item stays where it is when its `x` is given NaN.
+const KEPT = Symbol("kept");
 export const typed = (kind, initial) => ({ [TYPED]: kind, initial });
+
+// A number that is one: where an item is and how big. Qt's setters return
+// at once from a NaN, so a binding that has yet to make sense (a size worked
+// out from a picture that is still loading) leaves the item as it was. All
+// else is taken as it is, nothing too: that is how a size is given back to
+// what the item would be of itself.
+function place(value) {
+  return value !== value && typeof value === "number" ? KEPT : value;
+}
+place.type = "double";
+place.any = true;
 
 // A number in a string, as Qt reads one: all of it, and in tens.
 const NUMERAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
@@ -209,7 +223,7 @@ function named(value) {
 
 // For a type that says how a property of its own is typed:
 // `typed(kinds.int, -1)`.
-export const kinds = { int, real, bool, string, color: tint };
+export const kinds = { int, real, bool, string, color: tint, place };
 
 // What the compiler declares a property of a file as.
 export const $int = typed(int, 0);
@@ -225,6 +239,7 @@ function converted(key, kind, compute) {
     const value = compute();
     if (value === undefined) return value;
     const made = kind(value);
+    if (made === KEPT) return last;
     if (made !== REFUSED) return (last = made);
     console.warn(`${key.replaceAll("$", ".")}: Unable to assign ${named(value)} to ${kind.type}`);
     return last;
@@ -734,8 +749,9 @@ class Slot {
       const placed = this.placed();
       if (placed !== undefined) return placed;
     }
-    if (this.assigned) return this.value;
-    let value = this.bound ? this.bound() : this.given;
+    const back = this.assigned && this.back();
+    if (this.assigned && !back) return this.value;
+    let value = back ? undefined : this.bound ? this.bound() : this.given;
     if (value === undefined && this.whole) value = slot(this.self, this.whole).get()?.[this.member];
     if (value === undefined) {
       const initial = this.initial;
@@ -744,11 +760,18 @@ class Slot {
     return value;
   }
 
+  // Given nothing where nothing is what gives it back: `width = undefined`
+  // is no binding any more and no width of its own, so the implicit one.
+  back() {
+    return this.value === undefined && this.kind?.any === true;
+  }
+
   // Whether something gave the property a value: a border is drawn only
   // when its width or colour was set.
   explicit() {
     this.follow();
-    return this.assigned || (this.bound ? this.bound() : this.given) !== undefined || this.bound?.busy?.() === true;
+    if (this.assigned) return !this.back();
+    return (this.bound ? this.bound() : this.given) !== undefined || this.bound?.busy?.() === true;
   }
 
   changed() {
@@ -766,7 +789,8 @@ class Slot {
   write(value) {
     if (typeof value === "function" && value[BINDING]) return this.rebind(value);
     if (this.kind) {
-      const made = value === undefined ? REFUSED : this.kind(value);
+      const made = value === undefined && !this.kind.any ? REFUSED : this.kind(value);
+      if (made === KEPT) return false;
       if (made === REFUSED) throw Object.assign(new Error(`Cannot assign ${named(value)} to ${this.kind.type}`), { refused: true });
       value = made;
     }
@@ -804,7 +828,7 @@ class Slot {
   made(value) {
     if (!this.kind || value === undefined) return value;
     const made = this.kind(value);
-    return made === REFUSED ? undefined : made;
+    return made === REFUSED || made === KEPT ? undefined : made;
   }
 
   // What a parent or a view gives the object: a default, not an assignment.
@@ -839,9 +863,12 @@ export function slot(self, key) {
 
 function defineProperty(Type, proto, name, initial) {
   const resolve = Type.spec.resolve?.[name];
-  const kind = initial?.[TYPED];
-  if (kind) initial = initial.initial;
+  // A type that says a property of its base's again says what it is until
+  // told otherwise, not what kind of thing it is.
+  const kind = initial?.[TYPED] ?? Type.slots[name]?.kind;
+  if (initial?.[TYPED]) initial = initial.initial;
   const make = (self) => (self.$slots[name] = new Slot(self, name, initial, resolve, undefined, undefined, kind));
+  make.kind = kind;
   Type.slots[name] = make;
   Object.defineProperty(proto, name, {
     get() {

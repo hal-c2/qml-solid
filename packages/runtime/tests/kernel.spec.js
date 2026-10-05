@@ -205,3 +205,17 @@ test("what reads a property is not asked again for what else becomes of the obje
     [["name"], 4, "leaf", 1],
   ]);
 });
+
+// Qt 6.11's answers. A size worked out from a picture that has yet to load
+// is such a number, and an item placed by it must still be somewhere.
+test("an item given NaN for where it is or how big stays as it was", async ({ page }) => {
+  await open(page, "nanplace");
+  expect(await page.evaluate(() => window.scene.read())).toEqual([
+    [0, 0, 0, 0, 1, 0, 30, 40],
+    [0, 0, 0, 0, 1, 5, 30, 40],
+    [3, 2, 20, 30, 1, 5, 30, 40],
+    [3, 2, 20, 30, 1, 5, 30, 40],
+    [3, 2, 20, 30, 7, 5, 44, 40],
+  ]);
+  expect(await page.evaluate(() => window.scene.bound.$node.style.transform)).toBe("translate(3px, 2px)");
+});

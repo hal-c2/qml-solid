@@ -5,7 +5,7 @@
 // so they are computed here, anchors included, and the element is only told
 // the result.
 import { createSignal, onCleanup, runWithOwner } from "solid-js";
-import { contents, defineType, derived, effect, flush, group, inside, parental, parented, QtObject, settle } from "../object.js";
+import { contents, defineType, derived, effect, flush, group, inside, kinds, parental, parented, QtObject, settle, typed } from "../object.js";
 import { Rect } from "../QtQml/values.js";
 import { drawing, drawn } from "./drawn.js";
 import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus, under } from "./focus.js";
@@ -260,11 +260,11 @@ function viewed(self, host) {
 
 export const Item = defineType("Item", QtObject, {
   properties: {
-    x: 0,
-    y: 0,
+    x: typed(kinds.place, 0),
+    y: typed(kinds.place, 0),
     z: 0,
-    width: derived((self) => self.implicitWidth),
-    height: derived((self) => self.implicitHeight),
+    width: typed(kinds.place, derived((self) => self.implicitWidth)),
+    height: typed(kinds.place, derived((self) => self.implicitHeight)),
     implicitWidth: 0,
     implicitHeight: 0,
     opacity: 1,
