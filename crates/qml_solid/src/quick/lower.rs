@@ -867,6 +867,12 @@ impl<'a, 's> Lower<'a, 's> {
                 b.arrow_block(&[], self.statements(statement))
             }
             QmlBindingValue::Expression(expression) if property.is_url => self.url(expression),
+            // A block that works a URL out is as relative to the file as one
+            // that is written.
+            QmlBindingValue::Statement(statement) if property.is_url => {
+                let worth = b.iife(self.worth(statement));
+                self.url(worth)
+            }
             QmlBindingValue::Expression(expression) if property.takes_key => self.key(expression),
             // The name of a QML file is that file to whatever loads one; a
             // string holds the name. As what was not written, it stays one.
