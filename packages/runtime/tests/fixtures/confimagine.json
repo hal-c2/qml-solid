@@ -1,0 +1,7 @@
+[
+  [":/settings/pictures/", "qrc:/settings/pictures/"],
+  [":/settings/pictures/", "qrc:/settings/pictures/"],
+  [":/custom", "qrc:/custom/"],
+  [":/custom", "qrc:/custom/"],
+  [":/settings/pictures/", "qrc:/settings/pictures/"]
+]

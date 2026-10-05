@@ -219,3 +219,18 @@ test("a delegate that goes with the row it read is not asked for what it read", 
   ]);
   expect(JSON.parse(JSON.stringify(scene))).toEqual([["a", "b", "c"], null, ["x"], null, ["p", "q"]]);
 });
+
+test("a value of an array that is no number is one row, as any other is", async ({ page }) => {
+  await open(page, "arraynan");
+  const mixed = ["0:NaN", "1:NaN", "2:undefined", "3:null", "4:0", "5:", "6:a", "7:a"];
+  // What Qt 6.11 answers, as the scene is made and after each step.
+  const qt = [
+    [3, ["0:1", "1:NaN", "2:3"], 8, mixed],
+    [3, ["0:NaN", "1:2", "2:NaN"], 8, mixed],
+    [1, ["0:NaN"], 8, mixed],
+  ];
+  for (let index = 0; index < qt.length; index++) {
+    expect(await page.evaluate(() => window.scene.answers())).toEqual(qt[index]);
+    if (index + 1 < qt.length) await page.evaluate((index) => window.scene.step(index), index);
+  }
+});

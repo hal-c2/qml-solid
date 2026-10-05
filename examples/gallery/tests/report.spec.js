@@ -13,6 +13,11 @@ import { qmlc, readExpected, reportDirectory, runtimePackage } from "./settings.
 const expected = readExpected().examples ?? {};
 const screen = readScreen();
 
+// How long an example may take to load. The server compiles what the page
+// asks for when it asks, every example at once and for the first time: one
+// with a whole style of controls to compile takes ten seconds by itself.
+const LOADING = 60000;
+
 // The modules of Qt the runtime has: what its package exports.
 const runtime = new Set(Object.keys(JSON.parse(readFileSync(runtimePackage, "utf8")).exports).map((path) => path.slice(2)));
 
@@ -105,7 +110,7 @@ for (const example of readManifest()) {
 
     await page.goto(`?example=${encodeURIComponent(example.id)}`);
     await page
-      .waitForFunction(() => window.gallery && window.gallery.status !== "loading", null, { timeout: 20000 })
+      .waitForFunction(() => window.gallery && window.gallery.status !== "loading", null, { timeout: LOADING })
       .catch(() => pageErrors.push("the page did not finish loading the example"));
     // Its pictures and fonts are asked for when it is made: a busy server
     // may take longer over them than the wait that follows.

@@ -25,7 +25,10 @@
       "pixels": 0.96,
       "content": 0.9
     },
-    "documentviewer": {},
+    "documentviewer": {
+      "pixels": 0.99,
+      "content": 0.99
+    },
     "graphs_csv": {},
     "hangman": {
       "pixels": 0.95,
@@ -33,7 +36,7 @@
     },
     "lightningviewer": {
       "pixels": 0.99,
-      "content": 0.88
+      "content": 0.97
     },
     "maroon": {
       "pixels": 0.95,
@@ -64,7 +67,10 @@
       "pixels": 0.9,
       "content": 0.75
     },
-    "stocqt": {},
+    "stocqt": {
+      "pixels": 0.99,
+      "content": 0.96
+    },
     "thermostat": {
       "pixels": 0.99,
       "content": 0.98

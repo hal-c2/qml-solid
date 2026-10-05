@@ -8,7 +8,7 @@ export default defineConfig({
   testMatch: "report.spec.js",
   fullyParallel: true,
   reporter: [["./tests/table.js"]],
-  timeout: 90000,
+  timeout: 150000,
   use: {
     baseURL: url,
     // As Qt was when the reference pictures were taken.

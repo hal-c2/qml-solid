@@ -32,6 +32,16 @@ plain("an item is painted by its shaders, with its properties as their uniforms"
   expect(logs[1]).toMatch(/nothing/);
   expect(logs[2]).toMatch(/none\.frag is not a shader/);
 
+  // What Qt baked has a shader for each way of drawing Qt knows: the one for
+  // OpenGL ES is what is drawn with.
+  await expect.poll(() => page.evaluate(() => JSON.parse(JSON.stringify(window.scene.baked())))).toEqual([Compiled, ""]);
+  expect(
+    await pixels(page, [
+      [250, 25],
+      [330, 25],
+    ]),
+  ).toEqual([GREEN, BLUE]);
+
   const points = [
     // The tint as far as level and shift say, then blue.
     [10, 25],
@@ -51,8 +61,11 @@ plain("an item is painted by its shaders, with its properties as their uniforms"
     [70, 205],
     // Nothing is drawn by a shader that failed.
     [10, 250],
+    // The part of a picture a ShaderEffectSource is of: its blue half.
+    [130, 145],
+    [210, 145],
   ];
-  expect(await pixels(page, points)).toEqual([RED, RED, BLUE, WHITE, BLUE, RED, RED, BLUE, GREEN, GREEN, WHITE, WHITE, WHITE]);
+  expect(await pixels(page, points)).toEqual([RED, RED, BLUE, WHITE, BLUE, RED, RED, BLUE, GREEN, GREEN, WHITE, WHITE, WHITE, BLUE, BLUE]);
 
   await page.evaluate(() => window.scene.step(0));
   expect((await pixels(page, points)).slice(0, 8)).toEqual([GREEN, BLUE, BLUE, WHITE, BLUE, RED, GREEN, BLUE]);

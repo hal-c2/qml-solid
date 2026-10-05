@@ -219,6 +219,60 @@ test("a space before a line break hangs, and a line break that ends the text sta
   ]);
 });
 
+// What Qt 6.11 answers for scenes/tabstops.qml: implicitWidth, contentWidth
+// and lineCount of each text set from the left and from the right, of the
+// wrapped one and the three cut to fit, then the widths of the two TextEdits.
+const QT_TABS = [
+  [86.671875, 86.671875, 1],
+  [86.671875, 86.671875, 1],
+  [80, 80, 1],
+  [80, 80, 1],
+  [80, 80, 1],
+  [80, 80, 1],
+  [166.671875, 166.671875, 1],
+  [166.671875, 166.671875, 1],
+  [160, 160, 2],
+  [160, 161, 2],
+  [166.671875, 166.671875, 1],
+  [166.671875, 166.671875, 1],
+  [86.671875, 86.671875, 2],
+  [86.671875, 86.671875, 2],
+  [220.625, 129.3125, 2],
+  [220.625, 127.96875, 1],
+  [220.625, 72.625, 1],
+  [220.625, 119.984375, 1],
+  [86.671875, 86.671875],
+  [36.671875, 36.671875],
+];
+
+test("a tab goes on to the next stop of its line, 80 pixels apart", async ({ page }) => {
+  await open(page, "tabstops");
+  expect(await page.evaluate(() => JSON.parse(JSON.stringify(window.scene.answers())))).toEqual(QT_TABS);
+  // Where what follows the last tab of each line is drawn, from the left of
+  // the item: on a stop counted from where the line starts, wherever the
+  // line is set in the item.
+  const after = (column) =>
+    page.evaluate((column) => {
+      const texts = Array.from(window.scene.children[column].children).filter((text) => text.$markup);
+      return texts.map((text) => {
+        const letters = text.$markup.firstChild;
+        const frame = text.$node.getBoundingClientRect();
+        const range = document.createRange();
+        return letters.data.split("\n").map((line, index, lines) => {
+          const tab = line.lastIndexOf("\t");
+          if (tab < 0 || tab === line.length - 1) return null;
+          const at = lines.slice(0, index).join("\n").length + (index ? 1 : 0) + tab + 1;
+          range.setStart(letters, at);
+          range.setEnd(letters, at + 1);
+          return Math.round(range.getBoundingClientRect().left - frame.left);
+        });
+      });
+    }, column);
+  expect(await after(0)).toEqual([[80], [null], [null], [160], [null, null], [160], [80, 80]]);
+  expect(await after(1)).toEqual([[183], [null], [null], [183], [null, null], [183], [183, 183]]);
+  expect(await page.evaluate(() => window.scene.children[3].$markup.textContent)).toBe("one\ttwo thr…");
+});
+
 test("a text is laid out again when what it depends on changes", async ({ page }) => {
   await boxes(page);
   const read = await page.evaluate(() => {

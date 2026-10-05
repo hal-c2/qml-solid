@@ -4,10 +4,10 @@
 // layout: `x`, `y`, `width` and `height` are properties other bindings read,
 // so they are computed here, anchors included, and the element is only told
 // the result.
-import { runWithOwner } from "solid-js";
-import { contents, defineType, derived, effect, group, parental, parented, QtObject, settle } from "../object.js";
+import { createSignal, onCleanup, runWithOwner } from "solid-js";
+import { contents, defineType, derived, effect, flush, group, inside, parental, parented, QtObject, settle } from "../object.js";
 import { drawing, drawn } from "./drawn.js";
-import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus } from "./focus.js";
+import { declared, forceActiveFocus, nextItemInFocusChain, reachable, setFocus, under } from "./focus.js";
 import { methods as geometry } from "./geometry.js";
 import { navigable } from "./Keys.js";
 import { mirrored } from "./LayoutMirroring.js";
@@ -15,6 +15,7 @@ import { stateful } from "./states.js";
 import "./style.js";
 
 const EMPTY = Object.freeze([]);
+const WRITABLE = { ownedWrite: true };
 
 // `item.left`: one of an item's seven lines, for another item to anchor to.
 const LINES = ["left", "right", "top", "bottom", "horizontalCenter", "verticalCenter", "baseline"];
@@ -224,6 +225,38 @@ function arranged(self) {
   );
 }
 
+// What an item that is mounted is in, as the root of a QQuickView is in the
+// view's content item: an item as large as the element, which is the root's
+// `parent`. A root that says `anchors.fill: parent` fills the element.
+function viewed(self, host) {
+  const [width, setWidth] = createSignal(host.clientWidth, WRITABLE);
+  const [height, setHeight] = createSignal(host.clientHeight, WRITABLE);
+  const view = inside(null, () =>
+    Item({
+      get width() {
+        return width();
+      },
+      get height() {
+        return height();
+      },
+    }),
+  );
+  host.append(view.$node);
+  // The element is another size when the page is, with nothing here asking.
+  const observer = new ResizeObserver(() => {
+    setWidth(host.clientWidth);
+    setHeight(host.clientHeight);
+    flush();
+  });
+  observer.observe(host);
+  onCleanup(() => {
+    observer.disconnect();
+    view.$node.remove();
+  });
+  under(self, view);
+  self.parent = view;
+}
+
 export const Item = defineType("Item", QtObject, {
   properties: {
     x: 0,
@@ -300,6 +333,10 @@ export const Item = defineType("Item", QtObject, {
       else if (this.$static.includes(item)) this.$static = this.$static.filter((child) => child !== item);
       else return;
       this.$touch((version) => version + 1);
+    },
+    // Called by `mount` for the object it mounted.
+    $mounted(host) {
+      viewed(this, host);
     },
     // `mapToItem`, `mapFromItem`, `mapToGlobal`, `mapFromGlobal`, `contains`
     // and `childAt`.

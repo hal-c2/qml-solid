@@ -27,6 +27,10 @@ test("Universal has what an application's settings say where it is the style", a
   await answered(page, "confuniversal");
 });
 
+test("Imagine has its pictures where an application's settings say", async ({ page }) => {
+  await answered(page, "confimagine");
+});
+
 test("the style the settings name is the style where the build names none", async ({ page }) => {
   await open(page, "modules-said");
   expect(await page.evaluate(() => [window.objects.shelf.width, window.objects.shelf.height])).toEqual([60, 20]);

@@ -644,10 +644,10 @@ export class Rows {
     const held = this.values;
     let start = 0;
     const shorter = Math.min(held.length, values.length);
-    while (start < shorter && held[start] === values[start]) start++;
+    while (start < shorter && same(held[start], values[start])) start++;
     let heldEnd = held.length;
     let end = values.length;
-    while (heldEnd > start && end > start && held[heldEnd - 1] === values[end - 1]) {
+    while (heldEnd > start && end > start && same(held[heldEnd - 1], values[end - 1])) {
       heldEnd--;
       end--;
     }
@@ -664,11 +664,11 @@ export class Rows {
     }
     for (let index = start; index < end; index++) {
       const value = values[index];
-      if (held[index] === value && index < held.length - (values.length - end)) continue;
+      if (same(held[index], value) && index < held.length - (values.length - end)) continue;
       const tail = held.length - (values.length - end);
       let at = -1;
       for (let other = index + 1; other < tail; other++) {
-        if (held[other] === value) {
+        if (same(held[other], value)) {
           at = other;
           break;
         }
@@ -683,6 +683,10 @@ export class Rows {
     this.unobserve = null;
   }
 }
+
+// Whether two values of an array are one: as a Map tells them apart, to which
+// what is not a number is itself.
+const same = (one, other) => one === other || (one !== one && other !== other);
 
 // Where the row at `at` is once `count` rows have moved from `from` to `to`.
 export function moved(at, from, to, count) {

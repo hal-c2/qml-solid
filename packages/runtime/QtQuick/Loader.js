@@ -7,7 +7,7 @@
 // comes later. Anything else is the URL it was given, for which there is
 // nothing to load: QML is not interpreted here.
 import { createEffect, createSignal, runWithOwner, untrack } from "solid-js";
-import { defineType, derived, effect, instantiate, last, slot, whenComplete } from "../object.js";
+import { defineType, derived, effect, instantiate, last, slot, whenComplete, whenMade } from "../object.js";
 import { Item } from "./Item.js";
 import { settle } from "./settle.js";
 
@@ -36,6 +36,17 @@ function implicit(self, key, implicitKey) {
   return sized(self, key) ? item[implicitKey] : item[key];
 }
 
+// The size the Loader gives its item: none along a way it has none itself.
+function given(self) {
+  return [sized(self, "width") ? self.width : undefined, sized(self, "height") ? self.height : undefined];
+}
+
+function fit(item, width, height) {
+  if (!item?.$node) return;
+  slot(item, "width").place(width);
+  slot(item, "height").place(height);
+}
+
 function write(self, name, value) {
   return slot(self, name).write(value);
 }
@@ -61,6 +72,9 @@ function make(self, state, component, properties) {
     if (own) own.write(properties[name]);
     else if (item && name in item) item[name] = properties[name];
   }
+  // It is the size it is given before anything hears of it, as in Qt: what
+  // is bound to `item.width` never finds the size the item would rather be.
+  fit(item, ...given(self));
   if (item?.$node) self.$add(item);
   write(self, "item", item);
   write(self, "status", Ready);
@@ -158,6 +172,18 @@ export const Loader = defineType("Loader", Item, {
       asked: 0,
       stale: false,
     });
+    // What it is to load as it is made is there before a layout it is in
+    // looks at it. Qt loads as it completes the Loader, and completes that
+    // before the layout, which arranges only then: `Layout.preferredWidth:
+    // item ? item.width : 64` is never 64 to it, and the item is not made 64.
+    whenMade(() =>
+      untrack(() => {
+        state.active = self.active;
+        state.component = self.sourceComponent;
+        state.source = self.source;
+        load(self, state);
+      }),
+    );
     // Adding the item to the Loader is a change of the Loader, and what
     // reads the Loader runs again: it loads only when what it is to load is
     // something else.
@@ -183,16 +209,8 @@ export const Loader = defineType("Loader", Item, {
       },
     );
     effect(
-      () => [
-        self.item,
-        sized(self, "width") ? self.width : undefined,
-        sized(self, "height") ? self.height : undefined,
-      ],
-      ([item, width, height]) => {
-        if (!item?.$node) return;
-        slot(item, "width").place(width);
-        slot(item, "height").place(height);
-      },
+      () => [self.item, ...given(self)],
+      ([item, width, height]) => fit(item, width, height),
     );
     // What was loaded as the Loader was made was there before anything
     // listened for a change: its own handlers are told of it here, in the

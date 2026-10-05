@@ -322,9 +322,9 @@
         "the application itself: Qt Widgets, with viewers as plugins"
       ],
       "qt": {
-        "runnable": false,
-        "reason": "A Qt Widgets application; its only QML is the 3D model viewer plugin, which needs QtQuick3D (not installed)."
-      }
+        "runnable": true
+      },
+      "notes": "A Qt Widgets application; its only QML is the 3D model viewer plugin, and the picture is that with no file open: the empty view."
     },
     {
       "id": "FX_Material_Showroom",
@@ -785,9 +785,14 @@
       "cpp": [
         "StocQt: StockEngine (singleton; quotes from the network or from data/), TimeFormatter (a QtGraphs axis formatter)"
       ],
+      "volatile": "time",
       "qt": {
-        "runnable": false,
-        "reason": "QtGraphs is not installed. The data comes from the C++ singleton StockEngine, which corpus/standins/stocqt stands in for. The Imagine style, from qtquickcontrols2.conf."
+        "runnable": true,
+        "controlsConf": "qtquickcontrols2.conf",
+        "offline": true,
+        "env": {
+          "QML_XHR_ALLOW_FILE_READ": "1"
+        }
       }
     },
     {

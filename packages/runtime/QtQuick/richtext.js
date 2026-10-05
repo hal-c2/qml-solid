@@ -13,7 +13,7 @@ import { flush } from "../object.js";
 // have margins in rich text and none in styled text, and the document has
 // none above its first block and below its last.
 rules(`
-.qq-text { position: absolute; left: 0; top: 0; white-space: pre; }
+.qq-text { position: absolute; left: 0; top: 0; white-space: pre; tab-size: 80px; }
 .qq-bench {
   position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none;
 }

@@ -407,11 +407,16 @@ export const TextInput = defineType("TextInput", Item, {
   },
 });
 
+// The font of a TextEdit, with how far apart its tab stops are.
+function tabbing(self) {
+  return { ...self.$edit.font(), tab: self.tabStopDistance };
+}
+
 // The lines of a TextEdit: the browser breaks them in the field, and they
 // are broken here too, as Text breaks them, for what the size is.
 function laid(self) {
   fonts();
-  const spec = self.$edit.font();
+  const spec = tabbing(self);
   const face = metrics(spec);
   const wide = sized(self, "width");
   const limit = wide ? Math.max(self.width - self.leftPadding - self.rightPadding, 0) : Infinity;
@@ -486,7 +491,7 @@ export const TextEdit = defineType("TextEdit", Item, {
     // `width` may read this one.
     state.natural = lazy(self, () => {
       fonts();
-      const spec = state.font();
+      const spec = tabbing(self);
       let width = 0;
       for (const paragraph of capitalized(string(self), self.font.capitalization).split("\n")) {
         width = Math.max(width, advance(spec, paragraph) + overhang(spec, paragraph));

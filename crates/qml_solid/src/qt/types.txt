@@ -9737,6 +9737,208 @@ module QtQuick.Controls.Fusion.impl
 		signal controlChanged
 	type QtQuick/Controls/Fusion/impl/UndoAction.qml UndoAction
 		prototype QtQuick/Controls/impl/UndoAction.qml
+module QtQuick.Controls.Imagine
+	import QtQuick.Controls.Basic
+	ApplicationWindow QtQuick/Controls/Imagine/ApplicationWindow.qml
+	BusyIndicator QtQuick/Controls/Imagine/BusyIndicator.qml
+	Button QtQuick/Controls/Imagine/Button.qml
+	CheckBox QtQuick/Controls/Imagine/CheckBox.qml
+	CheckDelegate QtQuick/Controls/Imagine/CheckDelegate.qml
+	ComboBox QtQuick/Controls/Imagine/ComboBox.qml
+	DelayButton QtQuick/Controls/Imagine/DelayButton.qml
+	Dial QtQuick/Controls/Imagine/Dial.qml
+	Dialog QtQuick/Controls/Imagine/Dialog.qml
+	DialogButtonBox QtQuick/Controls/Imagine/DialogButtonBox.qml
+	DoubleSpinBox QtQuick/Controls/Imagine/DoubleSpinBox.qml
+	Drawer QtQuick/Controls/Imagine/Drawer.qml
+	Frame QtQuick/Controls/Imagine/Frame.qml
+	GroupBox QtQuick/Controls/Imagine/GroupBox.qml
+	HorizontalHeaderView QtQuick/Controls/Imagine/HorizontalHeaderView.qml
+	HorizontalHeaderViewDelegate QtQuick/Controls/Imagine/HorizontalHeaderViewDelegate.qml
+	Imagine QQuickImagineStyle
+	ItemDelegate QtQuick/Controls/Imagine/ItemDelegate.qml
+	Label QtQuick/Controls/Imagine/Label.qml
+	Menu QtQuick/Controls/Imagine/Menu.qml
+	MenuBar QtQuick/Controls/Imagine/MenuBar.qml
+	MenuBarItem QtQuick/Controls/Imagine/MenuBarItem.qml
+	MenuItem QtQuick/Controls/Imagine/MenuItem.qml
+	MenuSeparator QtQuick/Controls/Imagine/MenuSeparator.qml
+	Page QtQuick/Controls/Imagine/Page.qml
+	PageIndicator QtQuick/Controls/Imagine/PageIndicator.qml
+	Pane QtQuick/Controls/Imagine/Pane.qml
+	Popup QtQuick/Controls/Imagine/Popup.qml
+	ProgressBar QtQuick/Controls/Imagine/ProgressBar.qml
+	RadioButton QtQuick/Controls/Imagine/RadioButton.qml
+	RadioDelegate QtQuick/Controls/Imagine/RadioDelegate.qml
+	RangeSlider QtQuick/Controls/Imagine/RangeSlider.qml
+	RoundButton QtQuick/Controls/Imagine/RoundButton.qml
+	ScrollBar QtQuick/Controls/Imagine/ScrollBar.qml
+	ScrollIndicator QtQuick/Controls/Imagine/ScrollIndicator.qml
+	ScrollView QtQuick/Controls/Imagine/ScrollView.qml
+	SearchField QtQuick/Controls/Imagine/SearchField.qml
+	SelectionRectangle QtQuick/Controls/Imagine/SelectionRectangle.qml
+	Slider QtQuick/Controls/Imagine/Slider.qml
+	SpinBox QtQuick/Controls/Imagine/SpinBox.qml
+	SplitView QtQuick/Controls/Imagine/SplitView.qml
+	StackView QtQuick/Controls/Imagine/StackView.qml
+	SwipeDelegate QtQuick/Controls/Imagine/SwipeDelegate.qml
+	SwipeView QtQuick/Controls/Imagine/SwipeView.qml
+	Switch QtQuick/Controls/Imagine/Switch.qml
+	SwitchDelegate QtQuick/Controls/Imagine/SwitchDelegate.qml
+	TabBar QtQuick/Controls/Imagine/TabBar.qml
+	TabButton QtQuick/Controls/Imagine/TabButton.qml
+	TextArea QtQuick/Controls/Imagine/TextArea.qml
+	TextField QtQuick/Controls/Imagine/TextField.qml
+	ToolBar QtQuick/Controls/Imagine/ToolBar.qml
+	ToolButton QtQuick/Controls/Imagine/ToolButton.qml
+	ToolSeparator QtQuick/Controls/Imagine/ToolSeparator.qml
+	ToolTip QtQuick/Controls/Imagine/ToolTip.qml
+	Tumbler QtQuick/Controls/Imagine/Tumbler.qml
+	VerticalHeaderView QtQuick/Controls/Imagine/VerticalHeaderView.qml
+	VerticalHeaderViewDelegate QtQuick/Controls/Imagine/VerticalHeaderViewDelegate.qml
+	type QQuickAttachedPropertyPropagator
+		prototype QObject
+	type QQuickImagineStyle Imagine
+		prototype QQuickAttachedPropertyPropagator
+		attached QQuickImagineStyle
+		is uncreatable
+		prop path QString
+		prop url QUrl readonly
+		signal pathChanged
+	type QtQuick/Controls/Imagine/ApplicationWindow.qml ApplicationWindow
+		prototype QQuickApplicationWindow
+	type QtQuick/Controls/Imagine/BusyIndicator.qml BusyIndicator
+		prototype QQuickBusyIndicator
+	type QtQuick/Controls/Imagine/Button.qml Button
+		prototype QQuickButton
+	type QtQuick/Controls/Imagine/CheckBox.qml CheckBox
+		prototype QQuickCheckBox
+	type QtQuick/Controls/Imagine/CheckDelegate.qml CheckDelegate
+		prototype QQuickCheckDelegate
+	type QtQuick/Controls/Imagine/ComboBox.qml ComboBox
+		prototype QQuickComboBox
+	type QtQuick/Controls/Imagine/DelayButton.qml DelayButton
+		prototype QQuickDelayButton
+	type QtQuick/Controls/Imagine/Dial.qml Dial
+		prototype QQuickDial
+	type QtQuick/Controls/Imagine/Dialog.qml Dialog
+		prototype QQuickDialog
+	type QtQuick/Controls/Imagine/DialogButtonBox.qml DialogButtonBox
+		prototype QQuickDialogButtonBox
+	type QtQuick/Controls/Imagine/DoubleSpinBox.qml DoubleSpinBox
+		prototype QQuickDoubleSpinBox
+	type QtQuick/Controls/Imagine/Drawer.qml Drawer
+		prototype QQuickDrawer
+	type QtQuick/Controls/Imagine/Frame.qml Frame
+		prototype QQuickFrame
+	type QtQuick/Controls/Imagine/GroupBox.qml GroupBox
+		prototype QQuickGroupBox
+	type QtQuick/Controls/Imagine/HorizontalHeaderView.qml HorizontalHeaderView
+		prototype QQuickHorizontalHeaderView
+	type QtQuick/Controls/Imagine/HorizontalHeaderViewDelegate.qml HorizontalHeaderViewDelegate
+		prototype QQuickHeaderViewDelegate
+	type QtQuick/Controls/Imagine/ItemDelegate.qml ItemDelegate
+		prototype QQuickItemDelegate
+	type QtQuick/Controls/Imagine/Label.qml Label
+		prototype QQuickLabel
+	type QtQuick/Controls/Imagine/Menu.qml Menu
+		prototype QQuickMenu
+	type QtQuick/Controls/Imagine/MenuBar.qml MenuBar
+		prototype QQuickMenuBar
+	type QtQuick/Controls/Imagine/MenuBarItem.qml MenuBarItem
+		prototype QQuickMenuBarItem
+	type QtQuick/Controls/Imagine/MenuItem.qml MenuItem
+		prototype QQuickMenuItem
+	type QtQuick/Controls/Imagine/MenuSeparator.qml MenuSeparator
+		prototype QQuickMenuSeparator
+	type QtQuick/Controls/Imagine/Page.qml Page
+		prototype QQuickPage
+	type QtQuick/Controls/Imagine/PageIndicator.qml PageIndicator
+		prototype QQuickPageIndicator
+	type QtQuick/Controls/Imagine/Pane.qml Pane
+		prototype QQuickPane
+	type QtQuick/Controls/Imagine/Popup.qml Popup
+		prototype QQuickPopup
+	type QtQuick/Controls/Imagine/ProgressBar.qml ProgressBar
+		prototype QQuickProgressBar
+	type QtQuick/Controls/Imagine/RadioButton.qml RadioButton
+		prototype QQuickRadioButton
+	type QtQuick/Controls/Imagine/RadioDelegate.qml RadioDelegate
+		prototype QQuickRadioDelegate
+	type QtQuick/Controls/Imagine/RangeSlider.qml RangeSlider
+		prototype QQuickRangeSlider
+	type QtQuick/Controls/Imagine/RoundButton.qml RoundButton
+		prototype QQuickRoundButton
+	type QtQuick/Controls/Imagine/ScrollBar.qml ScrollBar
+		prototype QQuickScrollBar
+	type QtQuick/Controls/Imagine/ScrollIndicator.qml ScrollIndicator
+		prototype QQuickScrollIndicator
+	type QtQuick/Controls/Imagine/ScrollView.qml ScrollView
+		prototype QQuickScrollView
+	type QtQuick/Controls/Imagine/SearchField.qml SearchField
+		prototype QQuickSearchField
+		prop __clearIndicatorWidth double readonly
+		prop __searchIndicatorWidth double readonly
+		signal __clearIndicatorWidthChanged
+		signal __searchIndicatorWidthChanged
+	type QtQuick/Controls/Imagine/SelectionRectangle.qml SelectionRectangle
+		prototype QQuickSelectionRectangle
+	type QtQuick/Controls/Imagine/Slider.qml Slider
+		prototype QQuickSlider
+	type QtQuick/Controls/Imagine/SpinBox.qml SpinBox
+		prototype QQuickSpinBox
+	type QtQuick/Controls/Imagine/SplitView.qml SplitView
+		prototype QQuickSplitView
+	type QtQuick/Controls/Imagine/StackView.qml StackView
+		prototype QQuickStackView
+	type QtQuick/Controls/Imagine/SwipeDelegate.qml SwipeDelegate
+		prototype QQuickSwipeDelegate
+	type QtQuick/Controls/Imagine/SwipeView.qml SwipeView
+		prototype QQuickSwipeView
+	type QtQuick/Controls/Imagine/Switch.qml Switch
+		prototype QQuickSwitch
+	type QtQuick/Controls/Imagine/SwitchDelegate.qml SwitchDelegate
+		prototype QQuickSwitchDelegate
+	type QtQuick/Controls/Imagine/TabBar.qml TabBar
+		prototype QQuickTabBar
+	type QtQuick/Controls/Imagine/TabButton.qml TabButton
+		prototype QQuickTabButton
+	type QtQuick/Controls/Imagine/TextArea.qml TextArea
+		prototype QQuickTextArea
+	type QtQuick/Controls/Imagine/TextField.qml TextField
+		prototype QQuickTextField
+	type QtQuick/Controls/Imagine/ToolBar.qml ToolBar
+		prototype QQuickToolBar
+	type QtQuick/Controls/Imagine/ToolButton.qml ToolButton
+		prototype QQuickToolButton
+	type QtQuick/Controls/Imagine/ToolSeparator.qml ToolSeparator
+		prototype QQuickToolSeparator
+	type QtQuick/Controls/Imagine/ToolTip.qml ToolTip
+		prototype QQuickToolTip
+	type QtQuick/Controls/Imagine/Tumbler.qml Tumbler
+		prototype QQuickTumbler
+		prop __delegateHeight double readonly
+		signal __delegateHeightChanged
+	type QtQuick/Controls/Imagine/VerticalHeaderView.qml VerticalHeaderView
+		prototype QQuickVerticalHeaderView
+	type QtQuick/Controls/Imagine/VerticalHeaderViewDelegate.qml VerticalHeaderViewDelegate
+		prototype QQuickHeaderViewDelegate
+module QtQuick.Controls.Imagine.impl
+	import QtQuick.Controls.impl
+	OpacityMask QtQuick/Controls/Imagine/impl/OpacityMask.qml
+	TextEditingContextMenu QtQuick/Controls/Imagine/impl/TextEditingContextMenu.qml
+	type QtQuick/Controls/Imagine/impl/OpacityMask.qml OpacityMask
+		prototype QQuickItem
+		prop source QVariant
+		prop maskSource QVariant
+		prop cached bool
+		signal sourceChanged
+		signal maskSourceChanged
+		signal cachedChanged
+	type QtQuick/Controls/Imagine/impl/TextEditingContextMenu.qml TextEditingContextMenu
+		prototype QtQuick/Controls/Imagine/Menu.qml
+		prop editor QQuickItem required
+		signal editorChanged
 module QtQuick.Controls.Material
 	import QtQuick.Controls.Basic
 	ApplicationWindow QtQuick/Controls/Material/ApplicationWindow.qml
@@ -9797,8 +9999,6 @@ module QtQuick.Controls.Material
 	Tumbler QtQuick/Controls/Material/Tumbler.qml
 	VerticalHeaderView QtQuick/Controls/Material/VerticalHeaderView.qml
 	VerticalHeaderViewDelegate QtQuick/Controls/Material/VerticalHeaderViewDelegate.qml
-	type QQuickAttachedPropertyPropagator
-		prototype QObject
 	type QQuickMaterialStyle Material
 		prototype QQuickAttachedPropertyPropagator
 		attached QQuickMaterialStyle

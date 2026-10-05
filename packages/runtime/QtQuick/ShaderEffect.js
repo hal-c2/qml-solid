@@ -4,8 +4,8 @@
 // Qt draws with shaders baked by its `qsb` tool from Vulkan-style GLSL; in
 // what it bakes is the same shader for OpenGL ES, which is what a browser
 // draws with. The build has that put where `fragmentShader` names the baked
-// file (`vite.js`); a shader fetched from elsewhere is to be OpenGL ES as it
-// is.
+// file (`vite.js`); a shader fetched from elsewhere is OpenGL ES as it is,
+// or a baked file, of which the one for OpenGL ES is taken.
 //
 // Every effect is drawn by one WebGL context, of which a page may have few,
 // and what was drawn is handed to the effect's own canvas.
@@ -96,20 +96,47 @@ function text(url) {
     // What Qt bakes is not text; what a server answers with for a file it
     // does not have often is.
     const baked = /[\0-\x08]/.test(source.slice(0, 64));
-    setState({
-      error: baked
-        ? `${url} is a shader baked for Qt: the build bakes one for a browser from its source`
-        : `${url} is not a shader`,
-    });
+    setState({ error: baked ? `${url} is a shader baked for Qt, with none for OpenGL ES in it` : `${url} is not a shader` });
   };
   if (url.startsWith("data:")) took(decodeURIComponent(url.slice(url.indexOf(",") + 1)));
   else {
     fetch(url)
-      .then((answer) => (answer.ok ? answer.text() : Promise.reject(new Error(`${answer.status}`))))
+      .then((answer) => (answer.ok ? answer.arrayBuffer() : Promise.reject(new Error(`${answer.status}`))))
+      .then(async (data) => {
+        const bytes = new Uint8Array(data);
+        const source = new TextDecoder().decode(bytes);
+        return /[\0-\x08]/.test(source.slice(0, 64)) ? ((await unbaked(bytes)) ?? source) : source;
+      })
       .then(took, (error) => setState({ error: `${url} could not be read: ${error.message}` }))
       .then(() => flush());
   }
   return record;
+}
+
+// The shader for OpenGL ES in what Qt's `qsb` baked, or nothing when `bytes`
+// are no such file. A baked file is the length of what it holds and that
+// compressed, as `qCompress` leaves it; in it each shader is its length and
+// its text, and the text says in its first line what it is written for.
+const LATIN = new TextDecoder("latin1");
+async function unbaked(bytes) {
+  let held = bytes;
+  if (bytes[4] === 0x78) {
+    try {
+      const stream = new Blob([bytes.subarray(4)]).stream().pipeThrough(new DecompressionStream("deflate"));
+      held = new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch {
+      return null;
+    }
+  }
+  const view = new DataView(held.buffer, held.byteOffset, held.byteLength);
+  const found = {};
+  for (const match of LATIN.decode(held).matchAll(/#version (300 es|100)\n/g)) {
+    if (match.index < 4) continue;
+    const length = view.getUint32(match.index - 4);
+    if (length < match[0].length || match.index + length > held.length) continue;
+    found[match[1]] ??= new TextDecoder().decode(held.subarray(match.index, match.index + length));
+  }
+  return found["300 es"] ?? found["100"] ?? null;
 }
 
 // A program for two shaders, and what it asks for: one for every effect
@@ -177,11 +204,25 @@ function columns(matrix) {
 }
 
 // What an item is as a texture: a picture, or a canvas something draws on.
-// A picture is loaded for it, apart from the one the page shows.
+// A picture is loaded for it, apart from the one the page shows. A source
+// that is of a part of its item (`sourceRect`) is that part, cut out when
+// it is drawn with: the item may be painted again until then.
 const pictures = new Map();
 function drawable(item) {
-  for (let seen = 0; item?.sourceItem !== undefined && seen < 8; seen++) item = item.sourceItem;
-  if (!item) return null;
+  let part = null;
+  for (let seen = 0; item?.sourceItem !== undefined && seen < 8; seen++) {
+    const { sourceRect: rect, sourceItem: of } = item;
+    if (!part && of && rect?.width > 0 && rect?.height > 0) {
+      const { width, height } = of;
+      if (width > 0 && height > 0) part = { source: item, x: rect.x / width, y: rect.y / height, width: rect.width / width, height: rect.height / height };
+    }
+    item = of;
+  }
+  const whole = item ? taken(item) : null;
+  return whole && part && !whole.keep ? { ...part, whole } : whole;
+}
+
+function taken(item) {
   // Another effect, as it was last drawn: it keeps that as a texture once
   // it is asked to.
   if (item.$shader) return item.$shader.drawn() >= 0 ? item.$shader : null;
@@ -202,6 +243,21 @@ function drawable(item) {
     element.src = url;
   }
   return record.ready() ? record.element : null;
+}
+
+// The part of a canvas or a picture a source is of, on a canvas of its own.
+const parts = new WeakMap();
+function cut({ source, whole, x, y, width, height }) {
+  const wide = whole.naturalWidth ?? whole.width;
+  const tall = whole.naturalHeight ?? whole.height;
+  let canvas = parts.get(source);
+  if (!canvas) parts.set(source, (canvas = document.createElement("canvas")));
+  canvas.width = Math.max(Math.round(width * wide), 0);
+  canvas.height = Math.max(Math.round(height * tall), 0);
+  if (canvas.width > 0 && canvas.height > 0 && wide > 0 && tall > 0) {
+    canvas.getContext("2d").drawImage(whole, x * wide, y * tall, width * wide, height * tall, 0, 0, canvas.width, canvas.height);
+  }
+  return canvas;
 }
 
 const textures = new WeakMap();
@@ -403,7 +459,8 @@ export const ShaderEffect = defineType("ShaderEffect", Item, {
         gl.useProgram(made.program);
         made.uniforms.forEach((uniform, index) => {
           if (uniform.unit < 0) return set(uniform, values[index]);
-          const [element, wrapMode] = values[index];
+          const [given, wrapMode] = values[index];
+          const element = given?.whole ? cut(given) : given;
           if (element?.keep || (element && element.width > 0 && element.height > 0)) texture(element, uniform.unit, wrapMode);
           else nothing(uniform.unit);
           gl.uniform1i(uniform.location, uniform.unit);

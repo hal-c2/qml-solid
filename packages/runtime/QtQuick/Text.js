@@ -88,6 +88,7 @@ function wrap(font, text, limit, mode, lines) {
     return;
   }
   const breaks = mode === WRAP_ANYWHERE ? null : stops(text);
+  const tabs = text.includes("\t");
   let start = 0;
   let next = 0;
   while (start < length) {
@@ -98,7 +99,9 @@ function wrap(font, text, limit, mode, lines) {
         const stop = breaks[next];
         const piece = text.slice(end, stop);
         const shown = piece.replace(TRAILING, "");
-        if (used + advance(font, shown) + overhang(font, shown) > limit) {
+        // How far a tab goes depends on where in the line it is.
+        const reach = tabs ? advance(font, text.slice(start, end) + shown) : used + advance(font, shown);
+        if (reach + overhang(font, shown) > limit) {
           if (end > start) break;
           // A word alone on its line, and still too wide for it.
           if (mode !== WORD_WRAP) {

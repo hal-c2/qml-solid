@@ -29,6 +29,11 @@
     "width": 800,
     "height": 600
   },
+  "documentviewer": {
+    "capturedAt": 1791161786670,
+    "width": 800,
+    "height": 600
+  },
   "hangman": {
     "capturedAt": 1791129965172,
     "width": 320,
@@ -73,6 +78,11 @@
     "capturedAt": 1791129977673,
     "width": 320,
     "height": 480
+  },
+  "stocqt": {
+    "capturedAt": 1791156560311,
+    "width": 360,
+    "height": 800
   },
   "thermostat": {
     "capturedAt": 1791129979400,

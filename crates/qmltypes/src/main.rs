@@ -62,6 +62,8 @@ const MODULES: &[&str] = &[
     "QtQuick.Controls.Basic.impl",
     "QtQuick.Controls.Fusion",
     "QtQuick.Controls.Fusion.impl",
+    "QtQuick.Controls.Imagine",
+    "QtQuick.Controls.Imagine.impl",
     "QtQuick.Controls.Material",
     "QtQuick.Controls.Material.impl",
     "QtQuick.Controls.Universal",
