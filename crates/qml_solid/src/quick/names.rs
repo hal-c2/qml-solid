@@ -41,7 +41,7 @@ pub(crate) fn resolve<'a>(
     uses: &mut Uses,
     errors: &mut Vec<Error>,
 ) {
-    let free = free_references(program);
+    let free = free_references(program, own);
     let mut resolver = Resolver { b, tree, types, own, dynamic, free, uses, errors };
     resolver.visit_program(program);
     Pruner { used: &resolver.uses.handles }.visit_program(program);
@@ -51,18 +51,27 @@ pub(crate) fn resolve<'a>(
 /// What the lowering built has no span, and its names all have a `$`, which a
 /// QML id or property cannot: whatever JavaScript does resolve is an id or a
 /// local of the script.
-fn free_references(program: &Program<'_>) -> HashSet<u32> {
+fn free_references(program: &Program<'_>, own: &str) -> HashSet<u32> {
     let semantic = SemanticBuilder::new().with_build_nodes(true).build(program).semantic;
     let scoping = semantic.scoping();
     let mut free = HashSet::new();
-    for references in scoping.root_unresolved_references().values() {
-        for &reference in references {
-            let node = semantic.nodes().get_node(scoping.get_reference(reference).node_id());
-            let span = node.kind().span();
-            if span.end > span.start {
-                free.insert(span.start);
-            }
+    let mut add = |reference| {
+        let node = semantic.nodes().get_node(scoping.get_reference(reference).node_id());
+        let span = node.kind().span();
+        if span.end > span.start {
+            free.insert(span.start);
         }
+    };
+    for references in scoping.root_unresolved_references().values() {
+        references.iter().copied().for_each(&mut add);
+    }
+    // The module binds the file's own name, to the component. To QML a name
+    // that is not capitalised is no type: in `mended.qml`, `mended` is the
+    // property of that name, if there is one.
+    if !own.starts_with(|c: char| c.is_ascii_uppercase())
+        && let Some(symbol) = scoping.get_root_binding(own.into())
+    {
+        scoping.get_resolved_reference_ids(symbol).iter().copied().for_each(&mut add);
     }
     free
 }

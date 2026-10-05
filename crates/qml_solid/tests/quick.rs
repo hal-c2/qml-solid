@@ -326,6 +326,17 @@ Item {
 }
 
 #[test]
+fn a_name_that_is_the_files_and_not_capitalised_is_what_qml_has_by_it() {
+    // The module binds `sample` to the component; to QML it is no type.
+    let code = lowered_in(
+        &[("sample", "import QtQuick\nItem { id: root; property int sample: 1; function read() { return sample } }")],
+        "sample",
+    )
+    .unwrap();
+    assert_contains(&code, "return root.sample");
+}
+
+#[test]
 fn a_path_is_taken_from_the_file_of_what_uses_it() {
     let files = [
         (
