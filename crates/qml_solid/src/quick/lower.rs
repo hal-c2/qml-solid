@@ -30,6 +30,7 @@ use super::{
     names,
     paths::{Paths, is_absolute, is_resolved},
     scope::{self, Tree},
+    texts::Text,
     types::{self, Member, Origin, Property, Types},
 };
 use crate::{Error, build::B, qt};
@@ -51,6 +52,8 @@ pub(crate) struct Uses {
     pub handles: HashSet<String>,
     /// The QML files something names by their path.
     pub paths: Paths,
+    /// The QML something gives `Qt.createQmlObject` as a text.
+    pub texts: Vec<Text>,
 }
 
 impl Uses {

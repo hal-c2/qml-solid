@@ -28,6 +28,7 @@ use super::{
     lower::Uses,
     paths,
     scope::Tree,
+    texts::{self, Text},
     types::{Kind, Origin, Types},
 };
 use crate::{Error, build::B, project::Source, qt};
@@ -432,6 +433,33 @@ impl<'a> Resolver<'a, '_, '_> {
         })
     }
 
+    /// `Qt.createQmlObject("import QtQuick; Item {}", parent)`: the object of
+    /// the component the text is, which [`texts`] makes of it. True when
+    /// `expression` became that.
+    fn text_object(&mut self, expression: &mut Expression<'a>) -> bool {
+        let Expression::CallExpression(call) = expression else { return false };
+        let Some(first) = texts::given(call) else { return false };
+        let Some((source, holes)) = texts::written(first) else { return false };
+        let index = self.uses.texts.len();
+        let span = first.span();
+        self.uses.texts.push(Text { source, span, holes });
+        let b = self.b;
+        let mut arguments = std::mem::replace(&mut call.arguments, b.vec()).into_iter();
+        let mut put = Vec::new();
+        if let Some(first) = arguments.next() {
+            texts::put(first.into_expression(), &mut put);
+        }
+        let made = if put.is_empty() { b.id(&texts::name(index)) } else { b.call(b.id(&texts::name(index)), put) };
+        // Its object finds names where the text is written.
+        let scope = (!self.dynamic.is_empty()).then(|| self.tree.scope_of(self.tree.object_at(span.start)));
+        let context = scope.as_deref().map(|scope| b.id(scope));
+        self.uses.handles.extend(scope);
+        self.uses.kernel.insert("$file");
+        let create = b.member(b.call(b.id("$file"), std::iter::once(made).chain(context)), "createObject");
+        *expression = b.call(create, arguments.next().map(Argument::into_expression));
+        true
+    }
+
     /// `Qt.createComponent("QtQuick3D", "TextureInput")`: a type of a module
     /// as a component. The module has it whether the file imports it or not.
     fn module_component(&mut self, expression: &Expression<'a>) -> Option<Expression<'a>> {
@@ -488,6 +516,10 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
             .then(|| self.tree.scope_of(self.tree.object_at(expression.span().start)));
         if let Some(component) = self.module_component(expression) {
             *expression = component;
+            return;
+        }
+        if self.text_object(expression) {
+            walk_mut::walk_expression(self, expression);
             return;
         }
         let Uses { paths, kernel, handles, .. } = &mut *self.uses;
