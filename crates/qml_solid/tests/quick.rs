@@ -534,12 +534,14 @@ Item {
         &["Sample.qml", "pages/About.qml", "pages/Home.qml", "parts/Dial.qml"],
     );
     assert_contains(&code, r#"import { $file, $files, $object, $string, $url } from "qml-solid/object";"#);
-    // `Qt` is still what makes a type of a module.
-    assert_contains(&code, r#"import { Qt } from "qml-solid/QtQml";"#);
+    // Nothing is left for `Qt` to make as the program runs.
+    assert_lacks(&code, r#"from "qml-solid/QtQml""#);
     assert_contains(&code, r#"import $file1 from "./parts/Dial.qml";"#);
     assert_contains(&code, r#"import $file2 from "./pages/Home.qml";"#);
     assert_contains(&code, "$file($file1)");
-    assert_contains(&code, r#"Qt.createComponent("QtQuick", "Rectangle")"#);
+    // A type of a module, by their names, is the component the module has.
+    assert_contains(&code, r#"import { Item, Loader, Rectangle, Text } from "qml-solid/QtQuick";"#);
+    assert_contains(&code, "other={$file(Rectangle)}");
     assert_contains(&code, r#"icon={new URL("icons/a.png", import.meta.url).href}"#);
     assert_contains(&code, "where={$url(root.page, import.meta.url)}");
     // A path put together is one of the files it could be.

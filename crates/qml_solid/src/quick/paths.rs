@@ -280,7 +280,7 @@ pub(crate) fn is_resolved(expression: &Expression<'_>) -> bool {
 }
 
 /// `Qt.name(...)`: the name.
-fn qt_method<'a>(call: &CallExpression<'a>) -> Option<&'a str> {
+pub(crate) fn qt_method<'a>(call: &CallExpression<'a>) -> Option<&'a str> {
     let Expression::StaticMemberExpression(member) = &call.callee else { return None };
     let Expression::Identifier(object) = &member.object else { return None };
     // Written, and not something of the script's own called `Qt`: the

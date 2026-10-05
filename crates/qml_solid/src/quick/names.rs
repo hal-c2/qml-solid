@@ -26,8 +26,9 @@ use oxc_syntax::{operator::BinaryOperator, scope::ScopeFlags};
 
 use super::{
     lower::Uses,
+    paths,
     scope::Tree,
-    types::{Kind, Types},
+    types::{Kind, Origin, Types},
 };
 use crate::{Error, build::B, project::Source, qt};
 
@@ -430,6 +431,29 @@ impl<'a> Resolver<'a, '_, '_> {
             }
         })
     }
+
+    /// `Qt.createComponent("QtQuick3D", "TextureInput")`: a type of a module
+    /// as a component. The module has it whether the file imports it or not.
+    fn module_component(&mut self, expression: &Expression<'a>) -> Option<Expression<'a>> {
+        let Expression::CallExpression(call) = expression else { return None };
+        if paths::qt_method(call) != Some("createComponent") {
+            return None;
+        }
+        let [Argument::StringLiteral(uri), Argument::StringLiteral(name), ..] = call.arguments.as_slice() else {
+            return None;
+        };
+        let (uri, name) = (uri.value.as_str(), name.value.as_str());
+        let origin = match self.types.project.module_type(uri, name) {
+            Some(file) => Origin::File(file.to_string()),
+            None => {
+                qt::module(uri)?.type_named(name)?;
+                Origin::Module(uri.to_string())
+            }
+        };
+        self.uses.origin(name, &origin);
+        self.uses.kernel.insert("$file");
+        Some(self.b.call(self.b.id("$file"), [self.b.id(name)]))
+    }
 }
 
 fn has_enum(ty: &'static qt::Type, name: &str) -> bool {
@@ -462,6 +486,10 @@ impl<'a> VisitMut<'a> for Resolver<'a, '_, '_> {
         // written, if the project finds any as it runs.
         let scope = (!self.dynamic.is_empty() && !expression.span().is_empty())
             .then(|| self.tree.scope_of(self.tree.object_at(expression.span().start)));
+        if let Some(component) = self.module_component(expression) {
+            *expression = component;
+            return;
+        }
         let Uses { paths, kernel, handles, .. } = &mut *self.uses;
         if paths.rewrite(self.b, kernel, expression, scope.as_deref())
             && let Some(scope) = scope

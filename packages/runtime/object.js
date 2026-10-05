@@ -1531,12 +1531,18 @@ export function $files(table, base) {
 
 // `Component.Error`: what Qt makes of a file that is not there.
 function missing(url) {
+  return failed(`${url}: No such file or directory\n`);
+}
+
+// And of anything else it can make no component of, which is what `said`
+// tells.
+export function failed(said) {
   const component = $component(() => null);
   component.status = 3;
   component.progress = 0;
-  component.errorString = () => `${url}: No such file or directory`;
+  component.errorString = () => said;
   component.createObject = () => {
-    console.warn(`QQmlComponent: Component is not ready: ${component.errorString()}`);
+    console.warn(`QQmlComponent: Component is not ready: ${said.trimEnd()}`);
     return null;
   };
   return component;

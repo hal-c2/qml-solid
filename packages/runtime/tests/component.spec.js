@@ -169,3 +169,25 @@ test("an enum's keys are on a type of the project and on a type of a namespace",
     true, true,
   ]);
 });
+
+test("a type of a module, by their names, is a component of it", async ({ page }) => {
+  await open(page, "created");
+  // Qt 6.11.
+  expect(await page.evaluate(() => window.scene.ofType())).toEqual([true, 30, true, "#ff0000"]);
+});
+
+// This warns, as Qt does, which the scenes' `test` takes for a failure.
+plain("a type a module has not is a component in error", async ({ page }) => {
+  const warnings = [];
+  page.on("console", (message) => {
+    if (message.type() === "warning") warnings.push(message.text());
+  });
+  await open(page, "created");
+  // Qt 6.11.
+  expect(await page.evaluate(() => window.scene.unknown())).toEqual([
+    true,
+    '<Unknown File>: Module "QtQuick" contains no type named "Nothing"\n',
+    null,
+  ]);
+  expect(warnings).toEqual(['QQmlComponent: Component is not ready: <Unknown File>: Module "QtQuick" contains no type named "Nothing"']);
+});

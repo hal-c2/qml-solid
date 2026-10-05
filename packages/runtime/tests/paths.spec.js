@@ -101,7 +101,7 @@ base("a component of a file that is not there says so", async ({ page }) => {
     return [missing.status, missing.errorString(), missing.createObject(scene), scene.make("Nothing", 0), scene.made()];
   });
   expect(read[0]).toBe(3);
-  expect(read[1]).toMatch(/\/scenes\/paths\/Nothing\.qml: No such file or directory$/);
+  expect(read[1]).toMatch(/\/scenes\/paths\/Nothing\.qml: No such file or directory\n$/);
   expect(read.slice(2)).toEqual([null, null, 0]);
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toMatch(/^QQmlComponent: Component is not ready: .*Nothing\.qml: No such file or directory$/);
